@@ -118,7 +118,13 @@ function renderCanvas() {
        div.innerHTML += `<div class="studio-port out" data-port="true"><span class="studio-port__label">True</span></div>`;
     }
 
-    div.onmousedown = (e) => { e.stopPropagation(); selectNode(node); dragNode = node; };
+    div.onmousedown = (e) => { 
+       // Don't stop propagation, but handle selection/drag based on target
+       selectNode(node); 
+       if (!e.target.closest('.studio-port')) {
+         dragNode = node;
+       }
+    };
     $nodes.appendChild(div);
   });
 
@@ -169,6 +175,7 @@ function drawEdge(edge) {
 function onMouseDown(e) {
   lastMouse = { x: e.clientX, y: e.clientY };
   
+  // 1. Check for port click (starts connection wire)
   const port = e.target.closest('.studio-port.out');
   if (port) {
     const nodeEl = port.closest('.studio-node');
@@ -190,6 +197,13 @@ function onMouseDown(e) {
     return;
   }
 
+  // 2. Check for node click (starts node drag)
+  if (e.target.closest('.studio-node')) {
+    // Handled by the node's own onmousedown listener
+    return;
+  }
+
+  // 3. Canvas background click (starts pan)
   isPanning = true;
   if ($wrap) $wrap.style.cursor = 'grabbing';
 }
