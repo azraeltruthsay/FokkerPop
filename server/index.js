@@ -473,6 +473,12 @@ twitchEventSub.on('status', (status) => {
 httpServer.on('error', (err) => {
   if (err.code === 'EADDRINUSE') {
     log.error(`Port ${PORT} is already in use. Is FokkerPop already running?`);
+    log.error(`If not, change "server": { "port": ${PORT} } in settings.json to a different port.`);
+  } else if (err.code === 'EACCES') {
+    log.error(`Permission denied on port ${PORT}. Windows has reserved this port (common with Hyper-V, WSL, or Docker).`);
+    log.error(`Fix option 1: change the port in settings.json — add "server": { "port": 4748 } and restart.`);
+    log.error(`Fix option 2: run this in an admin Command Prompt, then restart your PC:`);
+    log.error(`  netsh int ipv4 delete excludedportrange protocol=tcp numberofports=1 startport=${PORT}`);
   } else {
     log.error('HTTP server error:', err.message);
   }
@@ -483,7 +489,7 @@ httpServer.listen(PORT, BIND, () => {
   log.info(`FokkerPop listening on ${BIND}:${PORT}`);
   console.log(`
 ╔══════════════════════════════════════════════════╗
-║   FokkerPop  v0.1.14  — live on ${BIND}:${PORT}   ║
+║   FokkerPop  v0.1.15  — live on ${BIND}:${PORT}   ║
 ╠══════════════════════════════════════════════════╣
 ║  Overlay   →  http://localhost:${PORT}/          ║
 ║  Dashboard →  http://localhost:${PORT}/dashboard ║
