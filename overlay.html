@@ -34,6 +34,38 @@ html, body {
 }
 #ws-dot.disconnected { background: #FF6B6B; animation: dot-blink 1.2s ease-in-out infinite; }
 
+/* ═══════════════════════════════════════════════════════ Timer */
+#widget-timer {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: rgba(8, 8, 16, 0.85);
+  border: 2px solid var(--accent);
+  border-radius: 24px;
+  padding: 20px 40px;
+  text-align: center;
+  display: none;
+  z-index: 100;
+  box-shadow: 0 0 40px rgba(145, 71, 255, 0.4);
+}
+#widget-timer.active { display: block; }
+#timer-label {
+  font-size: 0.9rem;
+  font-weight: 800;
+  color: var(--accent);
+  text-transform: uppercase;
+  letter-spacing: 0.2em;
+  margin-bottom: 8px;
+}
+#timer-time {
+  font-size: 4rem;
+  font-weight: 900;
+  color: #fff;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
 /* ═══════════════════════════════════════════════════════ Layout Mode */
 .draggable {
   cursor: default;
@@ -569,6 +601,11 @@ body.layout-mode .draggable:hover {
   <div id="widget-leaderboard" class="draggable">
     <div class="lb-title" id="lb-title">Top Supporters</div>
     <div id="lb-list"></div>
+  </div>
+
+  <div id="widget-timer" class="draggable">
+    <div id="timer-label">COUNTDOWN</div>
+    <div id="timer-time">00:00</div>
   </div>
 </div>
 
@@ -1139,6 +1176,33 @@ function handleMessage(msg) {
   }
 }
 
+// Timer
+const $timerWrap  = document.getElementById('widget-timer');
+const $timerLabel = document.getElementById('timer-label');
+const $timerTime  = document.getElementById('timer-time');
+let timerInterval = null;
+
+function startTimer(seconds, label = 'COUNTDOWN') {
+  clearInterval(timerInterval);
+  $timerLabel.textContent = label;
+  $timerWrap.classList.add('active');
+  
+  let remaining = seconds;
+  const update = () => {
+    const m = Math.floor(remaining / 60);
+    const s = remaining % 60;
+    $timerTime.textContent = `${m}:${s.toString().padStart(2, '0')}`;
+    if (remaining <= 0) {
+      clearInterval(timerInterval);
+      setTimeout(() => $timerWrap.classList.remove('active'), 3000);
+      playSound('boom.wav');
+    }
+    remaining--;
+  };
+  update();
+  timerInterval = setInterval(update, 1000);
+}
+
 function dispatchEffect(effect, p) {
   if (p.sound) playSound(p.sound, p.vol);
 
@@ -1146,6 +1210,7 @@ function dispatchEffect(effect, p) {
   if (heavyEffects.includes(effect)) triggerCharacterReaction();
 
   switch (effect) {
+    case 'start-timer':     startTimer(p.seconds ?? 60, p.label); break;
     case 'balloon':         spawnBalloon(p.count ?? 1);         break;
     case 'firework':        spawnFireworkRandom();               break;
     case 'firework-salvo':  spawnFireworkSalvo(p.count ?? 4);   break;

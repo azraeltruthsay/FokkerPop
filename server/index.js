@@ -5,13 +5,15 @@ import { exec }                                from 'node:child_process';
 import { WebSocketServer, WebSocket }          from 'ws';
 
 import bus                   from './bus.js';
+import state                 from './state.js';
 import { applyPipeline }     from './pipeline/index.js';
 import { TwitchEventSub }    from './twitch/eventsub.js';
 import flowEngine            from './pipeline/flow-engine.js';
+import obs                   from './obs.js';
 import settings, { ROOT }    from './settings-loader.js';
 import log                   from './logger.js';
 
-// ... (rest of imports)
+process.title = 'FokkerPop';
 
 // ── Config ────────────────────────────────────────────────────────────────────
 const PORT    = settings.server?.port ?? 4747;
@@ -580,8 +582,10 @@ httpServer.listen(PORT, BIND, () => {
 ╚══════════════════════════════════════════════════╝`);
 
   twitchEventSub.connect();
+  obs.connect();
 
-  const url = `http://localhost:${activePort}/dashboard`;
+  const url = `http://localhost:${activePort}/dashboard/`;
+
   let cmd;
   if (process.platform === 'win32') {
     // Try Edge App Mode -> Chrome App Mode -> Default Browser

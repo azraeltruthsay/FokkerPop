@@ -33,6 +33,11 @@
     "raidViewerBoostPer10":  1
   },
 
+  "obs": {
+    "address": "ws://127.0.0.1:4455",
+    "password": ""
+  },
+
   "alerts": {
     "tierS": { "durationMs": 5000 },
     "tierA": { "durationMs": 4000 },

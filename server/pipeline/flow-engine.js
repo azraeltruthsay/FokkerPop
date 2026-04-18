@@ -61,6 +61,10 @@ export class FlowEngine {
             broadcastEffect(node.data?.effect, node.data?.payload || {});
           } else if (node.action === 'playSound') {
             broadcastEffect('alert-banner', { sound: node.data?.file, vol: node.data?.volume }); 
+          } else if (node.action === 'startTimer') {
+            broadcastEffect('start-timer', { seconds: node.data?.seconds, label: node.data?.label });
+          } else if (node.action === 'obsScene') {
+            bus.publish({ source: 'studio', type: 'obs.set-scene', scene: node.data?.scene });
           }
           break;
 

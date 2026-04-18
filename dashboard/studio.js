@@ -236,6 +236,15 @@ function renderProps() {
     html += `<div><label>Effect</label><input class="input-field" value="${esc(n.data.effect || '')}" oninput="activeNode.data.effect=this.value;renderCanvas()"></div>`;
   }
 
+  if (n.action === 'startTimer') {
+    html += `<div><label>Label</label><input class="input-field" value="${esc(n.data.label || 'COUNTDOWN')}" oninput="activeNode.data.label=this.value"></div>`;
+    html += `<div><label>Seconds</label><input type="number" class="input-field" value="${n.data.seconds || 60}" oninput="activeNode.data.seconds=parseInt(this.value)"></div>`;
+  }
+
+  if (n.action === 'obsScene') {
+    html += `<div><label>Scene Name</label><input class="input-field" value="${esc(n.data.scene || '')}" oninput="activeNode.data.scene=this.value"></div>`;
+  }
+
   if (n.action === 'filter') {
     html += `<div><label>Field (e.g. payload.bits)</label><input class="input-field" value="${esc(n.data.field || '')}" oninput="activeNode.data.field=this.value"></div>`;
     html += `<div><label>Value</label><input class="input-field" value="${esc(n.data.value || '')}" oninput="activeNode.data.value=this.value"></div>`;
