@@ -1,5 +1,6 @@
 import log from '../logger.js';
 import bus from '../bus.js';
+import { makeCtx, resolveDeep, resolve } from '../template.js';
 
 /**
  * Fokker Studio Engine
@@ -32,60 +33,67 @@ export class FlowEngine {
   }
 
   async executeFlow(flow, event, broadcastEffect) {
-    const nodes = flow.nodes || {};
-    const edges = flow.edges || [];
+    const nodes   = flow.nodes || {};
+    const edges   = flow.edges || [];
+    const exprCtx = makeCtx(event);  // build once per flow execution
 
-    // Find trigger node(s)
     const startNodes = Object.values(nodes).filter(n => n.type === 'trigger');
-    
     for (const startNode of startNodes) {
-      await this.runNode(startNode, nodes, edges, { event, broadcastEffect });
+      await this.runNode(startNode, nodes, edges, { event, broadcastEffect, exprCtx });
     }
   }
 
   async runNode(node, allNodes, allEdges, ctx) {
-    const { event, broadcastEffect } = ctx;
-    let outputPort = 'next'; // Default output port
+    const { event, broadcastEffect, exprCtx } = ctx;
+    let outputPort = 'next';
 
     log.debug(`  Node: ${node.id} (${node.label || node.action || node.type})`);
 
+    // Resolve all node data fields through the expression engine
+    const data = resolveDeep(node.data ?? {}, exprCtx);
+
     try {
-      // ─── Node Logic ───
       switch (node.type) {
         case 'trigger':
-          // Just a pass-through start point
           break;
 
         case 'action':
           if (node.action === 'spawnEffect') {
-            broadcastEffect(node.data?.effect, node.data?.payload || {});
+            broadcastEffect(data.effect, data.payload || {});
           } else if (node.action === 'playSound') {
-            broadcastEffect('alert-banner', { sound: node.data?.file, vol: node.data?.volume }); 
+            broadcastEffect('alert-banner', { sound: data.file, vol: data.volume });
           } else if (node.action === 'startTimer') {
-            broadcastEffect('start-timer', { seconds: node.data?.seconds, label: node.data?.label });
+            broadcastEffect('start-timer', { seconds: data.seconds, label: data.label });
           } else if (node.action === 'obsScene') {
-            bus.publish({ source: 'studio', type: 'obs.set-scene', scene: node.data?.scene });
+            bus.publish({ source: 'studio', type: 'obs.set-scene', scene: data.scene });
+          } else if (node.action === 'showBanner') {
+            broadcastEffect('alert-banner', { tier: data.tier || 'B', icon: data.icon || '📢', text: data.text, subText: data.subText });
           }
           break;
 
         case 'logic':
           if (node.action === 'delay') {
-            await new Promise(r => setTimeout(r, node.data?.ms || 1000));
+            await new Promise(r => setTimeout(r, data.ms || 1000));
           } else if (node.action === 'chance') {
-            const prob = (node.data?.probability ?? 50) / 100;
+            const prob = (data.probability ?? 50) / 100;
             outputPort = Math.random() < prob ? 'true' : 'false';
           } else if (node.action === 'filter') {
-            const val = this.getNested(event, node.data?.field);
-            const target = node.data?.value;
-            const op = node.data?.operator || '==';
-            
-            let pass = false;
-            if (op === '==') pass = val == target;
-            if (op === '>')  pass = val >  target;
-            if (op === '<')  pass = val <  target;
-            if (op === '!=') pass = val != target;
+            // Field can be a dotted path or a full {{ expression }}
+            const val    = node.data?.field?.includes('{{')
+              ? resolve(node.data.field, exprCtx)
+              : this.getNested(event, node.data?.field);
+            const target = data.value;
+            const op     = data.operator || '==';
 
-            if (!pass) return; // Halt this branch
+            let pass = false;
+            if (op === '==') pass = val === target;
+            if (op === '!=') pass = val !== target;
+            if (op === '>')  pass = Number(val) >  Number(target);
+            if (op === '<')  pass = Number(val) <  Number(target);
+            if (op === '>=') pass = Number(val) >= Number(target);
+            if (op === '<=') pass = Number(val) <= Number(target);
+
+            if (!pass) return;
             outputPort = 'true';
           }
           break;

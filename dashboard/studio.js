@@ -45,8 +45,10 @@ window.initStudio = async function() {
   
   // Canvas events
   $wrap.addEventListener('mousedown', onMouseDown);
+  $wrap.addEventListener('contextmenu', onContextMenu);
   window.addEventListener('mousemove', onMouseMove);
   window.addEventListener('mouseup', onMouseUp);
+  window.addEventListener('keydown', onKeyDown);
   $wrap.addEventListener('wheel', onWheel, { passive: false });
 
   studioInitialized = true;
@@ -215,6 +217,25 @@ function onWheel(e) {
   updateTransform();
 }
 
+function onKeyDown(e) {
+  if (!activeNode) return;
+  // Delete or Backspace removes the selected node (guard: not while typing in an input)
+  if ((e.key === 'Delete' || e.key === 'Backspace') && e.target === document.body) {
+    window.deleteActiveNode();
+  }
+}
+
+function onContextMenu(e) {
+  e.preventDefault();
+  // Right-click on a node → select it and delete
+  const nodeEl = e.target.closest('.studio-node');
+  if (nodeEl) {
+    const nodeId = nodeEl.id.replace('node-', '');
+    const node   = activeFlow?.nodes?.[nodeId];
+    if (node) { selectNode(node); window.deleteActiveNode(); }
+  }
+}
+
 // ─── Node Management ────────────────────────────────────────────────────────
 
 window.addNode = function(type, action) {
@@ -234,43 +255,90 @@ function selectNode(node) {
   renderProps();
 }
 
+const EXPR_HINT = `<div style="font-size:0.6rem;color:var(--text-dim);margin-top:2px;">Supports <code style="background:rgba(145,71,255,0.15);padding:1px 4px;border-radius:3px;">{{ expressions }}</code></div>`;
+
+const EXPR_REF = `
+  <details style="margin-top:8px;">
+    <summary style="font-size:0.62rem;color:var(--text-dim);cursor:pointer;letter-spacing:0.05em;text-transform:uppercase;">Variables reference</summary>
+    <div style="font-size:0.65rem;color:var(--text-dim);line-height:2;margin-top:6px;font-family:monospace;">
+      <div><span style="color:var(--accent2)">payload.user</span> · .bits · .count · .viewers</div>
+      <div><span style="color:var(--accent2)">chatters</span> — recent chatter list</div>
+      <div><span style="color:var(--accent2)">pick(chatters)</span> — random chatter</div>
+      <div><span style="color:var(--accent2)">session</span>.subCount · .bitsTotal</div>
+      <div><span style="color:var(--accent2)">crowd</span>.energy</div>
+      <div><span style="color:var(--accent2)">leaderboard</span>.bits · .gifts</div>
+      <div><span style="color:var(--accent2)">plural(n, 'sub')</span> → "3 subs"</div>
+      <div><span style="color:var(--accent2)">clamp(v, min, max)</span></div>
+      <div>Full JS — ternary, Math, etc.</div>
+    </div>
+  </details>`;
+
+function exprField(label, dataKey, value, extra = '') {
+  return `<div>
+    <label>${label}</label>
+    <input class="input-field" value="${esc(value)}" placeholder="{{ expression }}"
+      oninput="activeNode.data.${dataKey}=this.value${extra}" style="font-family:monospace;font-size:0.78rem;">
+    ${EXPR_HINT}
+  </div>`;
+}
+
 function renderProps() {
   $props.style.display = 'flex';
   const n = activeNode;
-  
+
   let html = `<div><label>Node ID</label><input class="input-field" value="${n.id}" disabled></div>`;
   html += `<div><label>Label</label><input class="input-field" value="${esc(n.label || '')}" oninput="activeNode.label=this.value;renderCanvas()"></div>`;
 
   if (n.type === 'trigger') {
-    html += `<div><label>Event Type</label><input class="input-field" value="${esc(activeFlow.trigger)}" oninput="activeFlow.trigger=this.value"></div>`;
+    html += `<div><label>Event Type</label><input class="input-field" value="${esc(activeFlow.trigger)}" oninput="activeFlow.trigger=this.value" placeholder="sub, follow, cheer, raid, redeem…"></div>`;
   }
 
   if (n.action === 'delay') {
-    html += `<div><label>Wait (ms)</label><input type="number" class="input-field" value="${n.data.ms || 1000}" oninput="activeNode.data.ms=parseInt(this.value)"></div>`;
+    html += exprField('Wait (ms)', 'ms', n.data.ms ?? 1000);
   }
 
   if (n.action === 'chance') {
-    html += `<div><label>Probability (%)</label><input type="range" min="0" max="100" value="${n.data.probability || 50}" oninput="activeNode.data.probability=parseInt(this.value)"></div>`;
+    html += exprField('Probability (%)', 'probability', n.data.probability ?? 50);
   }
 
   if (n.action === 'spawnEffect') {
-    html += `<div><label>Effect</label><input class="input-field" value="${esc(n.data.effect || '')}" oninput="activeNode.data.effect=this.value;renderCanvas()"></div>`;
+    html += exprField('Effect', 'effect', n.data.effect || '', ';renderCanvas()');
+  }
+
+  if (n.action === 'showBanner') {
+    html += exprField('Text', 'text', n.data.text || '');
+    html += exprField('Sub Text', 'subText', n.data.subText || '');
+    html += `<div><label>Tier</label>
+      <select class="input-field" oninput="activeNode.data.tier=this.value">
+        ${['S','A','B','C'].map(t => `<option ${(n.data.tier||'B')===t?'selected':''}>${t}</option>`).join('')}
+      </select></div>`;
+    html += exprField('Icon', 'icon', n.data.icon || '📢');
+  }
+
+  if (n.action === 'playSound') {
+    html += exprField('Sound file', 'file', n.data.file || '');
+    html += exprField('Volume (0–1)', 'volume', n.data.volume ?? 1);
   }
 
   if (n.action === 'startTimer') {
-    html += `<div><label>Label</label><input class="input-field" value="${esc(n.data.label || 'COUNTDOWN')}" oninput="activeNode.data.label=this.value"></div>`;
-    html += `<div><label>Seconds</label><input type="number" class="input-field" value="${n.data.seconds || 60}" oninput="activeNode.data.seconds=parseInt(this.value)"></div>`;
+    html += exprField('Label', 'label', n.data.label || 'COUNTDOWN');
+    html += exprField('Seconds', 'seconds', n.data.seconds ?? 60);
   }
 
   if (n.action === 'obsScene') {
-    html += `<div><label>Scene Name</label><input class="input-field" value="${esc(n.data.scene || '')}" oninput="activeNode.data.scene=this.value"></div>`;
+    html += exprField('Scene Name', 'scene', n.data.scene || '');
   }
 
   if (n.action === 'filter') {
-    html += `<div><label>Field (e.g. payload.bits)</label><input class="input-field" value="${esc(n.data.field || '')}" oninput="activeNode.data.field=this.value"></div>`;
-    html += `<div><label>Value</label><input class="input-field" value="${esc(n.data.value || '')}" oninput="activeNode.data.value=this.value"></div>`;
+    html += exprField('Field or {{ expr }}', 'field', n.data.field || '');
+    html += `<div><label>Operator</label>
+      <select class="input-field" oninput="activeNode.data.operator=this.value">
+        ${['==','!=','>','<','>=','<='].map(op => `<option ${(n.data.operator||'==')===op?'selected':''}>${op}</option>`).join('')}
+      </select></div>`;
+    html += exprField('Value or {{ expr }}', 'value', n.data.value || '');
   }
 
+  html += EXPR_REF;
   $fields.innerHTML = html;
 }
 

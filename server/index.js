@@ -4,14 +4,15 @@ import { extname, join, normalize, resolve, sep, relative, isAbsolute } from 'no
 import { exec }                                from 'node:child_process';
 import { WebSocketServer, WebSocket }          from 'ws';
 
-import bus                   from './bus.js';
-import state                 from './state.js';
-import { applyPipeline }     from './pipeline/index.js';
-import { TwitchEventSub }    from './twitch/eventsub.js';
-import flowEngine            from './pipeline/flow-engine.js';
-import obs                   from './obs.js';
-import settings, { ROOT }    from './settings-loader.js';
-import log                   from './logger.js';
+import bus                        from './bus.js';
+import state                      from './state.js';
+import { applyPipeline }          from './pipeline/index.js';
+import { TwitchEventSub }         from './twitch/eventsub.js';
+import flowEngine                 from './pipeline/flow-engine.js';
+import obs                        from './obs.js';
+import settings, { ROOT }         from './settings-loader.js';
+import log                        from './logger.js';
+import { makeCtx, resolveDeep }   from './template.js';
 
 process.title = 'FokkerPop';
 
@@ -99,6 +100,9 @@ bus.on('*', async (event) => {
   lastEventTs = Date.now();
   log.info(`event type=${event.type} source=${event.source ?? 'unknown'}`);
 
+  // Track chatters from any event that carries a user
+  if (event.payload?.user) state.addChatter(event.payload.user);
+
   try {
     applyBoost(event);
     updateSessionStats(event);
@@ -113,13 +117,9 @@ bus.on('*', async (event) => {
     broadcastEffect(effect, payload);
   }
 
-  // Redeem mapping
+  // Redeem mapping — supports expressions, effects arrays, and chaining
   if (event.type === 'redeem') {
-    const def = redeems[event.payload?.rewardTitle];
-    if (def) {
-      const { effect, ...payload } = def;
-      broadcastEffect(effect, payload);
-    }
+    fireRedeem(redeems[event.payload?.rewardTitle], event);
   }
 
   broadcast(dashboards, { type: 'event-log', event });
@@ -189,6 +189,30 @@ function checkGoals() {
   if (dirty) {
     state.set('goals', goals);
     broadcastState('goals', goals);
+  }
+}
+
+function fireRedeem(def, event, depth = 0) {
+  if (!def || depth > 5) return;  // guard against circular chains
+  const ctx = makeCtx(event);
+
+  // Support both legacy single-effect and new effects array
+  const effectList = def.effects
+    ?? (def.effect ? [{ effect: def.effect, ...def }] : []);
+
+  for (const entry of effectList) {
+    const { effect, ...rawPayload } = entry;
+    if (!effect) continue;
+    const payload = resolveDeep(rawPayload, ctx);
+    broadcastEffect(effect, payload);
+  }
+
+  // Chain: trigger another named redeem after this one
+  if (def.chain) {
+    const chainDef = Array.isArray(def.chain)
+      ? def.chain.map(n => redeems[n]).filter(Boolean)
+      : [redeems[def.chain]].filter(Boolean);
+    for (const next of chainDef) fireRedeem(next, event, depth + 1);
   }
 }
 

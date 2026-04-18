@@ -27,7 +27,7 @@ if %errorlevel% equ 0 (
 )
 
 :: 2. Check for bundled Node (Release Indicator)
-if not exist "node\node.exe" (
+if not exist "node\FokkerPop.exe" (
     echo  ERROR: Missing bundled Node.js.
     echo  It looks like you downloaded the "Source Code" zip instead of
     echo  the "Release" zip. The source code does not work without
@@ -41,7 +41,7 @@ if not exist "node\node.exe" (
     exit /b
 )
 
-set NODE=node\node.exe
+set NODE=node\FokkerPop.exe
 
 :: 3. Check for missing dependencies
 if not exist "node_modules\ws" (
@@ -52,21 +52,21 @@ if not exist "node_modules\ws" (
     exit /b
 )
 
-:: 4. Unblock node.exe (Windows marks downloaded files as untrusted)
-powershell -NoProfile -Command "Unblock-File -Path ('node\node.exe')" >nul 2>&1
+:: 4. Unblock FokkerPop.exe (Windows marks downloaded files as untrusted)
+powershell -NoProfile -Command "Unblock-File -Path ('node\FokkerPop.exe')" >nul 2>&1
 
-:: 5. Verify node.exe runs
+:: 5. Verify FokkerPop.exe runs
 "%NODE%" -v >nul 2>&1
 if %errorlevel% neq 0 (
     echo  ERROR: Bundled Node.js is failing to execute.
-    echo  Most likely cause: Antivirus or Windows Security is blocking node.exe.
+    echo  Most likely cause: Antivirus or Windows Security is blocking FokkerPop.exe.
     echo  TO FIX THIS:
     echo  1. Open Windows Security ^(search it in the Start menu^)
     echo  2. Go to: Virus ^& threat protection
-    echo  3. Under "Current threats", look for node.exe and click Allow
+    echo  3. Under "Current threats", look for FokkerPop.exe and click Allow
     echo  --- OR ---
     echo  1. Right-click the "node" folder in this directory
-    echo  2. Open "node.exe" Properties
+    echo  2. Open "FokkerPop.exe" Properties
     echo  3. At the bottom tick "Unblock" then click OK
     echo  4. Run start.bat again.
     pause

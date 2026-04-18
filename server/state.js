@@ -9,6 +9,7 @@ const DEFAULTS = {
   goals:       [],
   leaderboard: { bits: {}, subs: {}, gifts: {} },
   recent:      [],
+  chatters:    [],
 };
 
 class StateStore extends EventEmitter {
@@ -48,6 +49,15 @@ class StateStore extends EventEmitter {
   flush() {
     try { writeFileSync(STATE_FILE, JSON.stringify(this.#data, null, 2)); }
     catch { /* non-fatal */ }
+  }
+
+  addChatter(user) {
+    if (!user || typeof user !== 'string') return;
+    const list = this.#data.chatters;
+    const idx  = list.indexOf(user);
+    if (idx !== -1) list.splice(idx, 1);  // move to front if already present
+    list.unshift(user);
+    if (list.length > 300) list.length = 300;
   }
 
   resetSession() {

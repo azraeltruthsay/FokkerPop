@@ -55,8 +55,8 @@ jobs:
           mkdir -p "${PKG}/characters"
           mkdir -p "${PKG}/plugins"
 
-          # Bundled Node runtime
-          cp node-bin/node.exe "${PKG}/node/"
+          # Bundled Node runtime — named FokkerPop.exe so Task Manager shows the right name
+          cp node-bin/node.exe "${PKG}/node/FokkerPop.exe"
 
           # Source files
           cp -r server dashboard "${PKG}/"
