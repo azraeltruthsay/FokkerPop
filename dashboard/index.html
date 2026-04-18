@@ -786,6 +786,47 @@ html, body {
             <button class="btn btn-primary" onclick="sendCustomAlert()">Fire</button>
           </div>
         </div>
+
+        <div style="margin-top:24px; border-top: 1px solid var(--border); padding-top:20px;">
+          <div class="effects-section-label">Simulate Custom Event (Twitch Test Bed)</div>
+          
+          <div class="simulator-grid" style="display:grid; grid-template-columns: 1fr 1fr; gap:20px;">
+            <div class="card" style="margin:0; background:var(--surface2);">
+              <div class="card-title" style="font-size:0.8rem; margin-bottom:12px;">Channel Point Redeem</div>
+              <div style="display:flex; gap:8px;">
+                <select id="sim-redeem-select" class="input-field" style="flex:1;">
+                  <option value="">-- No Redeems Found --</option>
+                </select>
+                <button class="btn btn-primary" onclick="simFireRedeem()">Simulate</button>
+              </div>
+            </div>
+
+            <div class="card" style="margin:0; background:var(--surface2);">
+              <div class="card-title" style="font-size:0.8rem; margin-bottom:12px;">Custom Cheer (Bits)</div>
+              <div style="display:flex; flex-direction:column; gap:8px;">
+                <div style="display:flex; gap:8px;">
+                  <input id="sim-cheer-user" class="input-field" placeholder="User" value="ChatterBox" style="max-width:110px;">
+                  <input id="sim-cheer-bits" class="input-field" type="number" placeholder="Bits" value="69" style="max-width:80px;">
+                </div>
+                <div style="display:flex; gap:8px;">
+                  <input id="sim-cheer-msg" class="input-field" placeholder="Cheer message..." style="flex:1;">
+                  <button class="btn btn-primary" onclick="simFireCheer()">Cheer</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="card" style="margin:0; background:var(--surface2);">
+              <div class="card-title" style="font-size:0.8rem; margin-bottom:12px;">Custom Gift Subs</div>
+              <div style="display:flex; flex-direction:column; gap:8px;">
+                <div style="display:flex; gap:8px;">
+                  <input id="sim-gift-user" class="input-field" placeholder="Gifter" value="GiftBot" style="max-width:150px;">
+                  <input id="sim-gift-count" class="input-field" type="number" placeholder="Count" value="5" style="max-width:80px;">
+                  <button class="btn btn-primary" onclick="simFireGift()">Gift</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
 

@@ -13,6 +13,7 @@ A Twitch overlay app built for streamer **LilFokker** — spiritual successor to
 - **Config Editor** — manage goals and redeems directly in the dashboard
 - **Leaderboards** — rotating display of top bits donators and gift sub kings
 - **Twitch Health** — real-time status of your Twitch connection in the sidebar
+- **Twitch Simulator** — offline test bed to simulate specific redeems, cheers, and alerts
 - **Demo mode** — press `?demo=1` in the overlay URL to see a full stream scenario
 
 ## Quick Start (Windows)
