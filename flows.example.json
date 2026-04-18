@@ -1,0 +1,19 @@
+[
+  {
+    "id": "welcome-raid",
+    "name": "Big Raid Welcome",
+    "active": true,
+    "trigger": "raid",
+    "nodes": {
+      "t1": { "id": "t1", "type": "trigger", "x": 100, "y": 100 },
+      "f1": { "id": "f1", "type": "logic", "action": "filter", "data": { "field": "payload.viewers", "operator": ">", "value": 10 }, "x": 300, "y": 100 },
+      "d1": { "id": "d1", "type": "logic", "action": "delay", "data": { "ms": 1500 }, "x": 500, "y": 100 },
+      "a1": { "id": "a1", "type": "action", "action": "spawnEffect", "data": { "effect": "firework-salvo", "payload": { "count": 10 } }, "x": 700, "y": 100 }
+    },
+    "edges": [
+      { "src": "t1", "outPort": "next", "dst": "f1" },
+      { "src": "f1", "outPort": "true", "dst": "d1" },
+      { "src": "d1", "outPort": "next", "dst": "a1" }
+    ]
+  }
+]

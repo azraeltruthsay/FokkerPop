@@ -5,11 +5,13 @@ import { exec }                                from 'node:child_process';
 import { WebSocketServer, WebSocket }          from 'ws';
 
 import bus                   from './bus.js';
-import state                 from './state.js';
 import { applyPipeline }     from './pipeline/index.js';
 import { TwitchEventSub }    from './twitch/eventsub.js';
+import flowEngine            from './pipeline/flow-engine.js';
 import settings, { ROOT }    from './settings-loader.js';
 import log                   from './logger.js';
+
+// ... (rest of imports)
 
 // ── Config ────────────────────────────────────────────────────────────────────
 const PORT    = settings.server?.port ?? 4747;
@@ -18,7 +20,9 @@ const VERSION = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8')).ver
 
 const goals   = loadAndEnsureJson('goals.json',   []);
 const redeems = loadAndEnsureJson('redeems.json', {});
+const flows   = loadAndEnsureJson('flows.json',   []);
 state.set('goals', goals);
+flowEngine.setFlows(flows);
 
 function loadAndEnsureJson(name, defaultData) {
   const p  = join(ROOT, name);
@@ -97,6 +101,7 @@ bus.on('*', async (event) => {
     applyBoost(event);
     updateSessionStats(event);
     checkGoals();
+    flowEngine.processEvent(event, broadcastEffect);
   } catch (err) {
     log.error('Event handler error:', err.message, err.stack);
   }
@@ -303,6 +308,27 @@ const httpServer = createServer((req, res) => {
         Object.keys(redeems).forEach(k => delete redeems[k]);
         Object.assign(redeems, patch);
         writeFileSync(join(ROOT, 'redeems.json'), JSON.stringify(redeems, null, 2));
+        res.writeHead(200); res.end('{"ok":true}');
+      } catch (err) { res.writeHead(400); res.end(err.message); }
+    });
+    return;
+  }
+
+  if (path === '/api/flows' && req.method === 'GET') {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    return res.end(JSON.stringify(flows));
+  }
+
+  if (path === '/api/flows' && req.method === 'POST') {
+    let body = '';
+    req.on('data', d => { body += d; });
+    req.on('end', () => {
+      try {
+        const newFlows = JSON.parse(body);
+        flows.length = 0;
+        flows.push(...newFlows);
+        flowEngine.setFlows(flows);
+        writeFileSync(join(ROOT, 'flows.json'), JSON.stringify(flows, null, 2));
         res.writeHead(200); res.end('{"ok":true}');
       } catch (err) { res.writeHead(400); res.end(err.message); }
     });

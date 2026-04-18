@@ -61,7 +61,7 @@ jobs:
           # Source files
           cp -r server dashboard "${PKG}/"
           cp overlay.html package.json package-lock.json \
-             settings.example.json goals.example.json redeems.example.json \
+             settings.example.json goals.example.json redeems.example.json flows.example.json \
              start.bat README.md \
              "${PKG}/"
 

@@ -565,6 +565,41 @@ html, body {
   .stat-grid { grid-template-columns: repeat(2,1fr); }
   .effect-grid { grid-template-columns: repeat(3,1fr); }
 }
+
+/* ── Studio Nodes ── */
+.studio-node {
+  position: absolute;
+  width: 140px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 12px;
+  cursor: grab;
+  box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+  user-select: none;
+  font-size: 0.75rem;
+}
+.studio-node.active { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(145,71,255,0.3); }
+.studio-node__label { font-weight: 800; color: var(--text-dim); text-transform: uppercase; margin-bottom: 4px; font-size: 0.6rem; letter-spacing: 0.05em; }
+.studio-node__content { color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.studio-port {
+  width: 12px; height: 12px;
+  background: var(--bg);
+  border: 2px solid var(--border);
+  border-radius: 50%;
+  position: absolute;
+  cursor: crosshair;
+  transition: background 0.2s, border-color 0.2s;
+}
+.studio-port:hover { background: var(--accent); border-color: var(--accent); }
+.studio-port.in { left: -7px; top: 50%; transform: translateY(-50%); }
+.studio-port.out { right: -7px; top: 50%; transform: translateY(-50%); }
+.studio-port__label { position: absolute; font-size: 0.6rem; color: var(--text-dim); pointer-events: none; }
+.studio-port.out .studio-port__label { right: 16px; top: -1px; }
+
+#studio-svg path { stroke: var(--text-dim); stroke-width: 2.5; fill: none; transition: stroke 0.2s; }
+#studio-svg path.active { stroke: var(--accent); }
 </style>
 </head>
 <body>
@@ -605,6 +640,7 @@ html, body {
       document.getElementById(`page-${page}`)?.classList.add('active');
       if (window.populateSimulatorRedeems && page === 'effects') window.populateSimulatorRedeems();
       if (window.fetchSystemLogs && page === 'log') window.fetchSystemLogs();
+      if (window.initStudio && page === 'studio') window.initStudio();
     });
   </script>
 <div id="app">
@@ -630,6 +666,9 @@ html, body {
     </button>
     <button class="nav-item" data-page="config">
       <span class="nav-icon">📝</span> Config
+    </button>
+    <button class="nav-item" data-page="studio">
+      <span class="nav-icon">🎨</span> Studio
     </button>
     <button class="nav-item" data-page="log">
       <span class="nav-icon">📋</span> Event Log
@@ -913,7 +952,43 @@ html, body {
       </div>
     </div>
 
-    <!-- ════════════════════════ LOG PAGE -->
+    <!-- ════════════════════════ STUDIO PAGE -->
+    <div class="page" id="page-studio" style="padding:0; height:100vh; display:none; flex-direction:column;">
+      <div style="background:var(--surface2); padding:10px 20px; border-bottom:1px solid var(--border); display:flex; gap:15px; align-items:center; z-index:100;">
+        <div class="page-title" style="font-size:1rem; margin-right:auto;">Fokker Studio (Beta)</div>
+        <select id="studio-flow-select" class="input-field" style="width:200px; margin:0;" onchange="loadSelectedFlow()"></select>
+        <button class="btn btn-ghost btn-sm" onclick="createNewFlow()">+ New Flow</button>
+        <button class="btn btn-primary btn-sm" onclick="saveStudioFlows()">Save All</button>
+      </div>
+      
+      <div style="flex:1; display:flex; position:relative; overflow:hidden; background-image: radial-gradient(rgba(255,255,255,0.03) 1px, transparent 1px); background-size: 20px 20px;">
+        <!-- Toolbox -->
+        <div style="width:180px; background:var(--surface); border-right:1px solid var(--border); padding:15px; display:flex; flex-direction:column; gap:10px; z-index:50;">
+          <div style="font-size:.7rem; color:var(--text-dim); text-transform:uppercase; letter-spacing:.05em;">Components</div>
+          <button class="btn btn-ghost btn-sm" onclick="addNode('trigger')">⚡ Trigger</button>
+          <button class="btn btn-ghost btn-sm" onclick="addNode('action', 'spawnEffect')">🎇 Effect</button>
+          <button class="btn btn-ghost btn-sm" onclick="addNode('action', 'playSound')">🔊 Sound</button>
+          <button class="btn btn-ghost btn-sm" onclick="addNode('logic', 'delay')">⏳ Delay</button>
+          <button class="btn btn-ghost btn-sm" onclick="addNode('logic', 'chance')">🎲 Chance</button>
+          <button class="btn btn-ghost btn-sm" onclick="addNode('logic', 'filter')">🔍 Filter</button>
+        </div>
+
+        <!-- Canvas -->
+        <div id="studio-canvas-wrap" style="flex:1; position:relative; cursor:grab;">
+          <svg id="studio-svg" style="width:100%; height:100%; position:absolute; top:0; left:0; pointer-events:none;"></svg>
+          <div id="studio-nodes" style="position:absolute; top:0; left:0; width:100%; height:100%;"></div>
+        </div>
+
+        <!-- Properties Panel -->
+        <div id="studio-props" style="width:260px; background:var(--surface); border-left:1px solid var(--border); padding:15px; display:none; flex-direction:column; gap:15px; z-index:50;">
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <div id="prop-title" style="font-weight:700; color:var(--accent);">Node Settings</div>
+            <button class="btn btn-ghost btn-sm" onclick="deleteActiveNode()" style="color:var(--red);">🗑️</button>
+          </div>
+          <div id="prop-fields" style="display:flex; flex-direction:column; gap:12px;"></div>
+        </div>
+      </div>
+    </div>
 
     <div class="page" id="page-log">
       <div class="page-header">
@@ -1025,5 +1100,6 @@ html, body {
 </div>
 
 <script src="app.js"></script>
+<script src="studio.js"></script>
 </body>
 </html>
