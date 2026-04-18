@@ -133,6 +133,10 @@ function handleMessage(msg) {
     case 'event-log':
       appendLog(msg.event);
       break;
+
+    case 'flow.node-fired':
+      if (window.highlightNode) window.highlightNode(msg.nodeId);
+      break;
   }
 }
 

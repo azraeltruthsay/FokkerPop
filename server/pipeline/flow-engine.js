@@ -53,6 +53,9 @@ export class FlowEngine {
     }
 
     log.debug(`  Node: ${node.id} (${node.label || node.action || node.type})`);
+    
+    // Broadcast node execution to dashboards for visual highlighting
+    bus.publish({ source: 'flow-engine', type: 'flow.node-fired', nodeId: node.id });
 
     // Resolve all node data fields through the expression engine
     const data = resolveDeep(node.data ?? {}, exprCtx);

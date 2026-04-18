@@ -491,6 +491,14 @@ window.saveStudioFlows = async function() {
   } catch (err) { alert('Save failed'); }
 };
 
+window.highlightNode = function(nodeId) {
+  const el = document.getElementById(`node-${nodeId}`);
+  if (!el) return;
+  el.classList.remove('fired');
+  void el.offsetWidth; // trigger reflow
+  el.classList.add('fired');
+};
+
 // ─── Utilities ─────────────────────────────────────────────────────────────
 
 function esc(s) {

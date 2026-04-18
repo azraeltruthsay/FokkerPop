@@ -122,6 +122,11 @@ bus.on('*', async (event) => {
     broadcastEffect(effect, payload, event.isTest);
   }
 
+  // Visual flow tracking for Studio
+  if (event.type === 'flow.node-fired') {
+    broadcast(dashboards, { type: 'flow.node-fired', nodeId: event.nodeId });
+  }
+
   // Redeem mapping — supports expressions, effects arrays, and chaining
   if (event.type === 'redeem') {
     fireRedeem(redeems[event.payload?.rewardTitle], event);
@@ -599,6 +604,24 @@ wss.on('connection', (ws, req) => {
 
   send(ws, { type: 'ping' });
 });
+
+// ── Plugins ──────────────────────────────────────────────────────────────────
+const pluginDir = join(ROOT, 'plugins');
+if (existsSync(pluginDir)) {
+  const files = readdirSync(pluginDir).filter(f => f.endsWith('.js'));
+  for (const file of files) {
+    try {
+      const pluginPath = resolve(join(pluginDir, file));
+      const { register } = await import(`file://${pluginPath}`);
+      if (typeof register === 'function') {
+        register({ bus, state, log, settings, flowEngine, broadcastEffect });
+        log.info(`Plugin loaded: ${file}`);
+      }
+    } catch (err) {
+      log.error(`Failed to load plugin ${file}:`, err.message);
+    }
+  }
+}
 
 // ── Startup ───────────────────────────────────────────────────────────────────
 const twitchEventSub = new TwitchEventSub();

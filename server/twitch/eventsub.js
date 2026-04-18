@@ -9,7 +9,43 @@ import log             from '../logger.js';
 
 const EVENTSUB_URL = 'wss://eventsub.wss.twitch.tv/ws';
 
-// ... (SUBS and NORMALIZERS unchanged)
+// Subscriptions we want, in [type, version, condition-builder] tuples.
+const SUBS = (uid) => [
+  ['channel.follow',                                    '2', { broadcaster_user_id: uid, moderator_user_id: uid }],
+  ['channel.subscribe',                                 '1', { broadcaster_user_id: uid }],
+  ['channel.subscription.gift',                         '1', { broadcaster_user_id: uid }],
+  ['channel.cheer',                                     '1', { broadcaster_user_id: uid }],
+  ['channel.raid',                                      '1', { to_broadcaster_user_id: uid }],
+  ['channel.channel_points_custom_reward_redemption.add','1', { broadcaster_user_id: uid }],
+  ['channel.hype_train.begin',                          '1', { broadcaster_user_id: uid }],
+  ['channel.hype_train.progress',                       '1', { broadcaster_user_id: uid }],
+  ['channel.hype_train.end',                            '1', { broadcaster_user_id: uid }],
+  ['channel.chat.message',                              '1', { broadcaster_user_id: uid, user_id: uid }],
+];
+
+// Maps Twitch subscription types → normalized FokkerPop events.
+const NORMALIZERS = {
+  'channel.follow':
+    (ev) => ({ type: 'follow',          payload: { user: ev.user_name, userId: ev.user_id } }),
+  'channel.subscribe':
+    (ev) => ({ type: 'sub',             payload: { user: ev.user_name, tier: ev.tier, message: ev.message?.text } }),
+  'channel.subscription.gift':
+    (ev) => ({ type: 'sub.gifted',      payload: { user: ev.user_name, count: ev.total, tier: ev.tier, recipient: ev.recipient_user_name } }),
+  'channel.cheer':
+    (ev) => ({ type: 'cheer',           payload: { user: ev.user_name, bits: ev.bits, message: ev.message } }),
+  'channel.raid':
+    (ev) => ({ type: 'raid',            payload: { user: ev.from_broadcaster_user_name, viewers: ev.viewers } }),
+  'channel.channel_points_custom_reward_redemption.add':
+    (ev) => ({ type: 'redeem',          payload: { user: ev.user_name, rewardTitle: ev.reward.title, rewardId: ev.reward.id, input: ev.user_input } }),
+  'channel.hype_train.begin':
+    (ev) => ({ type: 'hype-train.start',    payload: { level: ev.level, total: ev.total } }),
+  'channel.hype_train.progress':
+    (ev) => ({ type: 'hype-train.progress', payload: { level: ev.level, total: ev.total, progress: ev.progress, goal: ev.goal } }),
+  'channel.hype_train.end':
+    (ev) => ({ type: 'hype-train.end',      payload: { level: ev.level, total: ev.total } }),
+  'channel.chat.message':
+    (ev) => ({ type: 'chat',                payload: { user: ev.chatter_user_name, message: ev.message.text, color: ev.color, badges: ev.badges } }),
+};
 
 export class TwitchEventSub extends EventEmitter {
   #ws             = null;
