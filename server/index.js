@@ -201,13 +201,15 @@ const MIME = {
 };
 
 function serveFile(res, filePath) {
-  const safe = resolve(filePath);
-  const rel  = relative(ROOT, safe);
+  const safe = normalize(resolve(filePath));
+  const root = normalize(resolve(ROOT));
   
-  // Guard: requested file must be within ROOT and not absolute
-  if (rel.startsWith('..') || isAbsolute(rel)) {
+  // Guard: path must be within ROOT.
+  // We use lowercase comparison for startsWith to handle Windows casing quirks.
+  if (!safe.toLowerCase().startsWith(root.toLowerCase())) {
     res.writeHead(403); res.end('Forbidden'); return;
   }
+
   if (!existsSync(safe)) {
     res.writeHead(404); res.end('Not found'); return;
   }
@@ -228,13 +230,19 @@ const httpServer = createServer((req, res) => {
     res.writeHead(400); res.end('Bad request'); return;
   }
 
+  // Redirect /dashboard -> /dashboard/ (ensures relative assets like app.js work)
+  if (path === '/dashboard') {
+    res.writeHead(301, { 'Location': '/dashboard/' });
+    return res.end();
+  }
+
   // Overlay browser source
   if (path === '/' || path === '/overlay') {
     return serveFile(res, join(ROOT, 'overlay.html'));
   }
 
   // Dashboard static files
-  if (path === '/dashboard' || path === '/dashboard/') {
+  if (path === '/dashboard/') {
     return serveFile(res, join(ROOT, 'dashboard/index.html'));
   }
   if (path.startsWith('/dashboard/')) {
@@ -250,6 +258,8 @@ const httpServer = createServer((req, res) => {
   if (path.startsWith('/plugins/')) {
     return serveFile(res, join(ROOT, path.slice(1)));
   }
+
+  // ... (REST API unchanged)
 
   // REST API
   if (path === '/api/state' && req.method === 'GET') {

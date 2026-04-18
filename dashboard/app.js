@@ -1,5 +1,11 @@
 'use strict';
 
+// Hide loading overlay immediately when script runs
+(function() {
+  const $l = document.getElementById('loading-overlay');
+  if ($l) $l.style.display = 'none';
+})();
+
 function dashSend(obj) {
   if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify(obj));
 }
@@ -563,7 +569,3 @@ function esc(s) {
 
 // ═══════════════════════════════════════════════ Boot
 connect();
-
-// Hide loading overlay once JS is ready
-const $loader = document.getElementById('loading-overlay');
-if ($loader) $loader.style.display = 'none';
