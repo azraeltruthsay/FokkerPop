@@ -483,7 +483,7 @@ httpServer.listen(PORT, BIND, () => {
   log.info(`FokkerPop listening on ${BIND}:${PORT}`);
   console.log(`
 ╔══════════════════════════════════════════════════╗
-║   FokkerPop  v0.1.9   — live on ${BIND}:${PORT}   ║
+║   FokkerPop  v0.1.10  — live on ${BIND}:${PORT}   ║
 ╠══════════════════════════════════════════════════╣
 ║  Overlay   →  http://localhost:${PORT}/          ║
 ║  Dashboard →  http://localhost:${PORT}/dashboard ║
