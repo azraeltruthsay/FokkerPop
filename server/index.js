@@ -12,8 +12,9 @@ import settings, { ROOT }    from './settings-loader.js';
 import log                   from './logger.js';
 
 // ── Config ────────────────────────────────────────────────────────────────────
-const PORT   = settings.server?.port ?? 4747;
-const BIND   = '127.0.0.1';   // local only — never expose to LAN
+const PORT    = settings.server?.port ?? 4747;
+const BIND    = '127.0.0.1';   // local only — never expose to LAN
+const VERSION = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8')).version;
 
 const goals   = loadAndEnsureJson('goals.json',   []);
 const redeems = loadAndEnsureJson('redeems.json', {});
@@ -399,7 +400,7 @@ wss.on('connection', (ws, req) => {
       if (msg.client === 'dashboard') {
         overlays.delete(ws);
         dashboards.add(ws);
-        send(ws, { type: 'state-snapshot', state: state.snapshot() });
+        send(ws, { type: 'state-snapshot', state: { ...state.snapshot(), version: VERSION } });
         send(ws, { type: 'state', path: 'twitch.status', value: twitchEventSub.status });
       } else {
         // Overlay: send current state
@@ -489,7 +490,7 @@ httpServer.listen(PORT, BIND, () => {
   log.info(`FokkerPop listening on ${BIND}:${PORT}`);
   console.log(`
 ╔══════════════════════════════════════════════════╗
-║   FokkerPop  v0.1.15  — live on ${BIND}:${PORT}   ║
+║   FokkerPop  v${VERSION}  — live on ${BIND}:${PORT}   ║
 ╠══════════════════════════════════════════════════╣
 ║  Overlay   →  http://localhost:${PORT}/          ║
 ║  Dashboard →  http://localhost:${PORT}/dashboard ║

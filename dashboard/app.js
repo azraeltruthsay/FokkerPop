@@ -97,11 +97,17 @@ function applyStateUpdate(path, value) {
   }
 }
 
+function setVersion(v) {
+  if (!v) return;
+  document.querySelectorAll('.v-badge, .v-string').forEach(el => { el.textContent = `v${v}`; });
+}
+
 function refreshAll() {
   renderSession(appState.session);
   renderCrowd(appState.crowd?.energy ?? 0);
   renderGoals(appState.goals ?? []);
   renderLeaderboard(appState.leaderboard ?? {});
+  if (appState.version) setVersion(appState.version);
 }
 
 // ═══════════════════════════════════════════════ Renderers
