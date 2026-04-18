@@ -234,6 +234,13 @@ function renderLbSection(elId, data, unit) {
   ).join('');
 }
 
+window.switchSubTab = function(btn, pageId) {
+  document.querySelectorAll('.sub-tab').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.config-sub-page').forEach(p => p.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById(pageId)?.classList.add('active');
+};
+
 function renderGoals(goals) {
   const el = document.getElementById('goals-list');
   if (!el) return;

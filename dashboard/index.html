@@ -583,6 +583,9 @@ html, body {
 .studio-node__label { font-weight: 800; color: var(--text-dim); text-transform: uppercase; margin-bottom: 4px; font-size: 0.6rem; letter-spacing: 0.05em; }
 .studio-node__content { color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
+.prop-field { margin-bottom: 12px; }
+.prop-field label { display: block; font-size: 0.65rem; color: var(--text-dim); text-transform: uppercase; margin-bottom: 4px; font-weight: 800; letter-spacing: 0.03em; }
+
 .studio-port {
   width: 12px; height: 12px;
   background: var(--bg);
@@ -953,57 +956,76 @@ html, body {
 
     <!-- ════════════════════════ CONFIG PAGE -->
     <div class="page" id="page-config">
-      <div class="page-header"><div class="page-title">Config Editor</div></div>
-
-      <div class="card">
-        <div style="display:flex; justify-content:space-between; align-items:center;">
-          <div class="card-title" style="margin:0;">Layout Mode</div>
-          <label class="toggle" title="Enable to drag widgets in OBS">
-            <input type="checkbox" id="layout-mode-cb" onchange="dashSend({type:'_dashboard.layout-mode',active:this.checked})">
-            <div class="toggle-slider"></div>
-          </label>
+      <div class="page-header">
+        <div class="page-title">Config Editor</div>
+        <div style="display:flex; gap:10px; background:var(--surface2); padding:4px; border-radius:8px;">
+          <button class="btn btn-ghost btn-sm active sub-tab" onclick="switchSubTab(this, 'config-general')">General</button>
+          <button class="btn btn-ghost btn-sm sub-tab" onclick="switchSubTab(this, 'config-goals')">Goals</button>
+          <button class="btn btn-ghost btn-sm sub-tab" onclick="switchSubTab(this, 'config-redeems')">Redeems</button>
         </div>
-        <p style="font-size:.82rem; color:var(--text-dim); margin-top:8px;">
-          When active, you can click and drag HUD elements (Crowd Meter, Goals, etc.) 
-          directly in your OBS browser source or preview window to reposition them.
-        </p>
       </div>
+      
+      <style>
+        .config-sub-page { display: none; }
+        .config-sub-page.active { display: block; }
+        .sub-tab.active { background: var(--accent); color: #fff; }
+      </style>
 
-      <div class="card">
-        <div class="card-title">Engine Settings</div>
-        <div id="config-engine-container" style="display:grid; grid-template-columns:1fr 1fr; gap:14px;">
-           <div>
-             <label style="display:block; font-size:.7rem; color:var(--text-dim); margin-bottom:4px;">Crowd Drain / Sec</label>
-             <input id="set-crowd-drain" type="number" class="input-field" placeholder="1">
-           </div>
-           <div>
-             <label style="display:block; font-size:.7rem; color:var(--text-dim); margin-bottom:4px;">Crowd Sub Boost</label>
-             <input id="set-crowd-sub" type="number" class="input-field" placeholder="10">
-           </div>
-           <div>
-             <label style="display:block; font-size:.7rem; color:var(--text-dim); margin-bottom:4px;">Crowd Follow Boost</label>
-             <input id="set-crowd-follow" type="number" class="input-field" placeholder="1">
-           </div>
-           <div>
-             <label style="display:block; font-size:.7rem; color:var(--text-dim); margin-bottom:4px;">Crowd Raid Boost</label>
-             <input id="set-crowd-raid" type="number" class="input-field" placeholder="20">
-           </div>
+      <div id="config-general" class="config-sub-page active">
+        <div class="card">
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            <div class="card-title" style="margin:0;">Layout Mode</div>
+            <label class="toggle" title="Enable to drag widgets in OBS">
+              <input type="checkbox" id="layout-mode-cb" onchange="dashSend({type:'_dashboard.layout-mode',active:this.checked})">
+              <div class="toggle-slider"></div>
+            </label>
+          </div>
+          <p style="font-size:.82rem; color:var(--text-dim); margin-top:8px;">
+            When active, you can click and drag HUD elements (Crowd Meter, Goals, etc.) 
+            directly in your OBS browser source or preview window to reposition them.
+          </p>
         </div>
-        <button class="btn btn-primary btn-sm" onclick="saveEngineSettings()" style="margin-top:14px;">Save Engine Settings</button>
+
+        <div class="card">
+          <div class="card-title">Engine Settings</div>
+          <div id="config-engine-container" style="display:grid; grid-template-columns:1fr 1fr; gap:14px;">
+             <div>
+               <label style="display:block; font-size:.7rem; color:var(--text-dim); margin-bottom:4px;">Crowd Drain / Sec</label>
+               <input id="set-crowd-drain" type="number" class="input-field" placeholder="1">
+             </div>
+             <div>
+               <label style="display:block; font-size:.7rem; color:var(--text-dim); margin-bottom:4px;">Crowd Sub Boost</label>
+               <input id="set-crowd-sub" type="number" class="input-field" placeholder="10">
+             </div>
+             <div>
+               <label style="display:block; font-size:.7rem; color:var(--text-dim); margin-bottom:4px;">Crowd Follow Boost</label>
+               <input id="set-crowd-follow" type="number" class="input-field" placeholder="1">
+             </div>
+             <div>
+               <label style="display:block; font-size:.7rem; color:var(--text-dim); margin-bottom:4px;">Crowd Raid Boost</label>
+               <input id="set-crowd-raid" type="number" class="input-field" placeholder="20">
+             </div>
+          </div>
+          <button class="btn btn-primary btn-sm" onclick="saveEngineSettings()" style="margin-top:14px;">Save Engine Settings</button>
+        </div>
       </div>
 
-      <div class="card">
-        <div class="card-title">Goal Config</div>
-        <div id="config-goals-container"></div>
-        <button class="btn btn-primary btn-sm" onclick="addGoalConfig()" style="margin-top:10px;">+ Add New Goal</button>
-        <button class="btn btn-primary btn-sm" onclick="saveGoalsConfig()" style="margin-top:10px;float:right;">Save Goals</button>
+      <div id="config-goals" class="config-sub-page">
+        <div class="card" style="margin:0;">
+          <div class="card-title">Goal Config</div>
+          <div id="config-goals-container"></div>
+          <button class="btn btn-primary btn-sm" onclick="addGoalConfig()" style="margin-top:10px;">+ Add New Goal</button>
+          <button class="btn btn-primary btn-sm" onclick="saveGoalsConfig()" style="margin-top:10px;float:right;">Save Goals</button>
+        </div>
       </div>
 
-      <div class="card">
-        <div class="card-title">Channel Point Redeems</div>
-        <div id="config-redeems-container"></div>
-        <button class="btn btn-primary btn-sm" onclick="addRedeemConfig()" style="margin-top:10px;">+ Add New Redeem</button>
-        <button class="btn btn-primary btn-sm" onclick="saveRedeemsConfig()" style="margin-top:10px;float:right;">Save Redeems</button>
+      <div id="config-redeems" class="config-sub-page">
+        <div class="card" style="margin:0;">
+          <div class="card-title">Channel Point Redeems</div>
+          <div id="config-redeems-container"></div>
+          <button class="btn btn-primary btn-sm" onclick="addRedeemConfig()" style="margin-top:10px;">+ Add New Redeem</button>
+          <button class="btn btn-primary btn-sm" onclick="saveRedeemsConfig()" style="margin-top:10px;float:right;">Save Redeems</button>
+        </div>
       </div>
     </div>
 

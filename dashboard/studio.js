@@ -356,7 +356,7 @@ const EXPR_REF = `
   </details>`;
 
 function exprField(label, dataKey, value, extra = '') {
-  return `<div>
+  return `<div class="prop-field">
     <label>${label}</label>
     <input class="input-field" value="${esc(value)}" placeholder="{{ expression }}"
       oninput="activeNode.data.${dataKey}=this.value${extra}" style="font-family:monospace;font-size:0.78rem;">
@@ -364,15 +364,29 @@ function exprField(label, dataKey, value, extra = '') {
   </div>`;
 }
 
+function selectField(label, dataKey, options, current) {
+  return `<div class="prop-field">
+    <label>${label}</label>
+    <select class="input-field" oninput="activeNode.data.${dataKey}=this.value">
+      ${options.map(o => `<option value="${esc(o)}" ${o === current ? 'selected' : ''}>${esc(o)}</option>`).join('')}
+    </select>
+  </div>`;
+}
+
 function renderProps() {
+  const $props = document.getElementById('studio-props');
+  const $fields = document.getElementById('prop-fields');
+  if (!$props || !$fields) return;
+
   $props.style.display = 'flex';
   const n = activeNode;
 
-  let html = `<div><label>Node ID</label><input class="input-field" value="${n.id}" disabled></div>`;
-  html += `<div><label>Label</label><input class="input-field" value="${esc(n.label || '')}" oninput="activeNode.label=this.value;renderCanvas()"></div>`;
+  let html = `<div class="prop-field"><label>Node ID</label><input class="input-field" value="${n.id}" disabled></div>`;
+  html += `<div class="prop-field"><label>Label</label><input class="input-field" value="${esc(n.label || '')}" oninput="activeNode.label=this.value;renderCanvas()"></div>`;
 
   if (n.type === 'trigger') {
-    html += `<div><label>Event Type</label><input class="input-field" value="${esc(activeFlow.trigger)}" oninput="activeFlow.trigger=this.value" placeholder="sub, follow, cheer, raid, redeem…"></div>`;
+    const triggerOptions = ['sub', 'follow', 'cheer', 'raid', 'redeem', 'hype-train.start', 'hype-train.progress', 'hype-train.end'];
+    html += selectField('Event Type', 'trigger', triggerOptions, activeFlow.trigger);
   }
 
   if (n.action === 'delay') {
@@ -384,21 +398,22 @@ function renderProps() {
   }
 
   if (n.action === 'spawnEffect') {
-    html += exprField('Effect', 'effect', n.data.effect || '', ';renderCanvas()');
+    const effectOptions = ['balloon', 'firework', 'firework-salvo', 'confetti', 'sticker-rain', 'crowd-explosion', 'alert-banner'];
+    html += selectField('Effect Type', 'effect', effectOptions, n.data.effect);
+    html += exprField('Payload (JSON)', 'payload', JSON.stringify(n.data.payload || {}));
   }
 
   if (n.action === 'showBanner') {
-    html += exprField('Text', 'text', n.data.text || '');
+    html += exprField('Main Text', 'text', n.data.text || '');
     html += exprField('Sub Text', 'subText', n.data.subText || '');
-    html += `<div><label>Tier</label>
-      <select class="input-field" oninput="activeNode.data.tier=this.value">
-        ${['S','A','B','C'].map(t => `<option ${(n.data.tier||'B')===t?'selected':''}>${t}</option>`).join('')}
-      </select></div>`;
+    html += selectField('Tier', 'tier', ['S', 'A', 'B', 'C'], n.data.tier || 'B');
     html += exprField('Icon', 'icon', n.data.icon || '📢');
   }
 
   if (n.action === 'playSound') {
-    html += exprField('Sound file', 'file', n.data.file || '');
+    // assets is global from app.js
+    const soundOptions = window.assets?.sounds || [];
+    html += selectField('Sound File', 'file', ['', ...soundOptions], n.data.file || '');
     html += exprField('Volume (0–1)', 'volume', n.data.volume ?? 1);
   }
 
@@ -412,12 +427,9 @@ function renderProps() {
   }
 
   if (n.action === 'filter') {
-    html += exprField('Field or {{ expr }}', 'field', n.data.field || '');
-    html += `<div><label>Operator</label>
-      <select class="input-field" oninput="activeNode.data.operator=this.value">
-        ${['==','!=','>','<','>=','<='].map(op => `<option ${(n.data.operator||'==')===op?'selected':''}>${op}</option>`).join('')}
-      </select></div>`;
-    html += exprField('Value or {{ expr }}', 'value', n.data.value || '');
+    html += exprField('Value to check', 'field', n.data.field || '');
+    html += selectField('Comparison', 'operator', ['==', '!=', '>', '<', '>=', '<='], n.data.operator || '==');
+    html += exprField('Target Value', 'value', n.data.value || '');
   }
 
   html += EXPR_REF;
