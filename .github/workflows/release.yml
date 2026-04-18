@@ -76,28 +76,6 @@ jobs:
 
           # Zip it up
           zip -r "${PKG}.zip" "${PKG}/"
-          
-          # Create Self-Extracting Installer (SFX)
-          # Use SourceForge mirror which is generally more friendly to CI runners
-          curl -L -f -o 7z-extra.7z "https://downloads.sourceforge.net/project/sevenzip/7-Zip/23.01/7z2301-extra.7z"
-          
-          # Extract ALL sfx modules to be sure
-          7z e 7z-extra.7z "*.sfx" -r -y
-          
-          # Use the x64 version if it exists, otherwise the root one
-          [ -f x64/7zS.sfx ] && cp x64/7zS.sfx .
-          
-          # SFX Config (InstallPath="." means extract to current folder)
-          printf ";!@Install@!UTF-8!\nTitle=\"FokkerPop Updater\"\nBeginPrompt=\"Update FokkerPop in the current folder?\"\nInstallPath=\".\"\n;!@InstallEnd@!\n" > sfx_config.txt
-          
-          # 7z Archive of the *contents* of the folder (so it extracts flat)
-          cd "${PKG}"
-          7z a ../app.7z *
-          cd ..
-          
-          # Join: Stub + Config + Data = EXE
-          # Note: If 7zS.sfx is still missing, this will fail fast
-          cat 7zS.sfx sfx_config.txt app.7z > "FokkerPop-Updater-${VERSION}.exe"
 
           echo "PKG=${PKG}" >> "$GITHUB_ENV"
 
@@ -110,16 +88,9 @@ jobs:
 
           # Write release notes
           sed 's/^          //' > release-notes.md << NOTES
-          ## FokkerPop Updater (Recommended)
+          ## FokkerPop v${VERSION}
 
-          1. Download \`FokkerPop-Updater-${VERSION}.exe\` below
-          2. Place it **inside** your existing FokkerPop folder
-          3. Double-click it and click **Yes** to update
-          4. Run **start.bat** as usual. Your settings are safe!
-
-          ## First-time Install
-
-          1. Download \`FokkerPop-${VERSION}-windows.zip\`
+          1. Download \`FokkerPop-${VERSION}-windows.zip\` below
           2. Extract it anywhere and run **start.bat**
 
           Node.js is bundled. No setup required.
@@ -127,6 +98,5 @@ jobs:
 
           gh release create "${VERSION}" \
             "${PKG}.zip#FokkerPop ${VERSION} (Windows ZIP)" \
-            "FokkerPop-Updater-${VERSION}.exe#FokkerPop ${VERSION} (Auto-Updater EXE)" \
             --title "FokkerPop ${VERSION}" \
             --notes-file release-notes.md
