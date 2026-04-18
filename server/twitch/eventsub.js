@@ -30,7 +30,7 @@ export class TwitchEventSub extends EventEmitter {
 
   connect() {
     if (!this.isConfigured) {
-      log.warn('Twitch credentials not configured — skipping connection. Fill in settings.json to enable live events.');
+      log.info('Offline mode active (Twitch credentials not configured). You can still use the Simulator in the dashboard.');
       this.#setStatus('disconnected');
       return;
     }

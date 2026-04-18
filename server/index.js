@@ -513,6 +513,8 @@ httpServer.listen(PORT, BIND, () => {
   const url = `http://localhost:${activePort}/dashboard`;
   const cmd = process.platform === 'win32' ? `start ${url}` : `xdg-open ${url} 2>/dev/null || open ${url}`;
   exec(cmd, () => {});
+  
+  log.info('FokkerPop is ready! Use the dashboard to test your overlay.');
 });
 
 function shutdown(signal) {
