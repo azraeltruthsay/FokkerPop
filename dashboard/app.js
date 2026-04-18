@@ -16,17 +16,23 @@ function connect() {
   fetch('/api/assets').then(r => r.json()).then(a => assets = a).catch(() => {});
   
   // Initial setup check
-  fetch('/api/settings').then(r => r.json()).then(s => {
-    if (s.twitch) {
-      document.getElementById('setup-client-id').value     = s.twitch.clientId     || '';
-      document.getElementById('setup-client-secret').value = s.twitch.clientSecret || '';
-      
-      // Auto-switch to setup if credentials missing
-      if (!s.twitch.clientId || !s.twitch.clientSecret) {
-        document.querySelector('.nav-item[data-page="setup"]')?.click();
+  try {
+    fetch('/api/settings').then(r => r.json()).then(s => {
+      if (s.twitch) {
+        const $id = document.getElementById('setup-client-id');
+        const $sec = document.getElementById('setup-client-secret');
+        if ($id) $id.value = s.twitch.clientId || '';
+        if ($sec) $sec.value = s.twitch.clientSecret || '';
+        
+        // Auto-switch to setup if credentials missing
+        if (!s.twitch.clientId || !s.twitch.clientSecret) {
+          document.querySelector('.nav-item[data-page="setup"]')?.click();
+        }
       }
-    }
-  }).catch(() => {});
+    }).catch(err => console.warn('Settings fetch failed:', err));
+  } catch (err) {
+    console.error('Setup initialization error:', err);
+  }
 
   ws = new WebSocket(WS_URL);
   ws.addEventListener('open', () => {

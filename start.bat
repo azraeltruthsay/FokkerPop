@@ -77,9 +77,17 @@ cls
 echo  ==========================================
 echo    FokkerPop : Starting up...
 echo  ==========================================
-echo  Overlay URL will be shown in this window once started.
-echo  The dashboard will open in your browser automatically.
-echo  Add the Overlay URL as a Browser Source in OBS ^(1920x1080^).
+echo:
+echo  [!] IMPORTANT: DO NOT CLICK INSIDE THIS BLACK WINDOW.
+echo      If you do, Windows might "pause" the server.
+echo      If things stop working, click here and press ENTER.
+echo:
+echo  Overlay URL:   http://localhost:4747
+echo  Dashboard URL: http://localhost:4747/dashboard
+echo:
+echo  The dashboard should open in your browser automatically.
+echo  Keep this window open in the background while streaming.
+echo:
 
 "%NODE%" server/index.js
 pause
