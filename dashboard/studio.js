@@ -60,13 +60,11 @@ async function fetchFlows() {
 }
 
 function renderFlowList() {
-  const $flowSelect = document.getElementById('studio-flow-select');
   if (!$flowSelect) return;
   $flowSelect.innerHTML = flows.map(f => `<option value="${f.id}" ${activeFlow?.id === f.id ? 'selected' : ''}>${esc(f.name || f.id)}</option>`).join('');
 }
 
 window.loadSelectedFlow = function() {
-  const $flowSelect = document.getElementById('studio-flow-select');
   loadFlow($flowSelect?.value);
 };
 
@@ -80,8 +78,6 @@ function loadFlow(id) {
 // ─── Canvas Rendering ───────────────────────────────────────────────────────
 
 function renderCanvas() {
-  const $nodes = document.getElementById('studio-nodes');
-  const $svg = document.getElementById('studio-svg');
   if (!$nodes || !$svg) return;
 
   $nodes.innerHTML = '';
@@ -131,8 +127,6 @@ function renderCanvas() {
 }
 
 function updateTransform() {
-  const $nodes = document.getElementById('studio-nodes');
-  const $svg = document.getElementById('studio-svg');
   if ($nodes && $svg) {
     $nodes.style.transform = `translate(${offset.x}px, ${offset.y}px) scale(${zoom})`;
     $svg.style.transform = `translate(${offset.x}px, ${offset.y}px) scale(${zoom})`;
@@ -140,7 +134,6 @@ function updateTransform() {
 }
 
 function drawEdge(edge) {
-  const $svg = document.getElementById('studio-svg');
   if (!$svg) return;
   
   const src = activeFlow.nodes[edge.src];
@@ -179,7 +172,6 @@ function onMouseDown(e) {
   }
 
   isPanning = true;
-  const $wrap = document.getElementById('studio-canvas-wrap');
   if ($wrap) $wrap.style.cursor = 'grabbing';
 }
 
@@ -212,7 +204,6 @@ function onMouseUp(e) {
   isPanning = false;
   dragNode = null;
   dragPort = null;
-  const $wrap = document.getElementById('studio-canvas-wrap');
   if ($wrap) $wrap.style.cursor = 'grab';
   renderCanvas();
 }

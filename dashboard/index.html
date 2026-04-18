@@ -600,6 +600,8 @@ html, body {
 
 #studio-svg path { stroke: var(--text-dim); stroke-width: 2.5; fill: none; transition: stroke 0.2s; }
 #studio-svg path.active { stroke: var(--accent); }
+
+#page-studio.active { display: flex; }
 </style>
 </head>
 <body>
@@ -977,7 +979,7 @@ html, body {
     </div>
 
     <!-- ════════════════════════ STUDIO PAGE -->
-    <div class="page" id="page-studio" style="padding:0; height:100vh; display:none; flex-direction:column;">
+    <div class="page" id="page-studio" style="padding:0; height:100vh; flex-direction:column;">
       <div style="background:var(--surface2); padding:10px 20px; border-bottom:1px solid var(--border); display:flex; gap:15px; align-items:center; z-index:100;">
         <div class="page-title" style="font-size:1rem; margin-right:auto;">Fokker Studio (Beta)</div>
         <select id="studio-flow-select" class="input-field" style="width:200px; margin:0;" onchange="loadSelectedFlow()"></select>
