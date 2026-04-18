@@ -81,9 +81,6 @@ echo  Overlay URL will be shown in this window once started.
 echo  The dashboard will open in your browser automatically.
 echo  Add the Overlay URL as a Browser Source in OBS ^(1920x1080^).
 
-timeout /t 3 /nobreak >nul 2>&1
-
-
 "%NODE%" server/index.js
 pause
 

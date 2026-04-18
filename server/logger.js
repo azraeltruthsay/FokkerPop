@@ -19,7 +19,11 @@ try {
 function write(level, ...args) {
   if (LEVELS[level] < MIN_LEVEL) return;
   const ts  = new Date().toISOString();
-  const msg = args.map(a => (typeof a === 'object' ? JSON.stringify(a) : String(a))).join(' ');
+  const msg = args.map(a => {
+    if (a instanceof Error) return a.stack ?? a.message;
+    if (typeof a === 'object' && a !== null) return JSON.stringify(a);
+    return String(a);
+  }).join(' ');
   const line = `[${ts}] [${level.toUpperCase().padEnd(5)}] ${msg}`;
 
   if (level === 'error' || level === 'warn') {

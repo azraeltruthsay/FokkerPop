@@ -519,7 +519,7 @@ window.saveCredentialsAndAuth = function () {
       'moderator:read:followers',
       'channel:read:hype_train',
     ].join('+');
-    const authUrl = `https://id.twitch.tv/oauth2/authorize?response_type=code&client_id=${encodeURIComponent(clientId)}&redirect_uri=${encodeURIComponent('http://localhost:4747/auth/callback')}&scope=${scopes}`;
+    const authUrl = `https://id.twitch.tv/oauth2/authorize?response_type=code&client_id=${encodeURIComponent(clientId)}&redirect_uri=${encodeURIComponent(`http://localhost:${location.port || 4747}/auth/callback`)}&scope=${scopes}`;
     status.textContent = 'Opening Twitch authorisation window…';
     status.style.color = 'var(--accent2)';
     window.open(authUrl, '_blank');

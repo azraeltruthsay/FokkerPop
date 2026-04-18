@@ -353,7 +353,7 @@ async function handleOAuthCallback(params, res) {
     const r = await fetch('https://id.twitch.tv/oauth2/token', {
       method:  'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body:    new URLSearchParams({ grant_type: 'authorization_code', code, redirect_uri: `http://localhost:${PORT}/auth/callback`, client_id: clientId, client_secret: clientSecret }),
+      body:    new URLSearchParams({ grant_type: 'authorization_code', code, redirect_uri: `http://localhost:${activePort}/auth/callback`, client_id: clientId, client_secret: clientSecret }),
     });
     const token = await r.json();
     if (token.access_token) {
