@@ -21,6 +21,7 @@ let assets    = { sounds: [], stickers: [] };
 const WS_URL  = `ws://${location.hostname}:${location.port || 4747}`;
 const $badge  = document.getElementById('ws-badge');
 const $tBadge = document.getElementById('twitch-badge');
+const $oBadge = document.getElementById('obs-badge');
 const $dot    = document.getElementById('live-dot');
 
 function connect() {
@@ -87,6 +88,19 @@ function setTwitchBadge(status) {
   $tBadge.textContent = label;
 }
 
+function setObsBadge(status) {
+  if (!$oBadge) return;
+  const map = {
+    connected:    { cls: 'connected',    label: '● OBS Live' },
+    connecting:   { cls: 'connecting',   label: '○ Connecting…' },
+    disconnected: { cls: 'disconnected', label: '○ OBS Offline' },
+    error:        { cls: 'disconnected', label: '⚠️ OBS Error' },
+  };
+  const { cls, label } = map[status] ?? map.disconnected;
+  $oBadge.className   = `connection-badge ${cls}`;
+  $oBadge.textContent = label;
+}
+
 function handleMessage(msg) {
   switch (msg.type) {
     case 'state-snapshot':
@@ -118,6 +132,7 @@ function applyStateUpdate(path, value) {
   if (path === 'leaderboard')    renderLeaderboard(value);
   if (path === 'session')        renderSession(value);
   if (path === 'twitch.status')  setTwitchBadge(value);
+  if (path === 'obs.status')     setObsBadge(value);
   if (path === 'overlay.layoutMode') {
     const cb = document.getElementById('layout-mode-cb');
     if (cb) cb.checked = value;

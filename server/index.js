@@ -462,6 +462,7 @@ wss.on('connection', (ws, req) => {
         };
         send(ws, { type: 'state-snapshot', state: snapshot });
         send(ws, { type: 'state', path: 'twitch.status', value: twitchEventSub.status });
+        send(ws, { type: 'state', path: 'obs.status',    value: obs.status });
       } else {
         // Overlay: send current state
         send(ws, { type: 'state', path: 'crowd.energy', value: state.get('crowd.energy') });
@@ -542,6 +543,10 @@ const twitchEventSub = new TwitchEventSub();
 
 twitchEventSub.on('status', (status) => {
   broadcast(dashboards, { type: 'state', path: 'twitch.status', value: status });
+});
+
+obs.on('status', (status) => {
+  broadcast(dashboards, { type: 'state', path: 'obs.status', value: status });
 });
 
 // ── Port binding with auto-fallback ───────────────────────────────────────────

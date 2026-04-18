@@ -1,3 +1,4 @@
+import { EventEmitter } from 'node:events';
 import { WebSocket } from 'ws';
 import { createHash } from 'node:crypto';
 import bus from './bus.js';
@@ -9,13 +10,15 @@ import settings from './settings-loader.js';
  * Handles authentication and scene switching for Fokker Studio.
  */
 
-class ObsClient {
+class ObsClient extends EventEmitter {
   #ws = null;
   #address = 'ws://127.0.0.1:4455';
   #password = '';
   #connected = false;
+  #status = 'disconnected';
 
   constructor() {
+    super();
     this.#address = settings.obs?.address || 'ws://127.0.0.1:4455';
     this.#password = settings.obs?.password || '';
     
@@ -26,8 +29,17 @@ class ObsClient {
     });
   }
 
+  get status() { return this.#status; }
+
+  #setStatus(s) {
+    if (this.#status === s) return;
+    this.#status = s;
+    this.emit('status', s);
+  }
+
   connect() {
     if (this.#ws) return;
+    this.#setStatus('connecting');
     this.#ws = new WebSocket(this.#address);
 
     this.#ws.on('open', () => {
@@ -42,6 +54,7 @@ class ObsClient {
         } else if (msg.op === 2) { // Identified
           log.info('OBS Handshake successful');
           this.#connected = true;
+          this.#setStatus('connected');
         }
       } catch (err) {
         log.error('OBS Message error:', err.message);
@@ -52,15 +65,18 @@ class ObsClient {
       if (this.#connected) log.warn(`OBS connection closed (code ${code}), retrying in 10s...`);
       this.#connected = false;
       this.#ws = null;
+      this.#setStatus('disconnected');
       setTimeout(() => this.connect(), 10000);
     });
 
     this.#ws.on('error', (err) => {
       if (err.code === 'ECONNREFUSED') {
         // Quietly wait for OBS to be opened
+        this.#setStatus('disconnected');
         return;
       }
       log.debug('OBS WebSocket error:', err.message);
+      this.#setStatus('error');
     });
   }
 
@@ -73,7 +89,8 @@ class ObsClient {
     // Handle Authentication if required
     if (helloData.authentication) {
       if (!this.#password) {
-        log.warn('OBS requires a password, but none is set in FokkerPop settings.');
+        log.warn('OBS requires a password, but none is set in FokkerPop settings. Please go to OBS -> Tools -> WebSocket Server Settings.');
+        this.#setStatus('error');
         return;
       }
       const { salt, challenge } = helloData.authentication;
