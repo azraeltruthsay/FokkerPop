@@ -1,0 +1,7 @@
+{
+  "Balloon Party": { "effect": "balloon",       "count": 10      },
+  "Firework Show": { "effect": "firework-salvo", "count": 5       },
+  "Sticker Bomb":  { "effect": "sticker-rain",   "duration": 8000 },
+  "Hype Up":       { "effect": "crowd-boost",    "amount": 20     },
+  "Confetti":      { "effect": "confetti"                         }
+}

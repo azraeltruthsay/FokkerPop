@@ -1,0 +1,107 @@
+name: Build & Release
+
+# Triggers when you push a version tag: git tag v0.2.0 && git push --tags
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'
+
+permissions:
+  contents: write   # needed to create releases and upload assets
+
+jobs:
+  release:
+    name: Build Windows zip & publish release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies (exact versions from lock file)
+        run: npm ci
+
+      # Fail the release if any high or critical vulnerability exists.
+      # Fix it before tagging, or run `npm audit fix` and commit.
+      - name: Security audit
+        run: npm audit --audit-level=high
+
+      # Download the same Node version that's running this job,
+      # but the Windows x64 binary, so it's bundled into the zip.
+      - name: Download Node.js Windows x64 binary
+        run: |
+          NODE_VERSION=$(node --version | sed 's/v//')
+          echo "Bundling Node.js v${NODE_VERSION} for Windows x64"
+          curl -fsSL "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-win-x64.zip" \
+               -o node-win.zip
+          # Extract just node.exe from the nested folder
+          unzip -j node-win.zip "*/node.exe" -d node-bin/
+
+      - name: Assemble release package
+        run: |
+          VERSION="${GITHUB_REF_NAME}"
+          PKG="FokkerPop-${VERSION}-windows"
+
+          # Create directory structure LilFokker will extract
+          mkdir -p "${PKG}/node"
+          mkdir -p "${PKG}/assets/stickers"
+          mkdir -p "${PKG}/assets/sounds"
+          mkdir -p "${PKG}/characters"
+          mkdir -p "${PKG}/plugins"
+
+          # Bundled Node runtime
+          cp node-bin/node.exe "${PKG}/node/"
+
+          # Source files
+          cp -r server dashboard "${PKG}/"
+          cp overlay.html package.json package-lock.json \
+             settings.example.json goals.json redeems.json \
+             start.bat \
+             "${PKG}/"
+
+          # Vendored node_modules — frozen at audited versions.
+          # Exclude .bin/ (Unix symlinks — not needed on Windows).
+          cp -r node_modules "${PKG}/"
+          rm -rf "${PKG}/node_modules/.bin"
+
+          # Zip it up
+          zip -r "${PKG}.zip" "${PKG}/"
+          echo "PKG=${PKG}" >> "$GITHUB_ENV"
+
+      - name: Create GitHub Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="${{ github.ref_name }}"
+          PKG="FokkerPop-${VERSION}-windows"
+
+          cat > release-notes.md << 'NOTES'
+          ## How to install
+
+          1. Download `FokkerPop-VERSION-windows.zip` below
+          2. Extract it anywhere on your PC (Desktop, C:\Apps, etc.)
+          3. Double-click `start.bat`
+          4. The dashboard opens automatically — go to the **Setup** tab to connect Twitch
+          5. In OBS: add a **Browser Source** → URL `http://localhost:4747/` → 1920 × 1080
+
+          Node.js is bundled inside the zip. Nothing else to install, no npm required.
+
+          ## Updating
+
+          Download the new zip, extract it next to the old folder, and copy your
+          `settings.json` across. The old folder can be deleted.
+          NOTES
+
+          # Replace VERSION placeholder in notes
+          sed -i "s/VERSION/${VERSION}/g" release-notes.md
+
+          gh release create "${VERSION}" \
+            "${PKG}.zip#FokkerPop ${VERSION} (Windows)" \
+            --title "FokkerPop ${VERSION}" \
+            --notes-file release-notes.md

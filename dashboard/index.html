@@ -1,0 +1,703 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>FokkerPop Dashboard</title>
+<style>
+/* ═══════════════════════════════════════════════ Reset & Base */
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+:root {
+  --bg:        #0d0d14;
+  --surface:   #14141f;
+  --surface2:  #1c1c2e;
+  --border:    rgba(255,255,255,0.07);
+  --text:      #e8e8f0;
+  --text-dim:  rgba(232,232,240,0.45);
+  --accent:    #9147FF;
+  --accent2:   #4D96FF;
+  --green:     #6BCB77;
+  --orange:    #FF9A3C;
+  --gold:      #FFD700;
+  --red:       #FF6B6B;
+  --radius:    12px;
+  --sidebar-w: 220px;
+}
+
+html, body {
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  font-size: 14px;
+  overflow: hidden;
+}
+
+/* ═══════════════════════════════════════════════ Layout */
+#app { display: flex; height: 100vh; }
+
+/* ── Sidebar ── */
+#sidebar {
+  width: var(--sidebar-w);
+  flex-shrink: 0;
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  padding: 0 0 16px;
+}
+.sidebar-logo {
+  padding: 22px 20px 18px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 12px;
+}
+.sidebar-logo h1 {
+  font-size: 1.25rem;
+  font-weight: 900;
+  background: linear-gradient(90deg, #9147FF, #4D96FF);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  letter-spacing: -0.01em;
+}
+.sidebar-logo p { font-size: 0.7rem; color: var(--text-dim); margin-top: 2px; }
+
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 20px;
+  color: var(--text-dim);
+  font-weight: 600;
+  font-size: 0.85rem;
+  cursor: pointer;
+  border-radius: 0;
+  transition: color 0.15s, background 0.15s;
+  border: none;
+  background: none;
+  width: 100%;
+  text-align: left;
+}
+.nav-item:hover { color: var(--text); background: rgba(255,255,255,0.04); }
+.nav-item.active { color: var(--accent); background: rgba(145,71,255,0.12); }
+.nav-icon { font-size: 1.05rem; width: 20px; text-align: center; }
+
+.sidebar-spacer { flex: 1; }
+
+.connection-badge {
+  margin: 0 12px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-align: center;
+}
+.connection-badge.connected    { background: rgba(107,203,119,0.15); color: var(--green); }
+.connection-badge.disconnected { background: rgba(255,107,107,0.15); color: var(--red);   }
+.connection-badge.connecting   { background: rgba(255,154,60,0.15);  color: var(--orange); }
+
+/* ── Main ── */
+#main {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+#main::-webkit-scrollbar { width: 6px; }
+#main::-webkit-scrollbar-track { background: transparent; }
+#main::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 99px; }
+
+.page { display: none; padding: 28px 32px; }
+.page.active { display: block; }
+
+.page-title {
+  font-size: 1.3rem;
+  font-weight: 800;
+  margin-bottom: 24px;
+  color: var(--text);
+}
+
+/* ═══════════════════════════════════════════════ Cards */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 20px;
+  margin-bottom: 16px;
+}
+.card-title {
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  margin-bottom: 14px;
+}
+
+/* ═══════════════════════════════════════════════ Stat Grid */
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.stat-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px 18px;
+}
+.stat-label { font-size: 0.68rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-dim); }
+.stat-value { font-size: 2rem; font-weight: 900; color: var(--text); margin-top: 4px; line-height: 1; }
+.stat-value.accent  { color: var(--accent);  }
+.stat-value.green   { color: var(--green);   }
+.stat-value.orange  { color: var(--orange);  }
+.stat-value.gold    { color: var(--gold);    }
+
+/* ═══════════════════════════════════════════════ Crowd Meter (dashboard) */
+.db-crowd-track {
+  height: 12px;
+  background: rgba(255,255,255,0.06);
+  border-radius: 99px;
+  overflow: hidden;
+  margin: 8px 0;
+}
+.db-crowd-fill {
+  height: 100%;
+  border-radius: 99px;
+  background: linear-gradient(90deg, #4D96FF, #9147FF);
+  width: 0%;
+  transition: width 0.5s cubic-bezier(0.34,1.3,0.64,1), background 1s;
+}
+.db-crowd-fill.hot { background: linear-gradient(90deg, #FF6905, #FF0040); }
+.db-crowd-fill.max { background: linear-gradient(90deg, #FFD700, #FF4500); }
+
+/* ═══════════════════════════════════════════════ Buttons */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 16px;
+  border-radius: 8px;
+  font-size: 0.82rem;
+  font-weight: 700;
+  cursor: pointer;
+  border: none;
+  transition: opacity 0.15s, transform 0.1s;
+  line-height: 1;
+}
+.btn:hover   { opacity: 0.85; }
+.btn:active  { transform: scale(0.96); }
+.btn-primary { background: var(--accent);  color: #fff; }
+.btn-blue    { background: var(--accent2); color: #fff; }
+.btn-green   { background: var(--green);   color: #0d1a0e; }
+.btn-orange  { background: var(--orange);  color: #1a0d00; }
+.btn-gold    { background: var(--gold);    color: #1a0d00; }
+.btn-red     { background: var(--red);     color: #1a0000; }
+.btn-ghost   { background: rgba(255,255,255,0.06); color: var(--text); border: 1px solid var(--border); }
+.btn-sm      { padding: 5px 10px; font-size: 0.75rem; }
+
+/* ═══════════════════════════════════════════════ Effect Test Grid */
+.effect-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 10px;
+}
+.effect-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 14px 10px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  cursor: pointer;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--text);
+  transition: background 0.15s, border-color 0.15s, transform 0.1s;
+  text-align: center;
+}
+.effect-btn:hover  { background: rgba(255,255,255,0.06); border-color: rgba(255,255,255,0.15); }
+.effect-btn:active { transform: scale(0.94); }
+.effect-btn .icon  { font-size: 1.8rem; }
+
+/* ═══════════════════════════════════════════════ Event Log */
+#event-log {
+  height: 320px;
+  overflow-y: auto;
+  background: var(--bg);
+  border-radius: 8px;
+  padding: 8px;
+  font-family: 'Cascadia Code', 'Consolas', monospace;
+  font-size: 0.75rem;
+}
+#event-log::-webkit-scrollbar { width: 4px; }
+#event-log::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 99px; }
+
+.log-entry {
+  display: flex;
+  gap: 10px;
+  padding: 4px 6px;
+  border-radius: 4px;
+  line-height: 1.5;
+  animation: log-fade-in 0.2s ease;
+}
+.log-entry:hover { background: rgba(255,255,255,0.03); }
+.log-ts    { color: var(--text-dim); flex-shrink: 0; }
+.log-type  { font-weight: 700; flex-shrink: 0; min-width: 100px; }
+.log-type.follow   { color: var(--green);  }
+.log-type.sub      { color: var(--accent); }
+.log-type.gifted   { color: var(--orange); }
+.log-type.cheer    { color: #00CFFF;       }
+.log-type.raid     { color: var(--gold);   }
+.log-type.combo    { color: var(--gold);   }
+.log-type.redeem   { color: #FF6FC8;       }
+.log-type.hype     { color: var(--red);    }
+.log-type.other    { color: var(--text-dim); }
+.log-body  { color: rgba(232,232,240,0.65); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+@keyframes log-fade-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: none; }
+}
+
+/* ═══════════════════════════════════════════════ Goals Page */
+.goal-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--border);
+}
+.goal-row:last-child { border-bottom: none; }
+.goal-row__info { flex: 1; min-width: 0; }
+.goal-row__name { font-weight: 700; font-size: 0.9rem; }
+.goal-row__progress { font-size: 0.72rem; color: var(--text-dim); margin-top: 3px; }
+.goal-row__track { height: 6px; background: rgba(255,255,255,0.07); border-radius: 99px; overflow: hidden; margin-top: 6px; }
+.goal-row__fill  { height: 100%; background: linear-gradient(90deg, var(--green), var(--accent2)); border-radius: 99px; transition: width 0.5s; }
+.goal-row.completed .goal-row__fill { background: var(--gold); }
+.goal-row.inactive { opacity: 0.4; }
+
+/* ═══════════════════════════════════════════════ Setup Page */
+.setup-step {
+  display: flex;
+  gap: 16px;
+  padding: 18px 0;
+  border-bottom: 1px solid var(--border);
+}
+.setup-step:last-child { border-bottom: none; }
+.step-num {
+  width: 28px; height: 28px;
+  border-radius: 50%;
+  background: rgba(145,71,255,0.2);
+  color: var(--accent);
+  font-weight: 900;
+  font-size: 0.8rem;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+.step-num.done { background: rgba(107,203,119,0.2); color: var(--green); }
+.step-content h3 { font-size: 0.9rem; font-weight: 700; margin-bottom: 5px; }
+.step-content p  { font-size: 0.8rem; color: var(--text-dim); line-height: 1.6; }
+.step-content a  { color: var(--accent2); text-decoration: none; }
+.step-content a:hover { text-decoration: underline; }
+
+.obs-url {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 14px;
+  font-family: monospace;
+  font-size: 0.85rem;
+  color: var(--text);
+}
+.obs-url span { flex: 1; }
+
+.input-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  margin-top: 10px;
+  flex-wrap: wrap;
+}
+.input-field {
+  flex: 1;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 12px;
+  color: var(--text);
+  font-size: 0.82rem;
+  min-width: 160px;
+  outline: none;
+  transition: border-color 0.15s;
+}
+.input-field:focus { border-color: rgba(145,71,255,0.5); }
+.input-field::placeholder { color: var(--text-dim); }
+
+/* ═══════════════════════════════════════════════ Twitch Tier Pills */
+.tier-pill {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 99px;
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+}
+.tier-S { background: rgba(255,215,0,0.2);   color: var(--gold);   }
+.tier-A { background: rgba(145,71,255,0.2);  color: var(--accent); }
+.tier-B { background: rgba(107,203,119,0.2); color: var(--green);  }
+.tier-C { background: rgba(255,255,255,0.08); color: var(--text-dim); }
+
+/* ═══════════════════════════════════════════════ Overlay preview frame */
+#preview-wrap {
+  position: relative;
+  background: #1a1a2e;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  margin-bottom: 16px;
+}
+#preview-frame {
+  width: 100%;
+  aspect-ratio: 16/9;
+  border: none;
+  display: block;
+  transform-origin: top left;
+}
+.preview-label {
+  position: absolute;
+  top: 8px; left: 10px;
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: rgba(255,255,255,0.35);
+}
+
+/* ═══════════════════════════════════════════════ Toggle switch */
+.toggle {
+  position: relative;
+  display: inline-block;
+  width: 36px;
+  height: 20px;
+  flex-shrink: 0;
+}
+.toggle input { opacity: 0; width: 0; height: 0; }
+.toggle-slider {
+  position: absolute;
+  inset: 0;
+  background: rgba(255,255,255,0.12);
+  border-radius: 99px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.toggle-slider::before {
+  content: '';
+  position: absolute;
+  width: 14px; height: 14px;
+  left: 3px; top: 3px;
+  background: white;
+  border-radius: 50%;
+  transition: transform 0.2s;
+}
+.toggle input:checked + .toggle-slider { background: var(--accent); }
+.toggle input:checked + .toggle-slider::before { transform: translateX(16px); }
+
+/* ═══════════════════════════════════════════════ Responsive tweak */
+@media (max-width: 900px) {
+  .stat-grid { grid-template-columns: repeat(2, 1fr); }
+  .effect-grid { grid-template-columns: repeat(3, 1fr); }
+}
+</style>
+</head>
+<body>
+<div id="app">
+
+  <!-- ── Sidebar ── -->
+  <nav id="sidebar">
+    <div class="sidebar-logo">
+      <h1>FokkerPop</h1>
+      <p>Overlay Dashboard</p>
+    </div>
+
+    <button class="nav-item active" data-page="live">
+      <span class="nav-icon">📡</span> Live
+    </button>
+    <button class="nav-item" data-page="effects">
+      <span class="nav-icon">🎆</span> Test Effects
+    </button>
+    <button class="nav-item" data-page="goals">
+      <span class="nav-icon">🎯</span> Goals
+    </button>
+    <button class="nav-item" data-page="log">
+      <span class="nav-icon">📋</span> Event Log
+    </button>
+    <button class="nav-item" data-page="setup">
+      <span class="nav-icon">⚙️</span> Setup
+    </button>
+
+    <div class="sidebar-spacer"></div>
+    <div id="ws-badge" class="connection-badge connecting">Connecting…</div>
+  </nav>
+
+  <!-- ── Main ── -->
+  <main id="main">
+
+    <!-- ════════════════════════════ LIVE PAGE -->
+    <div class="page active" id="page-live">
+      <div class="page-title">Live Session</div>
+
+      <div class="stat-grid">
+        <div class="stat-card">
+          <div class="stat-label">Subs</div>
+          <div class="stat-value accent" id="stat-subs">0</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Bits</div>
+          <div class="stat-value gold" id="stat-bits">0</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Follows</div>
+          <div class="stat-value green" id="stat-follows">0</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Raids</div>
+          <div class="stat-value orange" id="stat-raids">0</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">Crowd Energy</div>
+        <div class="db-crowd-track">
+          <div class="db-crowd-fill" id="db-crowd-fill"></div>
+        </div>
+        <div style="display:flex;justify-content:space-between;margin-top:8px;align-items:center;">
+          <span style="font-size:.75rem;color:var(--text-dim)" id="db-crowd-val">0 / 100</span>
+          <div style="display:flex;gap:8px;">
+            <button class="btn btn-ghost btn-sm" onclick="dashSend({type:'_dashboard.crowd-boost', amount:10})">+10</button>
+            <button class="btn btn-ghost btn-sm" onclick="dashSend({type:'_dashboard.crowd-boost', amount:25})">+25</button>
+            <button class="btn btn-gold btn-sm"  onclick="dashSend({type:'_dashboard.crowd-boost', amount:100})">MAX</button>
+            <button class="btn btn-ghost btn-sm" onclick="dashSend({type:'_dashboard.crowd-reset'})">Reset</button>
+          </div>
+        </div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+        <div class="card">
+          <div class="card-title">Top Bits</div>
+          <div id="live-lb-bits" style="font-size:.82rem;line-height:2;color:var(--text-dim)">—</div>
+        </div>
+        <div class="card">
+          <div class="card-title">Top Gifters</div>
+          <div id="live-lb-gifts" style="font-size:.82rem;line-height:2;color:var(--text-dim)">—</div>
+        </div>
+      </div>
+
+      <div style="margin-top:8px;">
+        <button class="btn btn-ghost btn-sm" onclick="dashSend({type:'_dashboard.session-reset'})" style="color:var(--red)">
+          Reset Session Stats
+        </button>
+      </div>
+    </div>
+
+    <!-- ════════════════════════════ EFFECTS PAGE -->
+    <div class="page" id="page-effects">
+      <div class="page-title">Test Effects</div>
+
+      <div id="preview-wrap">
+        <div class="preview-label">Live Preview</div>
+        <iframe id="preview-frame" src="/" title="Overlay Preview"></iframe>
+      </div>
+
+      <div class="card">
+        <div class="card-title">Spawn Effects</div>
+        <div class="effect-grid">
+          <button class="effect-btn" onclick="testEffect('balloon',{count:3})">
+            <span class="icon">🎈</span>Balloons
+          </button>
+          <button class="effect-btn" onclick="testEffect('firework',{})">
+            <span class="icon">🎆</span>Firework
+          </button>
+          <button class="effect-btn" onclick="testEffect('firework-salvo',{count:5})">
+            <span class="icon">🎇</span>Salvo
+          </button>
+          <button class="effect-btn" onclick="testEffect('confetti',{})">
+            <span class="icon">🎊</span>Confetti
+          </button>
+          <button class="effect-btn" onclick="testEffect('sticker-rain',{duration:6000})">
+            <span class="icon">✨</span>Sticker Rain
+          </button>
+          <button class="effect-btn" onclick="testEffect('crowd-explosion',{})">
+            <span class="icon">💥</span>Crowd Explosion
+          </button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">Test Alert Banners</div>
+        <div class="effect-grid">
+          <button class="effect-btn" onclick="testEvent('follow',{user:'NewFriend123'})">
+            <span class="icon">💚</span>Follow
+          </button>
+          <button class="effect-btn" onclick="testEvent('sub',{user:'TestSubscriber',tier:'1000',message:'PogChamp first sub!'})">
+            <span class="icon">💜</span>Subscribe
+          </button>
+          <button class="effect-btn" onclick="testEvent('sub.gifted',{user:'GiftKing',count:5})">
+            <span class="icon">🎁</span>Gift ×5
+          </button>
+          <button class="effect-btn" onclick="testEvent('sub.gifted',{user:'MegaGifter',count:20})">
+            <span class="icon">🎁</span>Gift ×20
+          </button>
+          <button class="effect-btn" onclick="testEvent('cheer',{user:'BitsBro',bits:100})">
+            <span class="icon">💎</span>100 Bits
+          </button>
+          <button class="effect-btn" onclick="testEvent('cheer',{user:'BigBaller',bits:5000})">
+            <span class="icon">💎</span>5k Bits
+          </button>
+          <button class="effect-btn" onclick="testEvent('raid',{user:'FriendlyRaider',viewers:45})">
+            <span class="icon">⚡</span>Small Raid
+          </button>
+          <button class="effect-btn" onclick="testEvent('raid',{user:'MassiveRaid',viewers:250})">
+            <span class="icon">⚡</span>Big Raid
+          </button>
+          <button class="effect-btn" onclick="testEvent('hype-train.progress',{level:2})">
+            <span class="icon">🔥</span>Hype Train
+          </button>
+          <button class="effect-btn" onclick="testCombo(3,'SUB TRAIN')">
+            <span class="icon">🚂</span>Sub Combo ×3
+          </button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">Custom Alert</div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
+          <select id="custom-tier" style="background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:7px;padding:7px 10px;font-size:.82rem;outline:none;">
+            <option value="S">Tier S</option>
+            <option value="A" selected>Tier A</option>
+            <option value="B">Tier B</option>
+            <option value="C">Tier C</option>
+          </select>
+          <input id="custom-icon" class="input-field" placeholder="Icon (emoji)" value="🎉" style="max-width:100px;">
+          <input id="custom-text" class="input-field" placeholder="Main text" value="Custom Alert!">
+          <input id="custom-sub"  class="input-field" placeholder="Sub text (optional)">
+          <button class="btn btn-primary" onclick="sendCustomAlert()">Fire</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ════════════════════════════ GOALS PAGE -->
+    <div class="page" id="page-goals">
+      <div class="page-title">Goals</div>
+
+      <div class="card">
+        <div class="card-title">Active Goals</div>
+        <div id="goals-list">
+          <p style="color:var(--text-dim);font-size:.82rem;">Loading goals…</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- ════════════════════════════ LOG PAGE -->
+    <div class="page" id="page-log">
+      <div class="page-title">Event Log</div>
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+          <div class="card-title" style="margin:0">Recent Events</div>
+          <button class="btn btn-ghost btn-sm" onclick="clearLog()">Clear</button>
+        </div>
+        <div id="event-log"></div>
+      </div>
+    </div>
+
+    <!-- ════════════════════════════ SETUP PAGE -->
+    <div class="page" id="page-setup">
+      <div class="page-title">Setup</div>
+
+      <div class="card">
+        <div class="setup-step">
+          <div class="step-num done">1</div>
+          <div class="step-content">
+            <h3>Install Node.js</h3>
+            <p>FokkerPop runs on Node.js 18 or later. If you're reading this, Node is already running. ✅</p>
+          </div>
+        </div>
+
+        <div class="setup-step">
+          <div class="step-num" id="step2-num">2</div>
+          <div class="step-content">
+            <h3>Connect Twitch</h3>
+            <p>
+              Create a Twitch app at
+              <a href="https://dev.twitch.tv/console" target="_blank">dev.twitch.tv/console</a>.
+              Set the <strong>OAuth Redirect URL</strong> to:<br>
+              <code style="background:var(--bg);padding:2px 6px;border-radius:4px;font-size:.82rem;">http://localhost:4747/auth/callback</code>
+            </p>
+            <div class="input-row">
+              <input id="setup-client-id"     class="input-field" placeholder="Client ID">
+              <input id="setup-client-secret" class="input-field" type="password" placeholder="Client Secret">
+              <button class="btn btn-primary" onclick="saveCredentialsAndAuth()">Save &amp; Connect</button>
+            </div>
+            <p id="twitch-status" style="margin-top:8px;font-size:.8rem;color:var(--text-dim)"></p>
+          </div>
+        </div>
+
+        <div class="setup-step">
+          <div class="step-num">3</div>
+          <div class="step-content">
+            <h3>Add Browser Source in OBS</h3>
+            <p>In OBS, add a <strong>Browser Source</strong> to your scene with these settings:</p>
+            <div class="obs-url">
+              <span id="overlay-url">http://localhost:4747/</span>
+              <button class="btn btn-ghost btn-sm" onclick="copyOverlayUrl()">Copy</button>
+            </div>
+            <p style="margin-top:8px;font-size:.78rem;color:var(--text-dim)">
+              Width: <strong>1920</strong> &nbsp;·&nbsp;
+              Height: <strong>1080</strong> &nbsp;·&nbsp;
+              ✅ Shutdown source when not visible &nbsp;·&nbsp;
+              ✅ Custom CSS: <code>body { background: transparent !important; }</code>
+            </p>
+          </div>
+        </div>
+
+        <div class="setup-step">
+          <div class="step-num">4</div>
+          <div class="step-content">
+            <h3>Start Streaming</h3>
+            <p>
+              Use <strong>start.bat</strong> to launch FokkerPop before going live.
+              The dashboard opens automatically. Check the <strong>Live</strong> tab
+              to confirm Twitch events are flowing in.
+            </p>
+            <p style="margin-top:8px;font-size:.78rem;color:var(--text-dim)">
+              Tip: add <code>start.bat</code> to your stream startup shortcut so it
+              launches alongside OBS.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">About</div>
+        <p style="font-size:.82rem;color:var(--text-dim);line-height:1.7">
+          FokkerPop v0.1.0 &nbsp;·&nbsp;
+          Built for LilFokker &nbsp;·&nbsp;
+          1 npm dependency (ws) &nbsp;·&nbsp;
+          All traffic stays on <code>127.0.0.1</code>
+        </p>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>

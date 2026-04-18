@@ -1,0 +1,27 @@
+name: Weekly Security Audit
+
+# Runs every Monday at 09:00 UTC and can be triggered manually.
+# If a vulnerability is found, the job fails and GitHub sends you
+# an email — that's your cue to run `npm audit fix` and ship a patch release.
+on:
+  schedule:
+    - cron: '0 9 * * 1'
+  workflow_dispatch:
+
+jobs:
+  audit:
+    name: npm audit
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install (exact lock file)
+        run: npm ci
+
+      - name: Audit — fail on moderate or higher
+        run: npm audit --audit-level=moderate

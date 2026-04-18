@@ -1,0 +1,22 @@
+[
+  {
+    "id":        "first-100-subs",
+    "label":     "100 Subs",
+    "metric":    "session.subCount",
+    "target":    100,
+    "reward":    { "type": "effect", "effect": "crowd-explosion" },
+    "style":     "bar",
+    "active":    true,
+    "completed": false
+  },
+  {
+    "id":        "bits-goal",
+    "label":     "50,000 Bits",
+    "metric":    "session.bitsTotal",
+    "target":    50000,
+    "reward":    { "type": "effect", "effect": "firework-salvo" },
+    "style":     "bar",
+    "active":    false,
+    "completed": false
+  }
+]

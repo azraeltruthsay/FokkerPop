@@ -1,0 +1,61 @@
+{
+  "_instructions": [
+    "Copy this file to settings.json and fill in your Twitch credentials.",
+    "Get clientId + clientSecret from https://dev.twitch.tv/console",
+    "Register redirect URI: http://localhost:4747/auth/callback",
+    "Find your userId at: https://www.streamweasels.com/tools/convert-twitch-username-to-user-id/"
+  ],
+
+  "server": {
+    "port": 4747
+  },
+
+  "twitch": {
+    "clientId":     "",
+    "clientSecret": "",
+    "accessToken":  "",
+    "refreshToken": "",
+    "userId":       "",
+    "channelName":  ""
+  },
+
+  "effects": {
+    "maxActive":   20,
+    "tokenBucket": { "capacity": 20, "refillPerSec": 3 }
+  },
+
+  "crowd": {
+    "drainPerSec":           1,
+    "followBoost":           1,
+    "subBoost":             10,
+    "bitsBoostPer50":        1,
+    "raidBoost":            20,
+    "raidViewerBoostPer10":  1
+  },
+
+  "alerts": {
+    "tierS": { "durationMs": 5000 },
+    "tierA": { "durationMs": 4000 },
+    "tierB": { "durationMs": 3000 },
+    "tierC": { "durationMs": 2000 }
+  },
+
+  "widgets": {
+    "crowdMeter":  { "visible": true, "position": "bottom-right" },
+    "goals":       { "visible": true, "position": "right"        },
+    "leaderboard": { "visible": true, "position": "top-right", "topN": 5 },
+    "combo":       { "visible": true }
+  },
+
+  "combo": {
+    "sub": [
+      { "count": 10, "seconds": 90, "level": 4, "label": "SUB TSUNAMI" },
+      { "count":  6, "seconds": 60, "level": 3, "label": "SUB TRAIN"   },
+      { "count":  3, "seconds": 30, "level": 2, "label": "SUB STORM"   }
+    ],
+    "cheer": [
+      { "count": 5, "seconds": 60, "level": 3, "label": "BIT BLITZ" },
+      { "count": 3, "seconds": 30, "level": 2, "label": "BIT BURST" }
+    ]
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "name": "fokkerpop",
+  "version": "0.1.0",
+  "description": "Twitch overlay for LilFokker — local-first, low-overhead",
+  "type": "module",
+  "scripts": {
+    "start": "node server/index.js",
+    "dev":   "node --watch server/index.js"
+  },
+  "engines": { "node": ">=18.0.0" },
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
+}

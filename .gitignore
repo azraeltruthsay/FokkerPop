@@ -1,0 +1,6 @@
+node_modules/
+settings.json
+state.json
+.env
+*.log
+memory/

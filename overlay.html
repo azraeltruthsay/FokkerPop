@@ -1,0 +1,1115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>FokkerPop Overlay</title>
+<style>
+/* ═══════════════════════════════════════════════════════ Base */
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+html, body {
+  width: 100%; height: 100%;
+  overflow: hidden;
+  background: transparent;
+  font-family: 'Segoe UI', system-ui, sans-serif;
+}
+
+/* ═══════════════════════════════════════════════════════ Layer Stack */
+.layer {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+#layer-hud      { z-index: 10; }
+#edge-glow      { position: fixed; inset: 0; z-index: 15; pointer-events: none; transition: box-shadow 2s ease; }
+#layer-fx-mid   { z-index: 40; }
+#canvas         { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 50; pointer-events: none; }
+#layer-alerts   { z-index: 60; }
+#screen-flash   { position: fixed; inset: 0; z-index: 70; pointer-events: none; opacity: 0; background: #fff; }
+#ws-dot {
+  position: fixed; bottom: 14px; left: 16px;
+  width: 7px; height: 7px; border-radius: 50%;
+  background: #6BCB77; opacity: 0.55; z-index: 80;
+  transition: background 0.5s, opacity 0.5s;
+}
+#ws-dot.disconnected { background: #FF6B6B; animation: dot-blink 1.2s ease-in-out infinite; }
+
+/* ═══════════════════════════════════════════════════════ Alert Banner */
+#alert-container {
+  position: absolute;
+  top: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  pointer-events: none;
+}
+
+.alert-banner {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 28px 14px 20px;
+  border-radius: 16px;
+  min-width: 380px;
+  max-width: 680px;
+  transform: translateY(-150%) scaleX(0.85);
+  opacity: 0;
+  will-change: transform, opacity;
+}
+.alert-banner.enter { animation: banner-enter 0.55s cubic-bezier(0.34, 1.56, 0.64, 1) forwards; }
+.alert-banner.exit  { animation: banner-exit  0.35s ease-in forwards; }
+
+.alert-banner__icon-wrap {
+  width: 52px; height: 52px; border-radius: 50%;
+  background: rgba(0,0,0,0.2);
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+.alert-banner__icon { font-size: 1.9rem; line-height: 1; }
+.alert-banner__text { flex: 1; min-width: 0; }
+.alert-banner__main {
+  font-size: 1.3rem; font-weight: 800; line-height: 1.2;
+  font-family: Impact, 'Arial Black', 'Arial Narrow Bold', sans-serif;
+  letter-spacing: 0.02em;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.alert-banner__sub  { font-size: 0.85rem; font-weight: 500; opacity: 0.85; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* Tier S — gold, spinning glow border, shimmer sweep */
+.alert-banner--S {
+  background: linear-gradient(135deg, #FFD700 0%, #FF8C00 50%, #FFD700 100%);
+  background-size: 200% 200%;
+  box-shadow: 0 0 40px rgba(255,215,0,0.85), 0 4px 20px rgba(0,0,0,0.5);
+  color: #1a0900;
+  outline: 2px solid rgba(255,215,0,0.7);
+  outline-offset: 3px;
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+  animation: banner-enter 0.55s cubic-bezier(0.34,1.56,0.64,1) forwards,
+             gold-shimmer 2s 0.55s ease-in-out infinite,
+             tier-s-border 1.4s 0.55s ease-in-out infinite alternate;
+}
+.alert-banner--S .alert-banner__main { font-size: 1.6rem; }
+.alert-banner--S .alert-banner__icon-wrap {
+  background: rgba(255,255,255,0.25);
+  box-shadow: 0 0 20px rgba(255,215,0,0.8);
+  animation: icon-pop 0.5s 0.55s cubic-bezier(0.34,1.56,0.64,1) both;
+}
+/* Shimmer light sweep across the Tier S banner */
+.alert-banner--S::after {
+  content: '';
+  position: absolute;
+  top: 0; left: -70%;
+  width: 50%; height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent);
+  animation: sweep 2.8s 1s ease-in-out infinite;
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* Tier A — configurable color via CSS vars */
+.alert-banner--A {
+  background: var(--banner-bg, #9147FF);
+  box-shadow: 0 0 24px var(--banner-glow, rgba(145,71,255,0.7)), 0 4px 16px rgba(0,0,0,0.4);
+  color: #fff;
+}
+.alert-banner--A .alert-banner__main { text-shadow: 0 1px 6px rgba(0,0,0,0.4); }
+.alert-banner--A .alert-banner__icon-wrap { background: rgba(0,0,0,0.2); }
+
+/* Tier B — subtle dark */
+.alert-banner--B {
+  background: rgba(12, 12, 22, 0.88);
+  border: 1px solid rgba(255,255,255,0.18);
+  box-shadow: 0 2px 12px rgba(0,0,0,0.4);
+  color: #ddd;
+  padding: 10px 20px 10px 16px;
+}
+.alert-banner--B .alert-banner__icon-wrap { width: 38px; height: 38px; }
+.alert-banner--B .alert-banner__icon { font-size: 1.4rem; }
+.alert-banner--B .alert-banner__main { font-size: 1.05rem; }
+
+/* Tier C — tiny pill */
+.alert-banner--C {
+  background: rgba(20,20,35,0.75);
+  border: 1px solid rgba(255,255,255,0.1);
+  color: #aaa;
+  padding: 6px 14px 6px 10px;
+  min-width: 0;
+  gap: 8px;
+  border-radius: 99px;
+}
+.alert-banner--C .alert-banner__icon-wrap { width: 26px; height: 26px; background: none; }
+.alert-banner--C .alert-banner__icon { font-size: 0.95rem; }
+.alert-banner--C .alert-banner__main { font-size: 0.85rem; font-weight: 600; }
+
+/* ═══════════════════════════════════════════════════════ Balloons */
+.balloon {
+  position: absolute;
+  bottom: -160px;
+  animation: float-up var(--dur) ease-in forwards;
+  will-change: bottom, opacity;
+}
+.balloon__body {
+  width: var(--w);
+  height: var(--h);
+  border-radius: 50% 50% 50% 50% / 60% 60% 40% 40%;
+  background: radial-gradient(circle at 35% 30%, rgba(255,255,255,0.55) 0%, var(--color) 55%, var(--color-dark) 100%);
+  position: relative;
+  filter: drop-shadow(0 6px 10px rgba(0,0,0,0.35));
+  animation: wobble var(--wob-period) ease-in-out infinite alternate;
+}
+.balloon__body::before {
+  content: '';
+  position: absolute;
+  bottom: -8px; left: 50%;
+  transform: translateX(-50%);
+  width: 0; height: 0;
+  border-left: 5px solid transparent;
+  border-right: 5px solid transparent;
+  border-top: 9px solid var(--color-dark);
+}
+.balloon__string {
+  position: absolute;
+  top: 100%; left: 50%;
+  width: 1px; height: 52px;
+  margin-left: -0.5px;
+  background: rgba(255,255,255,0.35);
+  transform-origin: top center;
+  animation: string-sway var(--wob-period) ease-in-out infinite alternate;
+}
+
+/* ═══════════════════════════════════════════════════════ Floating Text */
+.floating-text {
+  position: absolute;
+  font-size: 1.8rem;
+  font-weight: 900;
+  color: #fff;
+  text-shadow: 0 0 12px rgba(255,255,255,0.8), 0 2px 8px rgba(0,0,0,0.6);
+  animation: float-text 2.5s ease-out forwards;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+/* ═══════════════════════════════════════════════════════ Sticker */
+.sticker {
+  position: absolute;
+  font-size: var(--size, 2.5rem);
+  animation: sticker-fall var(--dur) ease-in forwards;
+  pointer-events: none;
+  will-change: transform, opacity;
+}
+
+/* ═══════════════════════════════════════════════════════ Confetti */
+.confetti-piece {
+  position: absolute;
+  width: var(--w, 8px);
+  height: var(--h, 12px);
+  background: var(--color);
+  border-radius: var(--br, 2px);
+  animation: confetti-fall var(--dur) ease-in forwards;
+  will-change: transform, opacity;
+}
+
+/* ═══════════════════════════════════════════════════════ HUD Widgets */
+#widget-crowd-meter {
+  position: absolute;
+  bottom: 32px;
+  right: 32px;
+  width: 188px;
+  background: rgba(8, 8, 16, 0.85);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 14px;
+  padding: 10px 14px 12px;
+  transition: opacity 0.5s, border-color 1s, box-shadow 1s;
+}
+.crowd-meter-hot  { border-color: rgba(255,105,5,0.3)  !important; box-shadow: 0 0 20px rgba(255,105,5,0.15); }
+.crowd-meter-max  { border-color: rgba(255,215,0,0.5)  !important; box-shadow: 0 0 30px rgba(255,215,0,0.25); animation: meter-pulse 0.7s ease-in-out infinite alternate; }
+@keyframes meter-pulse { from { box-shadow: 0 0 20px rgba(255,215,0,0.2); } to { box-shadow: 0 0 40px rgba(255,215,0,0.45); } }
+
+.crowd-emoji {
+  text-align: center;
+  font-size: 1.3rem;
+  margin-bottom: 5px;
+  line-height: 1;
+  transition: all 0.4s;
+  display: block;
+}
+.crowd-label {
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  color: rgba(255,255,255,0.45);
+  text-transform: uppercase;
+  margin-bottom: 6px;
+  text-align: center;
+}
+.crowd-track {
+  width: 100%;
+  height: 10px;
+  background: rgba(255,255,255,0.08);
+  border-radius: 99px;
+  overflow: hidden;
+}
+.crowd-fill {
+  height: 100%;
+  border-radius: 99px;
+  width: 0%;
+  transition: width 0.6s cubic-bezier(0.34, 1.56, 0.64, 1), background 1.2s;
+  background: linear-gradient(90deg, #4D96FF, #9147FF);
+}
+.crowd-value {
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: rgba(255,255,255,0.45);
+  text-align: center;
+  margin-top: 5px;
+}
+.crowd-meter-hot .crowd-fill  { background: linear-gradient(90deg, #FF6905, #FF0040); }
+.crowd-meter-max .crowd-fill  { background: linear-gradient(90deg, #FFD700, #FF4500); animation: fill-pulse 0.5s ease-in-out infinite alternate; }
+
+/* ═══════════════════════════════════════════════════════ Combo Display */
+#widget-combo {
+  position: absolute;
+  top: 80px;
+  left: 50%;
+  transform: translateX(-50%);
+  text-align: center;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+#widget-combo.visible { opacity: 1; }
+.combo-multiplier {
+  font-size: 4.5rem;
+  font-weight: 900;
+  font-family: Impact, 'Arial Black', sans-serif;
+  color: #FFD700;
+  text-shadow: 0 0 30px rgba(255,215,0,0.9), 0 4px 16px rgba(0,0,0,0.7);
+  line-height: 1;
+}
+/* Level-based colors */
+#widget-combo[data-level="2"] .combo-multiplier { color: #FFD700; text-shadow: 0 0 30px rgba(255,215,0,0.9),  0 4px 16px rgba(0,0,0,0.7); }
+#widget-combo[data-level="3"] .combo-multiplier { color: #FF9A3C; text-shadow: 0 0 35px rgba(255,154,60,0.95), 0 4px 16px rgba(0,0,0,0.7); }
+#widget-combo[data-level="4"] .combo-multiplier {
+  color: #FF5050;
+  text-shadow: 0 0 40px rgba(255,60,60,1.0), 0 0 80px rgba(255,0,0,0.4), 0 4px 16px rgba(0,0,0,0.7);
+  animation: combo-punch 0.4s cubic-bezier(0.34,1.56,0.64,1), combo-shake 0.08s 0.4s ease-in-out infinite alternate;
+}
+.combo-label {
+  font-size: 1.05rem;
+  font-weight: 800;
+  font-family: Impact, 'Arial Black', sans-serif;
+  color: #fff;
+  letter-spacing: 0.2em;
+  text-shadow: 0 2px 8px rgba(0,0,0,0.8);
+  margin-top: -2px;
+}
+.combo-bar-track {
+  width: 200px;
+  height: 4px;
+  background: rgba(255,255,255,0.15);
+  border-radius: 99px;
+  margin: 8px auto 0;
+  overflow: hidden;
+}
+.combo-bar-fill {
+  height: 100%;
+  background: #FFD700;
+  border-radius: 99px;
+  width: 100%;
+  transform-origin: left;
+  transition: transform 0.1s linear;
+}
+
+/* ═══════════════════════════════════════════════════════ Goal Bars */
+#widget-goals {
+  position: absolute;
+  right: 32px;
+  top: 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 200px;
+}
+.goal-bar {
+  background: rgba(8, 8, 16, 0.82);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 12px;
+  padding: 10px 13px;
+}
+.goal-bar__label {
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: rgba(255,255,255,0.5);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  margin-bottom: 6px;
+  display: flex;
+  justify-content: space-between;
+}
+.goal-bar__label span { color: rgba(255,255,255,0.7); }
+.goal-bar__track {
+  height: 8px;
+  background: rgba(255,255,255,0.08);
+  border-radius: 99px;
+  overflow: hidden;
+}
+.goal-bar__fill {
+  height: 100%;
+  background: linear-gradient(90deg, #6BCB77, #4D96FF);
+  border-radius: 99px;
+  width: 0%;
+  transition: width 0.8s cubic-bezier(0.34, 1.4, 0.64, 1);
+  position: relative;
+  overflow: hidden;
+}
+.goal-bar.completed .goal-bar__fill { background: #FFD700; }
+.goal-bar__fill::after {
+  content: '';
+  position: absolute;
+  top: 0; left: -100%;
+  width: 60%; height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.5), transparent);
+  animation: none;
+}
+.goal-bar__fill.shimmer::after { animation: sweep 0.8s ease-out forwards; }
+
+/* ═══════════════════════════════════════════════════════ Leaderboard */
+#widget-leaderboard {
+  position: absolute;
+  top: 32px;
+  left: 32px;
+  background: rgba(8, 8, 16, 0.82);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 14px;
+  padding: 12px 16px;
+  width: 200px;
+  display: none;
+}
+#widget-leaderboard.has-data { display: block; }
+.lb-title {
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  color: rgba(255,255,255,0.4);
+  text-transform: uppercase;
+  margin-bottom: 8px;
+}
+.lb-entry {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 0;
+  font-size: 0.8rem;
+}
+.lb-rank  { font-weight: 800; color: rgba(255,255,255,0.35); width: 16px; text-align: right; flex-shrink: 0; }
+.lb-rank--1 { color: #FFD700; }
+.lb-rank--2 { color: #C0C0C0; }
+.lb-rank--3 { color: #CD7F32; }
+.lb-name  { flex: 1; font-weight: 600; color: rgba(255,255,255,0.8); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lb-value { font-weight: 700; color: rgba(255,255,255,0.5); font-size: 0.75rem; flex-shrink: 0; }
+
+/* ═══════════════════════════════════════════════════════ Keyframe Animations */
+@keyframes float-up {
+  0%   { bottom: -160px; opacity: 0; }
+  6%   { opacity: 1; }
+  82%  { opacity: 1; }
+  100% { bottom: 115vh;  opacity: 0; }
+}
+@keyframes wobble {
+  from { transform: translateX(calc(-1 * var(--wob-x))) rotate(calc(-1 * var(--wob-r))); }
+  to   { transform: translateX(var(--wob-x))            rotate(var(--wob-r)); }
+}
+@keyframes string-sway {
+  from { transform: skewX(calc(-1 * var(--wob-r))); }
+  to   { transform: skewX(var(--wob-r)); }
+}
+@keyframes float-text {
+  0%   { transform: translateY(0)    scale(1.3); opacity: 0; }
+  15%  { transform: translateY(-10px) scale(1);   opacity: 1; }
+  75%  { opacity: 1; }
+  100% { transform: translateY(-80px) scale(0.9); opacity: 0; }
+}
+@keyframes sticker-fall {
+  0%   { transform: translateY(-20px) rotate(var(--rot0)) scale(1);    opacity: 0; }
+  8%   { opacity: 1; }
+  90%  { opacity: 1; }
+  100% { transform: translateY(var(--travel)) rotate(var(--rot1)) scale(0.8); opacity: 0; }
+}
+@keyframes confetti-fall {
+  0%   { transform: translateY(-10px) translateX(0) rotate(0deg); opacity: 1; }
+  100% { transform: translateY(var(--travel)) translateX(var(--drift)) rotate(var(--spin)); opacity: 0; }
+}
+@keyframes banner-enter {
+  0%   { transform: translateY(-160%) scaleX(0.85); opacity: 0; }
+  60%  { transform: translateY(6px)   scaleX(1.01); opacity: 1; }
+  80%  { transform: translateY(-3px)  scaleX(0.99); }
+  100% { transform: translateY(0)     scaleX(1);    opacity: 1; }
+}
+@keyframes banner-exit {
+  0%   { transform: translateY(0);    opacity: 1; }
+  30%  { transform: translateY(-8px); opacity: 1; }
+  100% { transform: translateY(-160%); opacity: 0; }
+}
+@keyframes gold-shimmer {
+  0%   { background-position: 0%   50%; }
+  50%  { background-position: 100% 50%; }
+  100% { background-position: 0%   50%; }
+}
+@keyframes tier-s-border {
+  from { outline-color: rgba(255,215,0,0.5); box-shadow: 0 0 35px rgba(255,215,0,0.75), 0 4px 20px rgba(0,0,0,0.5); }
+  to   { outline-color: rgba(255,255,200,1);  box-shadow: 0 0 60px rgba(255,215,0,1.0),  0 4px 20px rgba(0,0,0,0.5); }
+}
+@keyframes sweep {
+  0%   { left: -70%; }
+  100% { left: 130%; }
+}
+@keyframes icon-pop {
+  0%   { transform: scale(0); opacity: 0; }
+  100% { transform: scale(1); opacity: 1; }
+}
+@keyframes screen-flash {
+  0%   { opacity: 0; }
+  12%  { opacity: 0.55; }
+  100% { opacity: 0; }
+}
+@keyframes combo-punch {
+  0%   { transform: scale(1.7); }
+  100% { transform: scale(1);   }
+}
+@keyframes combo-shake {
+  from { transform: translateX(-2px) rotate(-0.6deg); }
+  to   { transform: translateX(2px)  rotate(0.6deg);  }
+}
+@keyframes fill-pulse {
+  from { opacity: 0.8; }
+  to   { opacity: 1;   }
+}
+@keyframes dot-blink {
+  0%, 100% { opacity: 0.55; }
+  50%       { opacity: 0.15; }
+}
+</style>
+</head>
+<body>
+
+<div id="screen-flash"></div>
+<div id="edge-glow"></div>
+<div id="ws-dot"></div>
+
+<!-- z-10: persistent HUD widgets -->
+<div class="layer" id="layer-hud">
+  <div id="widget-crowd-meter">
+    <span class="crowd-emoji" id="crowd-emoji">💤</span>
+    <div class="crowd-label">Crowd Energy</div>
+    <div class="crowd-track"><div class="crowd-fill" id="crowd-fill"></div></div>
+    <div class="crowd-value" id="crowd-value">0 / 100</div>
+  </div>
+
+  <div id="widget-combo">
+    <div class="combo-multiplier" id="combo-mult">×3</div>
+    <div class="combo-label"      id="combo-label">SUB TRAIN</div>
+    <div class="combo-bar-track"><div class="combo-bar-fill" id="combo-bar"></div></div>
+  </div>
+
+  <div id="widget-goals"></div>
+
+  <div id="widget-leaderboard">
+    <div class="lb-title">Top Supporters</div>
+    <div id="lb-list"></div>
+  </div>
+</div>
+
+<!-- z-40: balloons, stickers, confetti -->
+<div class="layer" id="layer-fx-mid"></div>
+
+<!-- z-50: firework canvas -->
+<canvas id="canvas"></canvas>
+
+<!-- z-60: alert banners, floating text -->
+<div class="layer" id="layer-alerts">
+  <div id="alert-container"></div>
+</div>
+
+<script>
+'use strict';
+
+// ═══════════════════════════════════════════════════════ Token Bucket
+class TokenBucket {
+  #tokens; #lastTick;
+  constructor(cap, refill) { this.cap = cap; this.refill = refill; this.#tokens = cap; this.#lastTick = performance.now(); }
+  consume(n = 1) {
+    const now = performance.now();
+    this.#tokens = Math.min(this.cap, this.#tokens + (now - this.#lastTick) / 1000 * this.refill);
+    this.#lastTick = now;
+    if (this.#tokens >= n) { this.#tokens -= n; return true; }
+    return false;
+  }
+}
+
+const bucket     = new TokenBucket(20, 3);
+let   active     = 0;
+const MAX_ACTIVE = 20;
+
+function canSpawn() { return active < MAX_ACTIVE && bucket.consume(1); }
+
+// ═══════════════════════════════════════════════════════ Canvas / Fireworks
+
+const canvas = document.getElementById('canvas');
+const ctx    = canvas.getContext('2d');
+let   rafId  = null;
+
+function resizeCanvas() { canvas.width = innerWidth; canvas.height = innerHeight; }
+resizeCanvas();
+addEventListener('resize', resizeCanvas);
+
+const particles = [];
+
+const PALETTES = [
+  ['#FF6B6B','#FFD93D','#FF9A3C'],
+  ['#6BCB77','#00C9FF','#4D96FF'],
+  ['#C77DFF','#FF6FC8','#FF6B6B'],
+  ['#FFD93D','#FFFFFF','#FFA5AB'],
+  ['#00C9FF','#C77DFF','#FFFFFF'],
+];
+
+class Particle {
+  constructor(x, y, color) {
+    this.x = x; this.y = y; this.color = color;
+    const a = Math.random() * Math.PI * 2, s = 1.5 + Math.random() * 7.5;
+    this.vx = Math.cos(a) * s; this.vy = Math.sin(a) * s;
+    this.alpha  = 1;
+    this.decay  = 0.010 + Math.random() * 0.018;
+    this.radius = 1.5 + Math.random() * 2.5;
+    this.trail  = [];
+  }
+  update() {
+    this.trail.push({ x: this.x, y: this.y });
+    if (this.trail.length > 5) this.trail.shift();
+    this.x += this.vx; this.y += this.vy;
+    this.vy += 0.10; this.vx *= 0.97; this.vy *= 0.97;
+    this.alpha -= this.decay;
+  }
+  draw() {
+    for (let i = 0; i < this.trail.length; i++) {
+      const r = (i + 1) / this.trail.length;
+      ctx.globalAlpha = Math.max(0, this.alpha * r * 0.3);
+      ctx.fillStyle = this.color;
+      ctx.beginPath();
+      ctx.arc(this.trail[i].x, this.trail[i].y, this.radius * r * 0.8, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = Math.max(0, this.alpha);
+    ctx.fillStyle   = this.color;
+    ctx.beginPath(); ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2); ctx.fill();
+    ctx.globalAlpha = 1;
+  }
+}
+
+function startRaf() {
+  if (rafId) return;
+  rafId = requestAnimationFrame(canvasLoop);
+}
+function canvasLoop() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  for (let i = particles.length - 1; i >= 0; i--) {
+    particles[i].update();
+    particles[i].draw();
+    if (particles[i].alpha <= 0) particles.splice(i, 1);
+  }
+  // Stop loop entirely when no particles — zero GPU cost while idle
+  rafId = particles.length ? requestAnimationFrame(canvasLoop) : null;
+}
+
+// ═══════════════════════════════════════════════════════ Effects
+
+const BALLOON_COLORS = [
+  ['#FF6B6B','#b83030'],['#FFD93D','#b88a10'],['#6BCB77','#2e8a3a'],
+  ['#4D96FF','#1255bb'],['#FF6FC8','#bb2e88'],['#FF9A3C','#bb5e0a'],
+  ['#C77DFF','#7a2ecc'],['#00C9FF','#007acc'],
+];
+const $mid = document.getElementById('layer-fx-mid');
+
+function spawnBalloon(count = 1) {
+  for (let i = 0; i < count; i++) {
+    if (!canSpawn()) break;
+    active++;
+    const [color, colorDark] = BALLOON_COLORS[Math.floor(Math.random() * BALLOON_COLORS.length)];
+    const w   = 50  + Math.random() * 38;
+    const h   = w   * (1.22 + Math.random() * 0.2);
+    const dur = 5.5 + Math.random() * 5;
+    const wp  = 1.1 + Math.random() * 1.4;
+    const wx  = `${8 + Math.random() * 18}px`;
+    const wr  = `${2 + Math.random() * 6}deg`;
+
+    const wrap = document.createElement('div');
+    wrap.className = 'balloon';
+    wrap.style.cssText = `left:${3 + Math.random() * 94}%;--dur:${dur}s;--wob-period:${wp}s;`;
+
+    const body = document.createElement('div');
+    body.className = 'balloon__body';
+    body.style.cssText = `--color:${color};--color-dark:${colorDark};--w:${w}px;--h:${h}px;--wob-x:${wx};--wob-r:${wr};`;
+
+    const str = document.createElement('div');
+    str.className = 'balloon__string';
+
+    body.appendChild(str); wrap.appendChild(body); $mid.appendChild(wrap);
+    wrap.addEventListener('animationend', () => { wrap.remove(); active--; }, { once: true });
+  }
+}
+
+function spawnFirework(x, y) {
+  if (!canSpawn()) return;
+  active++;
+  const palette = PALETTES[Math.floor(Math.random() * PALETTES.length)];
+  const n = 75 + Math.floor(Math.random() * 55);
+  for (let i = 0; i < n; i++) particles.push(new Particle(x, y, palette[i % palette.length]));
+  startRaf();
+  setTimeout(() => { active--; }, 3500);
+}
+
+function spawnFireworkRandom() {
+  spawnFirework(canvas.width * (0.1 + Math.random() * 0.8), canvas.height * (0.1 + Math.random() * 0.5));
+}
+
+function spawnFireworkSalvo(count = 4) {
+  let i = 0;
+  const next = () => { if (i++ < count) { spawnFireworkRandom(); setTimeout(next, 250 + Math.random() * 300); } };
+  next();
+}
+
+function spawnConfetti() {
+  if (!canSpawn()) return;
+  active++;
+  const colors = ['#FF6B6B','#FFD93D','#6BCB77','#4D96FF','#FF6FC8','#C77DFF','#FF9A3C','#FFFFFF'];
+  const n = 60;
+  for (let i = 0; i < n; i++) {
+    const el = document.createElement('div');
+    el.className = 'confetti-piece';
+    const color  = colors[Math.floor(Math.random() * colors.length)];
+    const w      = 6 + Math.random() * 8;
+    const h      = w * (0.4 + Math.random() * 1.2);
+    const br     = Math.random() > 0.5 ? '50%' : '2px';
+    const dur    = 2 + Math.random() * 2.5;
+    const travel = `${60 + Math.random() * 40}vh`;
+    const drift  = `${(Math.random() - 0.5) * 200}px`;
+    const spin   = `${(Math.random() - 0.5) * 720}deg`;
+    el.style.cssText = `
+      left:${Math.random() * 100}%;
+      top:${-20 + Math.random() * -60}px;
+      --color:${color}; --w:${w}px; --h:${h}px; --br:${br};
+      --dur:${dur}s; --travel:${travel}; --drift:${drift}; --spin:${spin};
+    `;
+    $mid.appendChild(el);
+    el.addEventListener('animationend', () => el.remove(), { once: true });
+  }
+  setTimeout(() => { active--; }, 4000);
+}
+
+function spawnStickerRain(duration = 7000) {
+  if (!canSpawn()) return;
+  active++;
+  const emojis = ['🎉','🎊','✨','🌟','💫','🔥','⚡','💥','🎈','🎆','🎇','🏆','💜','💎','❤️','🎁'];
+  const end = Date.now() + duration;
+  function drop() {
+    if (Date.now() >= end) { setTimeout(() => { active--; }, 500); return; }
+    const el   = document.createElement('div');
+    el.className = 'sticker';
+    const size = 1.8 + Math.random() * 2.5;
+    const dur  = 1.8 + Math.random() * 2.2;
+    const rot0 = `${(Math.random() - 0.5) * 30}deg`;
+    const rot1 = `${(Math.random() - 0.5) * 90}deg`;
+    el.textContent = emojis[Math.floor(Math.random() * emojis.length)];
+    el.style.cssText = `left:${Math.random()*96}%;top:${-60}px;--size:${size}rem;--dur:${dur}s;--rot0:${rot0};--rot1:${rot1};--travel:${55 + Math.random()*40}vh;`;
+    $mid.appendChild(el);
+    el.addEventListener('animationend', () => el.remove(), { once: true });
+    setTimeout(drop, 80 + Math.random() * 180);
+  }
+  drop();
+}
+
+function spawnFloatingText(text, xNorm, yNorm) {
+  const el = document.createElement('div');
+  el.className   = 'floating-text';
+  el.textContent = text;
+  const x = (xNorm ?? Math.random()) * innerWidth;
+  const y = (yNorm ?? 0.7) * innerHeight;
+  el.style.cssText = `left:${x}px;top:${y}px;transform:translateX(-50%)`;
+  document.getElementById('layer-alerts').appendChild(el);
+  el.addEventListener('animationend', () => el.remove(), { once: true });
+}
+
+function triggerScreenFlash() {
+  const el = document.getElementById('screen-flash');
+  el.style.animation = 'none';
+  el.offsetHeight;
+  el.style.animation = 'screen-flash 0.7s ease-out forwards';
+}
+
+function spawnCrowdExplosion() {
+  triggerScreenFlash();
+  spawnFireworkSalvo(6);
+  spawnConfetti();
+  spawnStickerRain(4000);
+}
+
+// ═══════════════════════════════════════════════════════ Alert Banner Queue
+
+const TIER_DUR = { S: 5000, A: 4000, B: 3000, C: 2000 };
+const TIER_ORDER = { S: 4, A: 3, B: 2, C: 1 };
+
+class AlertQueue {
+  #queue   = [];
+  #current = null;
+  #holdTimer = null;
+
+  push(opts) {
+    if (!this.#current) { this.#show(opts); return; }
+    if ((TIER_ORDER[opts.tier] ?? 1) > (TIER_ORDER[this.#current.tier] ?? 1)) {
+      this.#interrupt(opts);
+    } else {
+      if (this.#queue.length < 5) this.#queue.push(opts);
+    }
+  }
+
+  #show(opts) {
+    this.#current = opts;
+    const el = this.#render(opts);
+    document.getElementById('alert-container').appendChild(el);
+
+    requestAnimationFrame(() => {
+      el.classList.add('enter');
+      el.addEventListener('animationend', () => {
+        this.#holdTimer = setTimeout(() => this.#exit(el), TIER_DUR[opts.tier] ?? 3000);
+      }, { once: true });
+    });
+  }
+
+  #exit(el) {
+    el.style.animation = 'banner-exit 0.35s ease-in forwards';
+    el.addEventListener('animationend', () => {
+      el.remove();
+      this.#current = null;
+      if (this.#queue.length) setTimeout(() => this.#show(this.#queue.shift()), 250);
+    }, { once: true });
+  }
+
+  #interrupt(next) {
+    clearTimeout(this.#holdTimer);
+    const cur = document.getElementById('alert-container').firstChild;
+    if (cur) {
+      cur.style.animation = 'banner-exit 0.2s ease-in forwards';
+      cur.addEventListener('animationend', () => { cur.remove(); this.#current = null; this.#show(next); }, { once: true });
+    } else {
+      this.#current = null;
+      this.#show(next);
+    }
+  }
+
+  #render({ tier, icon, text, subText, bannerColor, glowColor }) {
+    const el = document.createElement('div');
+    el.className = `alert-banner alert-banner--${tier}`;
+    if (bannerColor) el.style.setProperty('--banner-bg',   bannerColor);
+    if (glowColor)   el.style.setProperty('--banner-glow', glowColor);
+
+    el.innerHTML = `
+      <div class="alert-banner__icon-wrap"><span class="alert-banner__icon">${icon ?? '✨'}</span></div>
+      <div class="alert-banner__text">
+        <div class="alert-banner__main">${escHtml(text ?? '')}</div>
+        ${subText ? `<div class="alert-banner__sub">${escHtml(subText)}</div>` : ''}
+      </div>`;
+    return el;
+  }
+}
+
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+const alertQueue = new AlertQueue();
+
+// ═══════════════════════════════════════════════════════ Widgets
+
+// Crowd Meter
+const $crowdFill  = document.getElementById('crowd-fill');
+const $crowdVal   = document.getElementById('crowd-value');
+const $crowdMeter = document.getElementById('widget-crowd-meter');
+const $crowdEmoji = document.getElementById('crowd-emoji');
+const $edgeGlow   = document.getElementById('edge-glow');
+const $wsDot      = document.getElementById('ws-dot');
+
+const CROWD_EMOJIS = [[99,'💥'],[90,'🔥'],[75,'🔥'],[50,'👀'],[25,'😮'],[0,'💤']];
+
+function setCrowdEnergy(v) {
+  const pct = Math.max(0, Math.min(100, v));
+  $crowdFill.style.width = `${pct}%`;
+  $crowdVal.textContent  = `${Math.round(pct)} / 100`;
+  $crowdMeter.classList.toggle('crowd-meter-hot', pct >= 76);
+  $crowdMeter.classList.toggle('crowd-meter-max', pct >= 99);
+  $crowdEmoji.textContent = (CROWD_EMOJIS.find(([t]) => pct >= t) ?? [0,'💤'])[1];
+  setEdgeGlow(pct);
+}
+
+function setEdgeGlow(pct) {
+  let shadow = '';
+  if      (pct >= 99) shadow = 'inset 0 0 160px 30px rgba(255,215,0,0.35), inset 0 0 320px 60px rgba(255,69,0,0.18)';
+  else if (pct >= 90) shadow = 'inset 0 0 130px 22px rgba(255,69,0,0.28),  inset 0 0 260px 50px rgba(255,0,40,0.10)';
+  else if (pct >= 75) shadow = 'inset 0 0 110px 18px rgba(255,107,107,0.22)';
+  else if (pct >= 50) shadow = 'inset 0 0 90px  14px rgba(145,71,255,0.16)';
+  else if (pct >= 25) shadow = 'inset 0 0 70px  10px rgba(77,150,255,0.10)';
+  $edgeGlow.style.boxShadow = shadow;
+}
+
+setCrowdEnergy(0);
+
+// Combo Display
+const $combo      = document.getElementById('widget-combo');
+const $comboMult  = document.getElementById('combo-mult');
+const $comboLabel = document.getElementById('combo-label');
+const $comboBar   = document.getElementById('combo-bar');
+let   comboTimer  = null;
+
+function showCombo({ level, label, expiresAt, count }) {
+  $combo.dataset.level    = level;
+  $comboMult.textContent  = `×${level}`;
+  $comboLabel.textContent = label;
+  $comboMult.style.animation = 'none';
+  $comboMult.offsetHeight;
+  $comboMult.style.animation = 'combo-punch 0.4s cubic-bezier(0.34,1.56,0.64,1)';
+  $combo.classList.add('visible');
+
+  clearInterval(comboTimer);
+  if (expiresAt) {
+    const total = expiresAt - Date.now();
+    const tick = () => {
+      const rem = Math.max(0, expiresAt - Date.now());
+      $comboBar.style.transform = `scaleX(${rem / total})`;
+      if (rem <= 0) { clearInterval(comboTimer); $combo.classList.remove('visible'); }
+    };
+    comboTimer = setInterval(tick, 50);
+  }
+}
+
+// Goal Bars
+const $goals = document.getElementById('widget-goals');
+const goalEls = new Map();
+
+function renderGoals(goals) {
+  if (!goals?.length) return;
+  const active = goals.filter(g => g.active);
+  $goals.innerHTML = '';
+  goalEls.clear();
+  for (const g of active) {
+    const el = document.createElement('div');
+    el.className = 'goal-bar' + (g.completed ? ' completed' : '');
+    el.innerHTML = `
+      <div class="goal-bar__label">${escHtml(g.label)}<span id="gv-${g.id}">0/${g.target}</span></div>
+      <div class="goal-bar__track"><div class="goal-bar__fill" id="gf-${g.id}"></div></div>`;
+    $goals.appendChild(el);
+    goalEls.set(g.id, el);
+  }
+}
+
+function updateGoalProgress(goals, session) {
+  for (const g of goals ?? []) {
+    const fill = document.getElementById(`gf-${g.id}`);
+    const val  = document.getElementById(`gv-${g.id}`);
+    if (!fill) continue;
+    const current = getNestedVal(session, g.metric) ?? 0;
+    const pct     = Math.min(100, (current / g.target) * 100);
+    const prevW   = parseFloat(fill.style.width) || 0;
+    fill.style.width = `${pct}%`;
+    if (pct > prevW + 0.5) triggerGoalShimmer(fill);
+    if (val) val.textContent = `${current}/${g.target}`;
+    goalEls.get(g.id)?.classList.toggle('completed', !!g.completed);
+  }
+}
+
+function triggerGoalShimmer(fillEl) {
+  fillEl.classList.remove('shimmer');
+  fillEl.offsetWidth;
+  fillEl.classList.add('shimmer');
+  fillEl.addEventListener('animationend', () => fillEl.classList.remove('shimmer'), { once: true });
+}
+
+function getNestedVal(obj, path) {
+  return path?.split('.').slice(1).reduce((o, k) => o?.[k], obj);
+}
+
+// Leaderboard
+const $lb     = document.getElementById('widget-leaderboard');
+const $lbList = document.getElementById('lb-list');
+
+function renderLeaderboard(lb) {
+  const entries = Object.entries(lb?.bits ?? {})
+    .sort((a, b) => b[1] - a[1]).slice(0, 5);
+  if (!entries.length) { $lb.classList.remove('has-data'); return; }
+  $lb.classList.add('has-data');
+  $lbList.innerHTML = entries.map(([user, bits], i) =>
+    `<div class="lb-entry">
+      <div class="lb-rank lb-rank--${i+1}">${i+1}</div>
+      <div class="lb-name">${escHtml(user)}</div>
+      <div class="lb-value">${bits.toLocaleString()} bits</div>
+    </div>`
+  ).join('');
+}
+
+// ═══════════════════════════════════════════════════════ WebSocket
+
+let   ws           = null;
+let   wsRetries    = 0;
+let   demoFired    = false;
+let   demoTimeout  = null;
+const WS_URL       = `ws://${location.hostname}:${location.port || 4747}`;
+
+function connectWS() {
+  clearTimeout(demoTimeout);
+  ws = new WebSocket(WS_URL);
+
+  ws.addEventListener('open', () => {
+    wsRetries = 0;
+    $wsDot.classList.remove('disconnected');
+    ws.send(JSON.stringify({ type: 'register', client: 'overlay' }));
+  });
+
+  ws.addEventListener('message', ({ data }) => {
+    let msg;
+    try { msg = JSON.parse(data); } catch { return; }
+    handleMessage(msg);
+  });
+
+  ws.addEventListener('close', () => {
+    wsRetries++;
+    $wsDot.classList.add('disconnected');
+    if (wsRetries === 3 && !demoFired) demoTimeout = setTimeout(runDemo, 2000);
+    setTimeout(connectWS, Math.min(2000 * wsRetries, 20000));
+  });
+
+  ws.addEventListener('error', () => {});
+}
+
+function handleMessage(msg) {
+  switch (msg.type) {
+    case 'effect':
+      dispatchEffect(msg.effect, msg.payload ?? {});
+      break;
+    case 'state':
+      handleState(msg.path, msg.value);
+      break;
+    case 'ping':
+      ws?.send(JSON.stringify({ type: 'pong' }));
+      break;
+  }
+}
+
+function dispatchEffect(effect, p) {
+  switch (effect) {
+    case 'balloon':         spawnBalloon(p.count ?? 1);         break;
+    case 'firework':        spawnFireworkRandom();               break;
+    case 'firework-salvo':  spawnFireworkSalvo(p.count ?? 4);   break;
+    case 'confetti':        spawnConfetti();                     break;
+    case 'sticker-rain':    spawnStickerRain(p.duration ?? 7000); break;
+    case 'crowd-explosion': spawnCrowdExplosion();               break;
+    case 'alert-banner':    alertQueue.push(p);                  break;
+    case 'floating-text':   spawnFloatingText(p.text, p.x, p.y); break;
+    case 'combo-display':   showCombo(p);                        break;
+    case 'crowd-boost': {
+      const next = Math.min(100, (state.crowdEnergy ?? 0) + (p.amount ?? 20));
+      setCrowdEnergy(next);
+      state.crowdEnergy = next;
+      break;
+    }
+  }
+}
+
+const state = { crowdEnergy: 0, goals: [], session: {} };
+
+function handleState(path, value) {
+  switch (path) {
+    case 'crowd.energy':
+      state.crowdEnergy = value;
+      setCrowdEnergy(value);
+      break;
+    case 'crowd.combo':
+      if (value) showCombo(value);
+      break;
+    case 'goals':
+      state.goals = value;
+      renderGoals(value);
+      updateGoalProgress(value, state.session);
+      break;
+    case 'leaderboard':
+      renderLeaderboard(value);
+      break;
+    case 'session':
+      state.session = value;
+      updateGoalProgress(state.goals, value);
+      break;
+  }
+}
+
+// ═══════════════════════════════════════════════════════ Demo Mode
+
+function runDemo() {
+  if (demoFired) return;
+  demoFired = true;
+
+  const seq = [
+    // Stream warms up
+    [300,  () => alertQueue.push({ tier: 'B', icon: '💚', text: 'NewViewer123 followed!' })],
+    [600,  () => spawnBalloon(2)],
+    [900,  () => alertQueue.push({ tier: 'A', icon: '💜', text: 'RegularFan subscribed!', subText: "Let's gooo LilFokker!!", bannerColor: '#9147FF', glowColor: 'rgba(145,71,255,0.6)' })],
+    [1100, () => spawnFireworkRandom()],
+    [1300, () => spawnBalloon(3)],
+    [1600, () => { setCrowdEnergy(22); state.crowdEnergy = 22; }],
+    // Building momentum
+    [2200, () => alertQueue.push({ tier: 'A', icon: '💎', text: 'BitsDaddy cheered 500 bits!', bannerColor: '#FF6905', glowColor: 'rgba(255,105,5,0.6)' })],
+    [2400, () => spawnFireworkRandom()],
+    [2600, () => { setCrowdEnergy(42); state.crowdEnergy = 42; }],
+    [3000, () => spawnBalloon(4)],
+    // Gift bomb
+    [3600, () => alertQueue.push({ tier: 'A', icon: '🎁', text: 'GiftKing gifted 5 subs!', bannerColor: '#FF9A3C', glowColor: 'rgba(255,154,60,0.6)' })],
+    [3800, () => spawnFireworkSalvo(3)],
+    [4000, () => { setCrowdEnergy(62); state.crowdEnergy = 62; }],
+    // Sub train combo unlocks
+    [4600, () => showCombo({ level: 2, label: 'SUB STORM', expiresAt: Date.now() + 22000, count: 3 })],
+    [5000, () => spawnConfetti()],
+    [5200, () => { setCrowdEnergy(75); state.crowdEnergy = 75; }],
+    [5600, () => showCombo({ level: 3, label: 'SUB TRAIN', expiresAt: Date.now() + 20000, count: 7 })],
+    // MEGA gift bomb — Tier S
+    [6400, () => alertQueue.push({ tier: 'S', icon: '🎁', text: 'MegaGifter gifted 20 subs!!!' })],
+    [6600, () => spawnFireworkSalvo(5)],
+    [6900, () => { setCrowdEnergy(91); state.crowdEnergy = 91; }],
+    // Incoming RAID
+    [7800, () => alertQueue.push({ tier: 'S', icon: '⚡', text: 'RaidArmy raided with 350 viewers!!!' })],
+    [8200, () => { setCrowdEnergy(100); state.crowdEnergy = 100; }],
+    [8300, () => spawnCrowdExplosion()],
+    // Stream is POPPING
+    [10500, () => spawnStickerRain(6000)],
+    [11000, () => spawnBalloon(10)],
+    [11500, () => showCombo({ level: 4, label: 'SUB TSUNAMI', expiresAt: Date.now() + 25000, count: 12 })],
+    [12000, () => renderLeaderboard({ bits: { 'BitsDaddy': 18500, 'GiftKing': 12000, 'MegaGifter': 9200, 'LilFan': 5100, 'PogChamp': 2800 } })],
+    [12500, () => spawnFireworkSalvo(4)],
+  ];
+  seq.forEach(([ms, fn]) => setTimeout(fn, ms));
+}
+
+// ═══════════════════════════════════════════════════════ Init
+
+connectWS();
+// Run demo immediately if ?demo=1 in URL
+if (new URLSearchParams(location.search).get('demo') === '1') {
+  demoFired = false;
+  setTimeout(runDemo, 500);
+}
+
+// Expose for dashboard test panel
+window.FokkerPop = { dispatchEffect, alertQueue, setCrowdEnergy };
+</script>
+</body>
+</html>
