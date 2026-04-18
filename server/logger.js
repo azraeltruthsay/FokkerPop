@@ -11,9 +11,10 @@ try {
   const logDir = join(ROOT, 'logs');
   mkdirSync(logDir, { recursive: true });
   const name = `fokkerpop-${new Date().toISOString().slice(0,10)}.log`;
-  fileStream = createWriteStream(join(logDir, name), { flags: 'a' });
-} catch {
-  // Non-fatal — we still log to console
+  fileStream = createWriteStream(join(logDir, name), { flags: 'a', highWaterMark: 1 });
+  fileStream.on('error', (err) => console.error('[LOGGER ERROR] File stream error:', err.message));
+} catch (err) {
+  console.error('[LOGGER ERROR] Failed to open log file:', err.message);
 }
 
 function write(level, ...args) {

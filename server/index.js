@@ -310,6 +310,20 @@ const httpServer = createServer((req, res) => {
     return res.end(JSON.stringify(assets));
   }
 
+  if (path === '/api/logs' && req.method === 'GET') {
+    const logName = `fokkerpop-${new Date().toISOString().slice(0,10)}.log`;
+    const logPath = join(ROOT, 'logs', logName);
+    let content = 'No logs found for today.';
+    try {
+      if (existsSync(logPath)) {
+        const raw = readFileSync(logPath, 'utf8');
+        content = raw.split('\n').slice(-100).join('\n');
+      }
+    } catch (err) { content = 'Error reading logs: ' + err.message; }
+    res.writeHead(200, { 'Content-Type': 'text/plain' });
+    return res.end(content);
+  }
+
   if (path === '/api/settings' && req.method === 'GET') {
     const s = { ...settings };
     if (s.twitch) s.twitch = { ...s.twitch, accessToken: '***', refreshToken: '***', clientSecret: '***' };

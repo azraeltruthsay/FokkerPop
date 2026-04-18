@@ -604,6 +604,7 @@ html, body {
       const page = btn.dataset.page;
       document.getElementById(`page-${page}`)?.classList.add('active');
       if (window.populateSimulatorRedeems && page === 'effects') window.populateSimulatorRedeems();
+      if (window.fetchSystemLogs && page === 'log') window.fetchSystemLogs();
     });
   </script>
 <div id="app">
@@ -917,6 +918,14 @@ html, body {
           <button class="btn btn-ghost btn-sm" onclick="clearLog()">Clear</button>
         </div>
         <div id="event-log"></div>
+      </div>
+
+      <div class="card" style="margin-top:20px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+          <div class="card-title" style="margin:0;">System Logs (server/logs/)</div>
+          <button class="btn btn-ghost btn-sm" onclick="fetchSystemLogs()">↻ Refresh</button>
+        </div>
+        <pre id="system-logs" style="background:var(--bg); padding:15px; border-radius:8px; font-family:monospace; font-size:0.75rem; color:var(--text-dim); height:300px; overflow-y:auto; white-space:pre-wrap; word-break:break-all; border:1px solid var(--border);"></pre>
       </div>
     </div>
 

@@ -381,6 +381,17 @@ function rowMatchesFilter(row, filter) {
   return group ? group.has(row.dataset.type) : true;
 }
 
+window.fetchSystemLogs = function() {
+  const el = document.getElementById('system-logs');
+  if (!el) return;
+  fetch('/api/logs').then(r => r.text()).then(txt => {
+    el.textContent = txt;
+    el.scrollTop = el.scrollHeight;
+  }).catch(err => {
+    el.textContent = 'Failed to fetch logs: ' + err.message;
+  });
+};
+
 function appendLog(event) {
   if (!event) return;
   const ts   = new Date(event.ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
