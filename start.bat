@@ -7,9 +7,11 @@ echo.
 echo  ==========================================
 echo    FokkerPop : Diagnostic Check
 echo  ==========================================
+echo.
+echo  Current Folder: "%cd%"
+echo.
 
 :: 1. Check if running from a Temp folder (un-extracted ZIP)
-:: Quoting "%cd%" handles paths with spaces, &, (, ), etc.
 echo "%cd%" | findstr /i "Temp" >nul
 if %errorlevel% equ 0 (
     echo.
@@ -23,8 +25,6 @@ if %errorlevel% equ 0 (
     echo  2. Right-click the ZIP file and choose "Extract All..."
     echo  3. Open the NEW folder that is created.
     echo  4. Run start.bat from there.
-    echo.
-    echo  Folder: "%cd%"
     echo.
     pause
     exit /b
@@ -45,7 +45,7 @@ if not exist "node\node.exe" (
     echo  3. Under "Assets", click: 'FokkerPop-vX.X.X-windows.zip'
     echo     (NOT the 'Source code' links!)
     echo.
-    echo  Folder: "%cd%"
+    echo  TIP: Detailed logs are stored in the "logs" folder.
     echo.
     pause
     exit /b
@@ -61,7 +61,7 @@ if not exist "node_modules\ws" (
     echo  The application folder is incomplete. If you used the correct 
     echo  zip, please try extracting it again to a new folder.
     echo.
-    echo  Folder: "%cd%"
+    echo  TIP: Detailed logs are stored in the "logs" folder.
     echo.
     pause
     exit /b
