@@ -78,13 +78,13 @@ jobs:
           zip -r "${PKG}.zip" "${PKG}/"
           
           # Create Self-Extracting Installer (SFX)
-          # Use 24.08 as a known stable version for now
-          wget -q https://www.7-zip.org/a/7z2408-extra.7z -O 7z-extra.7z
-          sudo apt-get install -y p7zip-full
+          # Use curl with User-Agent to avoid being blocked, and try a different version if needed
+          curl -L -A "Mozilla/5.0" -o 7z-extra.7z "https://www.7-zip.org/a/7z2408-extra.7z"
+          
+          # Extract 7zS.sfx (using built-in 7z on runner)
           7z e 7z-extra.7z 7zS.sfx -r -y
           
           # SFX Config (InstallPath="." means extract to current folder)
-          # Note: Title and BeginPrompt are optional but helpful
           printf ";!@Install@!UTF-8!\nTitle=\"FokkerPop Updater\"\nBeginPrompt=\"Update FokkerPop in the current folder?\"\nInstallPath=\".\"\n;!@InstallEnd@!\n" > sfx_config.txt
           
           # 7z Archive of the *contents* of the folder (so it extracts flat)
