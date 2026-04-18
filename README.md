@@ -41,7 +41,7 @@ Your `settings.json` is created automatically and is never uploaded anywhere.
 
 ## Updating
 
-Download the new zip, extract it next to your old folder, then copy your `settings.json` into the new folder. The old folder can be deleted.
+Download the new zip, and **extract it directly into your existing folder** (overwrite everything). Your `settings.json`, `goals.json`, `redeems.json`, and any custom stickers/sounds will be preserved.
 
 ## Manual Setup (for developers)
 

@@ -15,19 +15,32 @@ import log                   from './logger.js';
 const PORT   = settings.server?.port ?? 4747;
 const BIND   = '127.0.0.1';   // local only — never expose to LAN
 
-const goals  = loadJson('goals.json')  ?? [];
-const redeems = loadJson('redeems.json') ?? {};
+const goals   = loadAndEnsureJson('goals.json',   []);
+const redeems = loadAndEnsureJson('redeems.json', {});
 state.set('goals', goals);
 
-function loadJson(name) {
-  const p = join(ROOT, name);
-  if (!existsSync(p)) return null;
-  try {
-    return JSON.parse(readFileSync(p, 'utf8'));
-  } catch (err) {
-    log.error(`Failed to parse ${name}:`, err.message);
-    return null;
+function loadAndEnsureJson(name, defaultData) {
+  const p  = join(ROOT, name);
+  const ep = join(ROOT, name.replace('.json', '.example.json'));
+
+  if (existsSync(p)) {
+    try {
+      return JSON.parse(readFileSync(p, 'utf8'));
+    } catch (err) {
+      log.error(`Failed to parse ${name}:`, err.message);
+      return defaultData;
+    }
   }
+
+  // Fallback to example
+  const data = existsSync(ep) ? JSON.parse(readFileSync(ep, 'utf8')) : defaultData;
+  try {
+    writeFileSync(p, JSON.stringify(data, null, 2));
+    log.info(`Created default ${name} from example.`);
+  } catch (err) {
+    log.error(`Failed to create ${name}:`, err.message);
+  }
+  return data;
 }
 
 // ── Client registry ───────────────────────────────────────────────────────────
