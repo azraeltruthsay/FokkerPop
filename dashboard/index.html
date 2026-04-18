@@ -8,20 +8,22 @@
 *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
 
 :root {
-  --bg:        #0d0d14;
-  --surface:   #14141f;
-  --surface2:  #1c1c2e;
+  --bg:        #0b0b12;
+  --surface:   #12121c;
+  --surface2:  #1a1a28;
   --border:    rgba(255,255,255,0.07);
   --text:      #e8e8f0;
-  --text-dim:  rgba(232,232,240,0.45);
+  --text-dim:  rgba(232,232,240,0.42);
   --accent:    #9147FF;
   --accent2:   #4D96FF;
   --green:     #6BCB77;
   --orange:    #FF9A3C;
   --gold:      #FFD700;
   --red:       #FF6B6B;
+  --cyan:      #00C9FF;
+  --pink:      #FF6FC8;
   --radius:    12px;
-  --sidebar-w: 220px;
+  --sidebar-w: 224px;
 }
 
 html, body {
@@ -46,21 +48,44 @@ html, body {
   flex-direction: column;
   padding: 0 0 16px;
 }
+
 .sidebar-logo {
-  padding: 22px 20px 18px;
+  padding: 22px 20px 16px;
   border-bottom: 1px solid var(--border);
-  margin-bottom: 12px;
+  margin-bottom: 10px;
 }
 .sidebar-logo h1 {
-  font-size: 1.25rem;
+  font-size: 1.3rem;
   font-weight: 900;
-  background: linear-gradient(90deg, #9147FF, #4D96FF);
+  background: linear-gradient(90deg, #9147FF, #4D96FF, #C77DFF, #9147FF);
+  background-size: 250% auto;
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
-  letter-spacing: -0.01em;
+  letter-spacing: -0.02em;
+  animation: logo-shift 6s linear infinite;
 }
-.sidebar-logo p { font-size: 0.7rem; color: var(--text-dim); margin-top: 2px; }
+@keyframes logo-shift {
+  from { background-position: 0%   center; }
+  to   { background-position: 250% center; }
+}
+.sidebar-version {
+  font-size: 0.65rem;
+  color: var(--text-dim);
+  margin-top: 3px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.sidebar-version .v-badge {
+  background: rgba(145,71,255,0.15);
+  color: var(--accent);
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-weight: 700;
+  font-size: 0.6rem;
+  letter-spacing: 0.05em;
+}
 
 .nav-item {
   display: flex;
@@ -71,16 +96,27 @@ html, body {
   font-weight: 600;
   font-size: 0.85rem;
   cursor: pointer;
-  border-radius: 0;
-  transition: color 0.15s, background 0.15s;
   border: none;
   background: none;
   width: 100%;
   text-align: left;
+  transition: color 0.15s, background 0.15s;
+  position: relative;
 }
 .nav-item:hover { color: var(--text); background: rgba(255,255,255,0.04); }
-.nav-item.active { color: var(--accent); background: rgba(145,71,255,0.12); }
-.nav-icon { font-size: 1.05rem; width: 20px; text-align: center; }
+.nav-item.active {
+  color: var(--accent);
+  background: rgba(145,71,255,0.1);
+}
+.nav-item.active::before {
+  content: '';
+  position: absolute;
+  left: 0; top: 4px; bottom: 4px;
+  width: 3px;
+  background: var(--accent);
+  border-radius: 0 3px 3px 0;
+}
+.nav-icon { font-size: 1rem; width: 20px; text-align: center; }
 
 .sidebar-spacer { flex: 1; }
 
@@ -88,13 +124,14 @@ html, body {
   margin: 0 12px;
   padding: 8px 12px;
   border-radius: 8px;
-  font-size: 0.75rem;
+  font-size: 0.72rem;
   font-weight: 700;
   text-align: center;
+  transition: background 0.3s, color 0.3s;
 }
-.connection-badge.connected    { background: rgba(107,203,119,0.15); color: var(--green); }
-.connection-badge.disconnected { background: rgba(255,107,107,0.15); color: var(--red);   }
-.connection-badge.connecting   { background: rgba(255,154,60,0.15);  color: var(--orange); }
+.connection-badge.connected    { background: rgba(107,203,119,0.12); color: var(--green); }
+.connection-badge.disconnected { background: rgba(255,107,107,0.12); color: var(--red);   }
+.connection-badge.connecting   { background: rgba(255,154,60,0.12);  color: var(--orange); }
 
 /* ── Main ── */
 #main {
@@ -102,18 +139,41 @@ html, body {
   overflow-y: auto;
   overflow-x: hidden;
 }
-#main::-webkit-scrollbar { width: 6px; }
+#main::-webkit-scrollbar { width: 5px; }
 #main::-webkit-scrollbar-track { background: transparent; }
-#main::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 99px; }
+#main::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.09); border-radius: 99px; }
 
-.page { display: none; padding: 28px 32px; }
+.page { display: none; padding: 28px 32px 40px; }
 .page.active { display: block; }
 
-.page-title {
-  font-size: 1.3rem;
-  font-weight: 800;
+.page-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
   margin-bottom: 24px;
+}
+.page-title {
+  font-size: 1.25rem;
+  font-weight: 800;
   color: var(--text);
+}
+
+/* LIVE indicator dot */
+.live-dot {
+  width: 9px; height: 9px;
+  border-radius: 50%;
+  background: var(--red);
+  flex-shrink: 0;
+  opacity: 0;
+  transition: opacity 0.4s;
+}
+.live-dot.active {
+  opacity: 1;
+  animation: live-pulse 1.8s ease-in-out infinite;
+}
+@keyframes live-pulse {
+  0%, 100% { box-shadow: 0 0 0 0   rgba(255,107,107,0.5); }
+  50%       { box-shadow: 0 0 0 5px rgba(255,107,107,0);   }
 }
 
 /* ═══════════════════════════════════════════════ Cards */
@@ -121,13 +181,13 @@ html, body {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 20px;
-  margin-bottom: 16px;
+  padding: 18px 20px;
+  margin-bottom: 14px;
 }
 .card-title {
-  font-size: 0.7rem;
+  font-size: 0.66rem;
   font-weight: 700;
-  letter-spacing: 0.12em;
+  letter-spacing: 0.13em;
   text-transform: uppercase;
   color: var(--text-dim);
   margin-bottom: 14px;
@@ -138,24 +198,52 @@ html, body {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   gap: 12px;
-  margin-bottom: 16px;
+  margin-bottom: 14px;
 }
 .stat-card {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: 16px 18px;
+  position: relative;
+  overflow: hidden;
+  border-top: 2px solid var(--c, var(--border));
 }
-.stat-label { font-size: 0.68rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-dim); }
-.stat-value { font-size: 2rem; font-weight: 900; color: var(--text); margin-top: 4px; line-height: 1; }
-.stat-value.accent  { color: var(--accent);  }
-.stat-value.green   { color: var(--green);   }
-.stat-value.orange  { color: var(--orange);  }
-.stat-value.gold    { color: var(--gold);    }
+/* Subtle top-color gradient wash */
+.stat-card::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 60%;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--c, transparent) 8%, transparent) 0%, transparent 100%);
+  pointer-events: none;
+}
+.stat-card--sub    { --c: var(--accent); }
+.stat-card--bits   { --c: var(--gold);   }
+.stat-card--follow { --c: var(--green);  }
+.stat-card--raid   { --c: var(--orange); }
+
+.stat-label { font-size: 0.66rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-dim); }
+.stat-value {
+  font-size: 2rem; font-weight: 900;
+  color: var(--text);
+  margin-top: 5px; line-height: 1;
+  transition: color 0.3s;
+}
+.stat-value.accent { color: var(--accent);  }
+.stat-value.green  { color: var(--green);   }
+.stat-value.orange { color: var(--orange);  }
+.stat-value.gold   { color: var(--gold);    }
+.stat-value.bump   { animation: stat-bump 0.45s ease-out; }
+@keyframes stat-bump {
+  0%   { transform: scale(1);    filter: brightness(1);   }
+  35%  { transform: scale(1.14); filter: brightness(1.5); }
+  100% { transform: scale(1);    filter: brightness(1);   }
+}
 
 /* ═══════════════════════════════════════════════ Crowd Meter (dashboard) */
 .db-crowd-track {
-  height: 12px;
+  height: 14px;
   background: rgba(255,255,255,0.06);
   border-radius: 99px;
   overflow: hidden;
@@ -194,43 +282,113 @@ html, body {
 .btn-gold    { background: var(--gold);    color: #1a0d00; }
 .btn-red     { background: var(--red);     color: #1a0000; }
 .btn-ghost   { background: rgba(255,255,255,0.06); color: var(--text); border: 1px solid var(--border); }
-.btn-sm      { padding: 5px 10px; font-size: 0.75rem; }
+.btn-sm      { padding: 5px 11px; font-size: 0.75rem; }
 
-/* ═══════════════════════════════════════════════ Effect Test Grid */
+/* ═══════════════════════════════════════════════ Effect Buttons */
 .effect-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
   gap: 10px;
 }
+
 .effect-btn {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 6px;
-  padding: 14px 10px;
+  gap: 0;
+  padding: 14px 8px 12px;
   background: var(--surface2);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   cursor: pointer;
-  font-size: 0.8rem;
+  font-size: 0.78rem;
   font-weight: 700;
-  color: var(--text);
-  transition: background 0.15s, border-color 0.15s, transform 0.1s;
+  color: var(--text-dim);
+  transition: background 0.15s, border-color 0.2s, transform 0.1s, color 0.15s, box-shadow 0.2s;
   text-align: center;
+  position: relative;
+  overflow: hidden;
 }
-.effect-btn:hover  { background: rgba(255,255,255,0.06); border-color: rgba(255,255,255,0.15); }
+.effect-btn:hover {
+  background: rgba(255,255,255,0.04);
+  border-color: var(--c, rgba(255,255,255,0.2));
+  color: var(--text);
+  box-shadow: 0 0 20px color-mix(in srgb, var(--c, transparent) 20%, transparent);
+}
 .effect-btn:active { transform: scale(0.94); }
-.effect-btn .icon  { font-size: 1.8rem; }
+
+/* Colored icon circle */
+.effect-btn .icon-bg {
+  width: 52px; height: 52px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--c, rgba(255,255,255,0.08)) 14%, transparent);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 1.7rem;
+  margin-bottom: 8px;
+  transition: background 0.2s, transform 0.15s;
+  border: 1px solid color-mix(in srgb, var(--c, rgba(255,255,255,0.1)) 25%, transparent);
+}
+.effect-btn:hover .icon-bg {
+  background: color-mix(in srgb, var(--c, rgba(255,255,255,0.1)) 24%, transparent);
+  transform: scale(1.1);
+}
+.effect-btn:active .icon-bg { transform: scale(0.9); }
+
+/* Click ripple */
+.effect-btn.fired::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: color-mix(in srgb, var(--c, white) 20%, transparent);
+  animation: btn-ripple 0.35s ease-out forwards;
+  pointer-events: none;
+}
+@keyframes btn-ripple {
+  from { opacity: 1; }
+  to   { opacity: 0; }
+}
+
+/* Section header for effect groups */
+.effects-section { margin-bottom: 14px; }
+.effects-section-label {
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  margin-bottom: 10px;
+}
 
 /* ═══════════════════════════════════════════════ Event Log */
+.log-filters {
+  display: flex;
+  gap: 5px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+.log-filter {
+  padding: 3px 10px;
+  border-radius: 99px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  cursor: pointer;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-dim);
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.log-filter:hover   { color: var(--text); border-color: rgba(255,255,255,0.2); }
+.log-filter.active  { background: rgba(145,71,255,0.18); color: var(--accent); border-color: rgba(145,71,255,0.4); }
+
 #event-log {
-  height: 320px;
+  height: 340px;
   overflow-y: auto;
   background: var(--bg);
   border-radius: 8px;
   padding: 8px;
   font-family: 'Cascadia Code', 'Consolas', monospace;
-  font-size: 0.75rem;
+  font-size: 0.74rem;
 }
 #event-log::-webkit-scrollbar { width: 4px; }
 #event-log::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 99px; }
@@ -241,23 +399,25 @@ html, body {
   padding: 4px 6px;
   border-radius: 4px;
   line-height: 1.5;
-  animation: log-fade-in 0.2s ease;
+  animation: log-in 0.2s ease;
 }
 .log-entry:hover { background: rgba(255,255,255,0.03); }
-.log-ts    { color: var(--text-dim); flex-shrink: 0; }
-.log-type  { font-weight: 700; flex-shrink: 0; min-width: 100px; }
-.log-type.follow   { color: var(--green);  }
-.log-type.sub      { color: var(--accent); }
-.log-type.gifted   { color: var(--orange); }
-.log-type.cheer    { color: #00CFFF;       }
-.log-type.raid     { color: var(--gold);   }
-.log-type.combo    { color: var(--gold);   }
-.log-type.redeem   { color: #FF6FC8;       }
-.log-type.hype     { color: var(--red);    }
-.log-type.other    { color: var(--text-dim); }
-.log-body  { color: rgba(232,232,240,0.65); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.log-entry.hidden { display: none; }
 
-@keyframes log-fade-in {
+.log-ts   { color: var(--text-dim); flex-shrink: 0; width: 75px; }
+.log-type { font-weight: 700; flex-shrink: 0; min-width: 105px; }
+.log-type.follow  { color: var(--green);  }
+.log-type.sub     { color: var(--accent); }
+.log-type.gifted  { color: var(--orange); }
+.log-type.combo   { color: var(--gold);   }
+.log-type.cheer   { color: var(--cyan);   }
+.log-type.raid    { color: var(--gold);   }
+.log-type.redeem  { color: var(--pink);   }
+.log-type.hype    { color: var(--red);    }
+.log-type.other   { color: var(--text-dim); }
+.log-body { color: rgba(232,232,240,0.6); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+
+@keyframes log-in {
   from { opacity: 0; transform: translateY(-4px); }
   to   { opacity: 1; transform: none; }
 }
@@ -266,7 +426,7 @@ html, body {
 .goal-row {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 14px;
   padding: 14px 0;
   border-bottom: 1px solid var(--border);
 }
@@ -277,7 +437,7 @@ html, body {
 .goal-row__track { height: 6px; background: rgba(255,255,255,0.07); border-radius: 99px; overflow: hidden; margin-top: 6px; }
 .goal-row__fill  { height: 100%; background: linear-gradient(90deg, var(--green), var(--accent2)); border-radius: 99px; transition: width 0.5s; }
 .goal-row.completed .goal-row__fill { background: var(--gold); }
-.goal-row.inactive { opacity: 0.4; }
+.goal-row.inactive { opacity: 0.35; }
 
 /* ═══════════════════════════════════════════════ Setup Page */
 .setup-step {
@@ -288,114 +448,81 @@ html, body {
 }
 .setup-step:last-child { border-bottom: none; }
 .step-num {
-  width: 28px; height: 28px;
-  border-radius: 50%;
-  background: rgba(145,71,255,0.2);
+  width: 28px; height: 28px; border-radius: 50%;
+  background: rgba(145,71,255,0.18);
   color: var(--accent);
-  font-weight: 900;
-  font-size: 0.8rem;
+  font-weight: 900; font-size: 0.8rem;
   display: flex; align-items: center; justify-content: center;
-  flex-shrink: 0;
-  margin-top: 2px;
+  flex-shrink: 0; margin-top: 2px;
 }
-.step-num.done { background: rgba(107,203,119,0.2); color: var(--green); }
+.step-num.done { background: rgba(107,203,119,0.18); color: var(--green); }
 .step-content h3 { font-size: 0.9rem; font-weight: 700; margin-bottom: 5px; }
-.step-content p  { font-size: 0.8rem; color: var(--text-dim); line-height: 1.6; }
+.step-content p  { font-size: 0.8rem; color: var(--text-dim); line-height: 1.65; }
 .step-content a  { color: var(--accent2); text-decoration: none; }
 .step-content a:hover { text-decoration: underline; }
 
 .obs-url {
-  display: flex;
-  align-items: center;
-  gap: 10px;
+  display: flex; align-items: center; gap: 10px;
   margin-top: 10px;
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 10px 14px;
-  font-family: monospace;
-  font-size: 0.85rem;
-  color: var(--text);
+  background: var(--bg); border: 1px solid var(--border);
+  border-radius: 8px; padding: 10px 14px;
+  font-family: monospace; font-size: 0.85rem; color: var(--text);
 }
 .obs-url span { flex: 1; }
 
 .input-row {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-  margin-top: 10px;
-  flex-wrap: wrap;
+  display: flex; gap: 10px;
+  align-items: center; margin-top: 10px; flex-wrap: wrap;
 }
 .input-field {
   flex: 1;
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 8px 12px;
-  color: var(--text);
-  font-size: 0.82rem;
-  min-width: 160px;
-  outline: none;
-  transition: border-color 0.15s;
+  background: var(--bg); border: 1px solid var(--border);
+  border-radius: 8px; padding: 8px 12px;
+  color: var(--text); font-size: 0.82rem; min-width: 160px;
+  outline: none; transition: border-color 0.15s;
 }
 .input-field:focus { border-color: rgba(145,71,255,0.5); }
 .input-field::placeholder { color: var(--text-dim); }
 
-/* ═══════════════════════════════════════════════ Twitch Tier Pills */
-.tier-pill {
-  display: inline-block;
-  padding: 2px 8px;
-  border-radius: 99px;
-  font-size: 0.68rem;
-  font-weight: 800;
-  letter-spacing: 0.06em;
-}
-.tier-S { background: rgba(255,215,0,0.2);   color: var(--gold);   }
-.tier-A { background: rgba(145,71,255,0.2);  color: var(--accent); }
-.tier-B { background: rgba(107,203,119,0.2); color: var(--green);  }
-.tier-C { background: rgba(255,255,255,0.08); color: var(--text-dim); }
-
-/* ═══════════════════════════════════════════════ Overlay preview frame */
+/* ═══════════════════════════════════════════════ Preview iframe */
 #preview-wrap {
   position: relative;
-  background: #1a1a2e;
+  /* Subtle dark checkerboard — shows overlay transparency */
+  background-color: #0f0f1a;
+  background-image:
+    repeating-conic-gradient(#16162a 0% 25%, #0f0f1a 0% 50%);
+  background-size: 24px 24px;
   border: 1px solid var(--border);
   border-radius: var(--radius);
   overflow: hidden;
-  margin-bottom: 16px;
+  margin-bottom: 14px;
 }
 #preview-frame {
-  width: 100%;
-  aspect-ratio: 16/9;
-  border: none;
-  display: block;
-  transform-origin: top left;
+  width: 100%; aspect-ratio: 16/9;
+  border: none; display: block;
 }
 .preview-label {
-  position: absolute;
-  top: 8px; left: 10px;
-  font-size: 0.65rem;
-  font-weight: 700;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: rgba(255,255,255,0.35);
+  position: absolute; top: 8px; left: 10px;
+  font-size: 0.62rem; font-weight: 700;
+  letter-spacing: 0.1em; text-transform: uppercase;
+  color: rgba(255,255,255,0.3);
+  pointer-events: none;
+}
+.preview-actions {
+  position: absolute; top: 6px; right: 8px;
+  display: flex; gap: 6px;
 }
 
-/* ═══════════════════════════════════════════════ Toggle switch */
+/* ═══════════════════════════════════════════════ Toggle */
 .toggle {
-  position: relative;
-  display: inline-block;
-  width: 36px;
-  height: 20px;
-  flex-shrink: 0;
+  position: relative; display: inline-block;
+  width: 36px; height: 20px; flex-shrink: 0;
 }
 .toggle input { opacity: 0; width: 0; height: 0; }
 .toggle-slider {
-  position: absolute;
-  inset: 0;
+  position: absolute; inset: 0;
   background: rgba(255,255,255,0.12);
-  border-radius: 99px;
-  cursor: pointer;
+  border-radius: 99px; cursor: pointer;
   transition: background 0.2s;
 }
 .toggle-slider::before {
@@ -403,17 +530,40 @@ html, body {
   position: absolute;
   width: 14px; height: 14px;
   left: 3px; top: 3px;
-  background: white;
-  border-radius: 50%;
+  background: white; border-radius: 50%;
   transition: transform 0.2s;
 }
 .toggle input:checked + .toggle-slider { background: var(--accent); }
 .toggle input:checked + .toggle-slider::before { transform: translateX(16px); }
 
-/* ═══════════════════════════════════════════════ Responsive tweak */
+/* ═══════════════════════════════════════════════ Leaderboard rows */
+.lb-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+  font-size: 0.82rem;
+  line-height: 1.8;
+}
+.lb-medal { width: 20px; text-align: center; flex-shrink: 0; }
+.lb-user  { flex: 1; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lb-amt   { font-size: 0.75rem; color: var(--text-dim); flex-shrink: 0; }
+
+/* ═══════════════════════════════════════════════ Custom alert form */
+.custom-alert-form {
+  display: flex; gap: 10px; flex-wrap: wrap; align-items: center;
+}
+.custom-alert-form select {
+  background: var(--bg); border: 1px solid var(--border);
+  color: var(--text); border-radius: 7px;
+  padding: 7px 10px; font-size: .82rem; outline: none;
+  cursor: pointer;
+}
+
+/* ═══════════════════════════════════════════════ Responsive */
 @media (max-width: 900px) {
-  .stat-grid { grid-template-columns: repeat(2, 1fr); }
-  .effect-grid { grid-template-columns: repeat(3, 1fr); }
+  .stat-grid { grid-template-columns: repeat(2,1fr); }
+  .effect-grid { grid-template-columns: repeat(3,1fr); }
 }
 </style>
 </head>
@@ -424,7 +574,10 @@ html, body {
   <nav id="sidebar">
     <div class="sidebar-logo">
       <h1>FokkerPop</h1>
-      <p>Overlay Dashboard</p>
+      <div class="sidebar-version">
+        <span class="v-badge">v0.1.0</span>
+        Overlay Dashboard
+      </div>
     </div>
 
     <button class="nav-item active" data-page="live">
@@ -450,24 +603,27 @@ html, body {
   <!-- ── Main ── -->
   <main id="main">
 
-    <!-- ════════════════════════════ LIVE PAGE -->
+    <!-- ════════════════════════ LIVE PAGE -->
     <div class="page active" id="page-live">
-      <div class="page-title">Live Session</div>
+      <div class="page-header">
+        <div class="live-dot" id="live-dot"></div>
+        <div class="page-title">Live Session</div>
+      </div>
 
       <div class="stat-grid">
-        <div class="stat-card">
+        <div class="stat-card stat-card--sub">
           <div class="stat-label">Subs</div>
           <div class="stat-value accent" id="stat-subs">0</div>
         </div>
-        <div class="stat-card">
+        <div class="stat-card stat-card--bits">
           <div class="stat-label">Bits</div>
           <div class="stat-value gold" id="stat-bits">0</div>
         </div>
-        <div class="stat-card">
+        <div class="stat-card stat-card--follow">
           <div class="stat-label">Follows</div>
           <div class="stat-value green" id="stat-follows">0</div>
         </div>
-        <div class="stat-card">
+        <div class="stat-card stat-card--raid">
           <div class="stat-label">Raids</div>
           <div class="stat-value orange" id="stat-raids">0</div>
         </div>
@@ -478,125 +634,149 @@ html, body {
         <div class="db-crowd-track">
           <div class="db-crowd-fill" id="db-crowd-fill"></div>
         </div>
-        <div style="display:flex;justify-content:space-between;margin-top:8px;align-items:center;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px;">
           <span style="font-size:.75rem;color:var(--text-dim)" id="db-crowd-val">0 / 100</span>
-          <div style="display:flex;gap:8px;">
-            <button class="btn btn-ghost btn-sm" onclick="dashSend({type:'_dashboard.crowd-boost', amount:10})">+10</button>
-            <button class="btn btn-ghost btn-sm" onclick="dashSend({type:'_dashboard.crowd-boost', amount:25})">+25</button>
-            <button class="btn btn-gold btn-sm"  onclick="dashSend({type:'_dashboard.crowd-boost', amount:100})">MAX</button>
+          <div style="display:flex;gap:6px;">
+            <button class="btn btn-ghost btn-sm" onclick="dashSend({type:'_dashboard.crowd-boost',amount:10})">+10</button>
+            <button class="btn btn-ghost btn-sm" onclick="dashSend({type:'_dashboard.crowd-boost',amount:25})">+25</button>
+            <button class="btn btn-gold  btn-sm" onclick="dashSend({type:'_dashboard.crowd-boost',amount:100})">MAX</button>
             <button class="btn btn-ghost btn-sm" onclick="dashSend({type:'_dashboard.crowd-reset'})">Reset</button>
           </div>
         </div>
       </div>
 
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
         <div class="card">
-          <div class="card-title">Top Bits</div>
-          <div id="live-lb-bits" style="font-size:.82rem;line-height:2;color:var(--text-dim)">—</div>
+          <div class="card-title">Top Cheerers</div>
+          <div id="live-lb-bits"><span style="color:var(--text-dim);font-size:.82rem">—</span></div>
         </div>
         <div class="card">
           <div class="card-title">Top Gifters</div>
-          <div id="live-lb-gifts" style="font-size:.82rem;line-height:2;color:var(--text-dim)">—</div>
+          <div id="live-lb-gifts"><span style="color:var(--text-dim);font-size:.82rem">—</span></div>
         </div>
       </div>
 
-      <div style="margin-top:8px;">
+      <div style="margin-top:10px;">
         <button class="btn btn-ghost btn-sm" onclick="dashSend({type:'_dashboard.session-reset'})" style="color:var(--red)">
           Reset Session Stats
         </button>
       </div>
     </div>
 
-    <!-- ════════════════════════════ EFFECTS PAGE -->
+    <!-- ════════════════════════ EFFECTS PAGE -->
     <div class="page" id="page-effects">
-      <div class="page-title">Test Effects</div>
+      <div class="page-header"><div class="page-title">Test Effects</div></div>
 
       <div id="preview-wrap">
         <div class="preview-label">Live Preview</div>
-        <iframe id="preview-frame" src="/" title="Overlay Preview"></iframe>
-      </div>
-
-      <div class="card">
-        <div class="card-title">Spawn Effects</div>
-        <div class="effect-grid">
-          <button class="effect-btn" onclick="testEffect('balloon',{count:3})">
-            <span class="icon">🎈</span>Balloons
-          </button>
-          <button class="effect-btn" onclick="testEffect('firework',{})">
-            <span class="icon">🎆</span>Firework
-          </button>
-          <button class="effect-btn" onclick="testEffect('firework-salvo',{count:5})">
-            <span class="icon">🎇</span>Salvo
-          </button>
-          <button class="effect-btn" onclick="testEffect('confetti',{})">
-            <span class="icon">🎊</span>Confetti
-          </button>
-          <button class="effect-btn" onclick="testEffect('sticker-rain',{duration:6000})">
-            <span class="icon">✨</span>Sticker Rain
-          </button>
-          <button class="effect-btn" onclick="testEffect('crowd-explosion',{})">
-            <span class="icon">💥</span>Crowd Explosion
-          </button>
+        <div class="preview-actions">
+          <a class="btn btn-ghost btn-sm" href="/" target="_blank">Open ↗</a>
         </div>
+        <iframe id="preview-frame" src="/?demo=0" title="Overlay Preview"></iframe>
       </div>
 
       <div class="card">
-        <div class="card-title">Test Alert Banners</div>
-        <div class="effect-grid">
-          <button class="effect-btn" onclick="testEvent('follow',{user:'NewFriend123'})">
-            <span class="icon">💚</span>Follow
-          </button>
-          <button class="effect-btn" onclick="testEvent('sub',{user:'TestSubscriber',tier:'1000',message:'PogChamp first sub!'})">
-            <span class="icon">💜</span>Subscribe
-          </button>
-          <button class="effect-btn" onclick="testEvent('sub.gifted',{user:'GiftKing',count:5})">
-            <span class="icon">🎁</span>Gift ×5
-          </button>
-          <button class="effect-btn" onclick="testEvent('sub.gifted',{user:'MegaGifter',count:20})">
-            <span class="icon">🎁</span>Gift ×20
-          </button>
-          <button class="effect-btn" onclick="testEvent('cheer',{user:'BitsBro',bits:100})">
-            <span class="icon">💎</span>100 Bits
-          </button>
-          <button class="effect-btn" onclick="testEvent('cheer',{user:'BigBaller',bits:5000})">
-            <span class="icon">💎</span>5k Bits
-          </button>
-          <button class="effect-btn" onclick="testEvent('raid',{user:'FriendlyRaider',viewers:45})">
-            <span class="icon">⚡</span>Small Raid
-          </button>
-          <button class="effect-btn" onclick="testEvent('raid',{user:'MassiveRaid',viewers:250})">
-            <span class="icon">⚡</span>Big Raid
-          </button>
-          <button class="effect-btn" onclick="testEvent('hype-train.progress',{level:2})">
-            <span class="icon">🔥</span>Hype Train
-          </button>
-          <button class="effect-btn" onclick="testCombo(3,'SUB TRAIN')">
-            <span class="icon">🚂</span>Sub Combo ×3
-          </button>
+        <div class="effects-section">
+          <div class="effects-section-label">Visual Effects</div>
+          <div class="effect-grid">
+            <button class="effect-btn" style="--c:#4D96FF"
+              onclick="fireEffect('balloon',{count:3},this)">
+              <div class="icon-bg">🎈</div>Balloons
+            </button>
+            <button class="effect-btn" style="--c:#FF9A3C"
+              onclick="fireEffect('firework',{},this)">
+              <div class="icon-bg">🎆</div>Firework
+            </button>
+            <button class="effect-btn" style="--c:#FF6B6B"
+              onclick="fireEffect('firework-salvo',{count:5},this)">
+              <div class="icon-bg">🎇</div>Salvo ×5
+            </button>
+            <button class="effect-btn" style="--c:#C77DFF"
+              onclick="fireEffect('confetti',{},this)">
+              <div class="icon-bg">🎊</div>Confetti
+            </button>
+            <button class="effect-btn" style="--c:#FFD700"
+              onclick="fireEffect('sticker-rain',{duration:6000},this)">
+              <div class="icon-bg">✨</div>Sticker Rain
+            </button>
+            <button class="effect-btn" style="--c:#FF0040"
+              onclick="fireEffect('crowd-explosion',{},this)">
+              <div class="icon-bg">💥</div>Crowd Explosion
+            </button>
+          </div>
         </div>
-      </div>
 
-      <div class="card">
-        <div class="card-title">Custom Alert</div>
-        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
-          <select id="custom-tier" style="background:var(--bg);border:1px solid var(--border);color:var(--text);border-radius:7px;padding:7px 10px;font-size:.82rem;outline:none;">
-            <option value="S">Tier S</option>
-            <option value="A" selected>Tier A</option>
-            <option value="B">Tier B</option>
-            <option value="C">Tier C</option>
-          </select>
-          <input id="custom-icon" class="input-field" placeholder="Icon (emoji)" value="🎉" style="max-width:100px;">
-          <input id="custom-text" class="input-field" placeholder="Main text" value="Custom Alert!">
-          <input id="custom-sub"  class="input-field" placeholder="Sub text (optional)">
-          <button class="btn btn-primary" onclick="sendCustomAlert()">Fire</button>
+        <div class="effects-section">
+          <div class="effects-section-label">Alert Banners</div>
+          <div class="effect-grid">
+            <button class="effect-btn" style="--c:#6BCB77"
+              onclick="fireEvent('follow',{user:'NewFriend123'},this)">
+              <div class="icon-bg">💚</div>Follow
+            </button>
+            <button class="effect-btn" style="--c:#9147FF"
+              onclick="fireEvent('sub',{user:'TestSubscriber',tier:'1000',message:'PogChamp first sub!'},this)">
+              <div class="icon-bg">💜</div>Subscribe
+            </button>
+            <button class="effect-btn" style="--c:#FF9A3C"
+              onclick="fireEvent('sub.gifted',{user:'GiftKing',count:5},this)">
+              <div class="icon-bg">🎁</div>Gift ×5
+            </button>
+            <button class="effect-btn" style="--c:#FFD700"
+              onclick="fireEvent('sub.gifted',{user:'MegaGifter',count:20},this)">
+              <div class="icon-bg">🎁</div>Gift ×20
+            </button>
+            <button class="effect-btn" style="--c:#00C9FF"
+              onclick="fireEvent('cheer',{user:'BitsBro',bits:100},this)">
+              <div class="icon-bg">💎</div>100 Bits
+            </button>
+            <button class="effect-btn" style="--c:#00C9FF"
+              onclick="fireEvent('cheer',{user:'BigBaller',bits:5000},this)">
+              <div class="icon-bg">💎</div>5,000 Bits
+            </button>
+            <button class="effect-btn" style="--c:#00C8AF"
+              onclick="fireEvent('raid',{user:'FriendlyRaider',viewers:45},this)">
+              <div class="icon-bg">⚡</div>Small Raid
+            </button>
+            <button class="effect-btn" style="--c:#FFD700"
+              onclick="fireEvent('raid',{user:'MassiveArmy',viewers:350},this)">
+              <div class="icon-bg">⚡</div>Big Raid
+            </button>
+            <button class="effect-btn" style="--c:#FF4500"
+              onclick="fireEvent('hype-train.progress',{level:2},this)">
+              <div class="icon-bg">🔥</div>Hype Train
+            </button>
+            <button class="effect-btn" style="--c:#FFD700"
+              onclick="fireCombo(3,'SUB TRAIN',this)">
+              <div class="icon-bg">🚂</div>Combo ×3
+            </button>
+            <button class="effect-btn" style="--c:#FF5050"
+              onclick="fireCombo(4,'SUB TSUNAMI',this)">
+              <div class="icon-bg">🌊</div>Combo ×4
+            </button>
+          </div>
+        </div>
+
+        <div>
+          <div class="effects-section-label">Custom Alert</div>
+          <div class="custom-alert-form">
+            <select id="custom-tier">
+              <option value="S">⭐ Tier S</option>
+              <option value="A" selected>🟣 Tier A</option>
+              <option value="B">🟢 Tier B</option>
+              <option value="C">⬜ Tier C</option>
+            </select>
+            <input id="custom-icon" class="input-field" placeholder="Icon" value="🎉" style="max-width:80px;">
+            <input id="custom-text" class="input-field" placeholder="Main text" value="Custom Alert!">
+            <input id="custom-sub"  class="input-field" placeholder="Sub text (optional)">
+            <button class="btn btn-primary" onclick="sendCustomAlert()">Fire</button>
+          </div>
         </div>
       </div>
     </div>
 
-    <!-- ════════════════════════════ GOALS PAGE -->
+    <!-- ════════════════════════ GOALS PAGE -->
     <div class="page" id="page-goals">
-      <div class="page-title">Goals</div>
-
+      <div class="page-header"><div class="page-title">Goals</div></div>
       <div class="card">
         <div class="card-title">Active Goals</div>
         <div id="goals-list">
@@ -605,28 +785,37 @@ html, body {
       </div>
     </div>
 
-    <!-- ════════════════════════════ LOG PAGE -->
+    <!-- ════════════════════════ LOG PAGE -->
     <div class="page" id="page-log">
-      <div class="page-title">Event Log</div>
+      <div class="page-header">
+        <div class="page-title">Event Log</div>
+      </div>
       <div class="card">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
-          <div class="card-title" style="margin:0">Recent Events</div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+          <div class="log-filters" id="log-filters">
+            <button class="log-filter active" data-filter="all">All</button>
+            <button class="log-filter" data-filter="sub">Subs</button>
+            <button class="log-filter" data-filter="cheer">Bits</button>
+            <button class="log-filter" data-filter="follow">Follows</button>
+            <button class="log-filter" data-filter="raid">Raids</button>
+            <button class="log-filter" data-filter="redeem">Redeems</button>
+          </div>
           <button class="btn btn-ghost btn-sm" onclick="clearLog()">Clear</button>
         </div>
         <div id="event-log"></div>
       </div>
     </div>
 
-    <!-- ════════════════════════════ SETUP PAGE -->
+    <!-- ════════════════════════ SETUP PAGE -->
     <div class="page" id="page-setup">
-      <div class="page-title">Setup</div>
+      <div class="page-header"><div class="page-title">Setup</div></div>
 
       <div class="card">
         <div class="setup-step">
-          <div class="step-num done">1</div>
+          <div class="step-num done">✓</div>
           <div class="step-content">
-            <h3>Install Node.js</h3>
-            <p>FokkerPop runs on Node.js 18 or later. If you're reading this, Node is already running. ✅</p>
+            <h3>Node.js is running</h3>
+            <p>You're reading this dashboard, so Node.js is already up. ✅</p>
           </div>
         </div>
 
@@ -637,8 +826,8 @@ html, body {
             <p>
               Create a Twitch app at
               <a href="https://dev.twitch.tv/console" target="_blank">dev.twitch.tv/console</a>.
-              Set the <strong>OAuth Redirect URL</strong> to:<br>
-              <code style="background:var(--bg);padding:2px 6px;border-radius:4px;font-size:.82rem;">http://localhost:4747/auth/callback</code>
+              Set the <strong>OAuth Redirect URL</strong> to:
+              <code style="background:var(--bg);padding:2px 6px;border-radius:4px;font-size:.82rem;display:inline-block;margin-top:4px;">http://localhost:4747/auth/callback</code>
             </p>
             <div class="input-row">
               <input id="setup-client-id"     class="input-field" placeholder="Client ID">
@@ -653,16 +842,14 @@ html, body {
           <div class="step-num">3</div>
           <div class="step-content">
             <h3>Add Browser Source in OBS</h3>
-            <p>In OBS, add a <strong>Browser Source</strong> to your scene with these settings:</p>
+            <p>Add a <strong>Browser Source</strong> to your scene:</p>
             <div class="obs-url">
               <span id="overlay-url">http://localhost:4747/</span>
-              <button class="btn btn-ghost btn-sm" onclick="copyOverlayUrl()">Copy</button>
+              <button class="btn btn-ghost btn-sm" onclick="copyOverlayUrl(event)">Copy</button>
             </div>
             <p style="margin-top:8px;font-size:.78rem;color:var(--text-dim)">
-              Width: <strong>1920</strong> &nbsp;·&nbsp;
-              Height: <strong>1080</strong> &nbsp;·&nbsp;
-              ✅ Shutdown source when not visible &nbsp;·&nbsp;
-              ✅ Custom CSS: <code>body { background: transparent !important; }</code>
+              Width: <strong>1920</strong> &nbsp;·&nbsp; Height: <strong>1080</strong> &nbsp;·&nbsp;
+              Custom CSS: <code>body { background: transparent !important; }</code>
             </p>
           </div>
         </div>
@@ -670,15 +857,10 @@ html, body {
         <div class="setup-step">
           <div class="step-num">4</div>
           <div class="step-content">
-            <h3>Start Streaming</h3>
+            <h3>You're ready</h3>
             <p>
               Use <strong>start.bat</strong> to launch FokkerPop before going live.
-              The dashboard opens automatically. Check the <strong>Live</strong> tab
-              to confirm Twitch events are flowing in.
-            </p>
-            <p style="margin-top:8px;font-size:.78rem;color:var(--text-dim)">
-              Tip: add <code>start.bat</code> to your stream startup shortcut so it
-              launches alongside OBS.
+              Watch the <strong>Live</strong> tab to confirm Twitch events are flowing.
             </p>
           </div>
         </div>
@@ -686,10 +868,9 @@ html, body {
 
       <div class="card">
         <div class="card-title">About</div>
-        <p style="font-size:.82rem;color:var(--text-dim);line-height:1.7">
-          FokkerPop v0.1.0 &nbsp;·&nbsp;
-          Built for LilFokker &nbsp;·&nbsp;
-          1 npm dependency (ws) &nbsp;·&nbsp;
+        <p style="font-size:.82rem;color:var(--text-dim);line-height:1.8">
+          FokkerPop v0.1.0 &nbsp;·&nbsp; Built for LilFokker &nbsp;·&nbsp;
+          1 npm dependency (<code>ws</code>) &nbsp;·&nbsp;
           All traffic stays on <code>127.0.0.1</code>
         </p>
       </div>
