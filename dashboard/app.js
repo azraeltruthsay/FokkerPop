@@ -439,6 +439,41 @@ window.sendCustomAlert = function () {
   dashSend({ type: '_dashboard.effect', effect: 'alert-banner', payload: { tier, icon, text, subText: subText || undefined } });
 };
 
+// ── Simulator Helpers ─────────────────────────────────────────────────────────
+
+window.simFireRedeem = function() {
+  const sel   = document.getElementById('sim-redeem-select');
+  const title = sel.value;
+  if (!title) return;
+  window.fireEvent('redeem', { user: 'SimulatedUser', rewardTitle: title });
+};
+
+window.simFireCheer = function() {
+  const user = document.getElementById('sim-cheer-user').value || 'ChatterBox';
+  const bits = parseInt(document.getElementById('sim-cheer-bits').value) || 1;
+  const msg  = document.getElementById('sim-cheer-msg').value;
+  window.fireEvent('cheer', { user, bits, message: msg });
+};
+
+window.simFireGift = function() {
+  const user  = document.getElementById('sim-gift-user').value || 'GiftBot';
+  const count = parseInt(document.getElementById('sim-gift-count').value) || 1;
+  window.fireEvent('sub.gifted', { user, count });
+};
+
+function populateSimulatorRedeems() {
+  const sel = document.getElementById('sim-redeem-select');
+  if (!sel) return;
+  fetch('/api/redeems').then(r => r.json()).then(redeems => {
+    const options = Object.keys(redeems).filter(k => k !== '_comment');
+    if (!options.length) {
+      sel.innerHTML = '<option value="">-- No Redeems Found --</option>';
+      return;
+    }
+    sel.innerHTML = options.map(o => `<option value="${esc(o)}">${esc(o)}</option>`).join('');
+  });
+}
+
 // ═══════════════════════════════════════════════ Setup helpers
 
 window.saveCredentialsAndAuth = function () {
@@ -492,7 +527,9 @@ document.querySelectorAll('.nav-item[data-page]').forEach(btn => {
     document.querySelectorAll('.nav-item').forEach(b => b.classList.remove('active'));
     document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
     btn.classList.add('active');
-    document.getElementById(`page-${btn.dataset.page}`)?.classList.add('active');
+    const page = btn.dataset.page;
+    document.getElementById(`page-${page}`)?.classList.add('active');
+    if (page === 'effects') populateSimulatorRedeems();
   });
 });
 
