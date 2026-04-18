@@ -78,16 +78,28 @@ jobs:
           zip -r "${PKG}.zip" "${PKG}/"
           
           # Create Self-Extracting Installer (SFX)
-          # Use local 7zS.sfx from repo tools/ for reliability
+          # Download 7z extra components
+          curl -L -f -o 7z-extra.7z "https://sourceforge.net/projects/sevenzip/files/7-Zip/23.01/7z2301-extra.7z/download"
+          
+          # Extract the sfx module
+          7z e 7z-extra.7z 7zS.sfx -r -y
+          
+          # Verify we have a real binary (not HTML)
+          if ! file 7zS.sfx | grep -q "PE32"; then
+            echo "ERROR: Failed to download valid SFX module"
+            exit 1
+          fi
+          
+          # SFX Config
           printf ";!@Install@!UTF-8!\nTitle=\"FokkerPop Updater\"\nBeginPrompt=\"Update FokkerPop in the current folder?\"\nInstallPath=\".\"\n;!@InstallEnd@!\n" > sfx_config.txt
           
-          # 7z Archive of the *contents* of the folder (so it extracts flat)
+          # Archive the app contents
           cd "${PKG}"
           7z a ../app.7z *
           cd ..
           
-          # Join: Stub + Config + Data = EXE
-          cat tools/7zS.sfx sfx_config.txt app.7z > "FokkerPop-Updater-${VERSION}.exe"
+          # Assemble: Stub + Config + Data
+          cat 7zS.sfx sfx_config.txt app.7z > "FokkerPop-Updater-${VERSION}.exe"
 
           echo "PKG=${PKG}" >> "$GITHUB_ENV"
 
