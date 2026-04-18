@@ -573,6 +573,16 @@ html, body {
     <span id="error-msg"></span>
     <button onclick="this.parentElement.style.display='none'" style="float:right; background:rgba(0,0,0,0.2); border:none; color:#fff; padding:4px 10px; border-radius:4px; cursor:pointer;">Dismiss</button>
   </div>
+
+  <div id="loading-overlay" style="position:fixed; inset:0; background:var(--bg); z-index:9000; display:flex; flex-direction:column; align-items:center; justify-content:center;">
+    <div style="font-size:1.5rem; font-weight:900; margin-bottom:10px; color:var(--accent);">FokkerPop</div>
+    <div style="color:var(--text-dim); font-size:.8rem;">Initialising Dashboard...</div>
+    <div style="margin-top:20px; width:120px; height:2px; background:rgba(255,255,255,0.05); position:relative; overflow:hidden;">
+      <div style="position:absolute; inset:0; background:var(--accent); width:40%; animation: loader-slide 1s infinite linear;"></div>
+    </div>
+    <style> @keyframes loader-slide { from { left: -40%; } to { left: 100%; } } </style>
+  </div>
+
   <script>
     window.onerror = function(msg, url, line, col, error) {
       const el = document.getElementById('error-reporter');
@@ -583,6 +593,18 @@ html, body {
       }
       return false;
     };
+    
+    // Core navigation logic (Inline so it works even if app.js is blocked)
+    document.addEventListener('click', (e) => {
+      const btn = e.target.closest('.nav-item[data-page]');
+      if (!btn) return;
+      document.querySelectorAll('.nav-item').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+      btn.classList.add('active');
+      const page = btn.dataset.page;
+      document.getElementById(`page-${page}`)?.classList.add('active');
+      if (window.populateSimulatorRedeems && page === 'effects') window.populateSimulatorRedeems();
+    });
   </script>
 <div id="app">
 

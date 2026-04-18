@@ -1,5 +1,10 @@
 'use strict';
 
+function dashSend(obj) {
+  if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify(obj));
+}
+window.dashSend = dashSend;
+
 // ═══════════════════════════════════════════════ WebSocket
 
 let ws        = null;
@@ -75,11 +80,6 @@ function setTwitchBadge(status) {
   $tBadge.className   = `connection-badge ${cls}`;
   $tBadge.textContent = label;
 }
-
-function dashSend(obj) {
-  if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify(obj));
-}
-window.dashSend = dashSend;
 
 function applyStateUpdate(path, value) {
   const parts = path.split('.');
@@ -546,24 +546,13 @@ window.copyOverlayUrl = function () {
 
 document.getElementById('overlay-url').textContent = `http://localhost:${location.port || 4747}/`;
 
-// ═══════════════════════════════════════════════ Navigation
-
-document.querySelectorAll('.nav-item[data-page]').forEach(btn => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('.nav-item').forEach(b => b.classList.remove('active'));
-    document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
-    btn.classList.add('active');
-    const page = btn.dataset.page;
-    document.getElementById(`page-${page}`)?.classList.add('active');
-    if (page === 'effects') populateSimulatorRedeems();
-  });
-});
-
-// ═══════════════════════════════════════════════ Utilities
-
 function esc(s) {
   return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
 // ═══════════════════════════════════════════════ Boot
 connect();
+
+// Hide loading overlay once JS is ready
+const $loader = document.getElementById('loading-overlay');
+if ($loader) $loader.style.display = 'none';
