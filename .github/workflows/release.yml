@@ -76,37 +76,6 @@ jobs:
 
           # Zip it up
           zip -r "${PKG}.zip" "${PKG}/"
-          
-          # Create Self-Extracting Installer (SFX)
-          # Use a reliable mirror for the SFX module
-          curl -L -f -o 7zS.sfx "https://github.com/mcmilk/7-Zip-Scripts/raw/master/SFX/7zS.sfx" || \
-          curl -L -f -o 7zS.sfx "https://github.com/scotthale/7-Zip-SFX-Modules/raw/master/7zS.sfx"
-          
-          # Verify we have a real binary (not HTML)
-          if ! file 7zS.sfx | grep -q "executable"; then
-            # If mirrors fail, try one more attempt from official extras
-            curl -L -f -o 7z-extra.7z "https://www.7-zip.org/a/7z2408-extra.7z"
-            7z e 7z-extra.7z 7zS.sfx -r -y
-          fi
-          
-          if ! file 7zS.sfx | grep -qE "PE32|executable"; then
-            echo "ERROR: Failed to acquire valid SFX module"
-            # Fallback: create release without SFX if critical
-            # exit 1 
-          fi
-          
-          # SFX Config
-          printf ";!@Install@!UTF-8!\nTitle=\"FokkerPop Updater\"\nBeginPrompt=\"Update FokkerPop in the current folder?\"\nInstallPath=\".\"\n;!@InstallEnd@!\n" > sfx_config.txt
-          
-          # Archive the app contents
-          cd "${PKG}"
-          7z a ../app.7z *
-          cd ..
-          
-          # Assemble: Stub + Config + Data
-          if [ -f 7zS.sfx ]; then
-            cat 7zS.sfx sfx_config.txt app.7z > "FokkerPop-Updater-${VERSION}.exe"
-          fi
 
           echo "PKG=${PKG}" >> "$GITHUB_ENV"
 
@@ -119,23 +88,18 @@ jobs:
 
           # Write release notes
           sed 's/^          //' > release-notes.md << NOTES
-          ## FokkerPop Updater (Recommended)
+          ## FokkerPop v${VERSION}
 
-          1. Download \`FokkerPop-Updater-${VERSION}.exe\` below
-          2. Place it **inside** your existing FokkerPop folder
-          3. Double-click it and click **Yes** to update
-          4. Run **start.bat** as usual. Your settings are safe!
-
-          ## First-time Install
-
-          1. Download \`FokkerPop-${VERSION}-windows.zip\`
+          1. Download \`FokkerPop-${VERSION}-windows.zip\` below
           2. Extract it anywhere and run **start.bat**
+
+          Note: Auto-Updater EXE is temporarily disabled while we fix a build snag.
+          Please use the ZIP for this version!
 
           Node.js is bundled. No setup required.
           NOTES
 
           gh release create "${VERSION}" \
             "${PKG}.zip#FokkerPop ${VERSION} (Windows ZIP)" \
-            "FokkerPop-Updater-${VERSION}.exe#FokkerPop ${VERSION} (Auto-Updater EXE)" \
             --title "FokkerPop ${VERSION}" \
             --notes-file release-notes.md
