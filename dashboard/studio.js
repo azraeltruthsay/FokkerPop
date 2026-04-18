@@ -19,7 +19,7 @@ let dragPort = null;
 let lastMouse = { x: 0, y: 0 };
 
 // Canvas state
-let $wrap, $nodes, $svg, $props, $fields, $flowSelect;
+let $wrap, $nodes, $svg, $props, $fields, $flowSelect, $ctxMenu;
 let studioInitialized = false;
 
 // ─── Initialization ──────────────────────────────────────────────────────────
@@ -31,6 +31,7 @@ window.initStudio = async function() {
   $props = document.getElementById('studio-props');
   $fields = document.getElementById('prop-fields');
   $flowSelect = document.getElementById('studio-flow-select');
+  $ctxMenu = document.getElementById('studio-ctx-menu');
 
   if (!$wrap || studioInitialized) return;
 
@@ -50,6 +51,7 @@ window.initStudio = async function() {
   window.addEventListener('mouseup', onMouseUp);
   window.addEventListener('keydown', onKeyDown);
   $wrap.addEventListener('wheel', onWheel, { passive: false });
+  window.addEventListener('mousedown', (e) => { if ($ctxMenu && !e.target.closest('#studio-ctx-menu')) hideContextMenu(); });
 
   studioInitialized = true;
 };
@@ -227,21 +229,101 @@ function onKeyDown(e) {
 
 function onContextMenu(e) {
   e.preventDefault();
-  // Right-click on a node → select it and delete
+  const rect = $wrap.getBoundingClientRect();
+  const x = e.clientX - rect.left;
+  const y = e.clientY - rect.top;
+
   const nodeEl = e.target.closest('.studio-node');
+  let html = '';
+
   if (nodeEl) {
     const nodeId = nodeEl.id.replace('node-', '');
     const node   = activeFlow?.nodes?.[nodeId];
-    if (node) { selectNode(node); window.deleteActiveNode(); }
+    if (node) {
+      selectNode(node);
+      html = `
+        <div class="ctx-header">${esc(node.label || node.action || node.type)}</div>
+        <div class="ctx-item" onclick="cloneNode('${nodeId}')">👯 Clone Node</div>
+        <div class="ctx-item" onclick="disconnectNode('${nodeId}')">🔌 Disconnect All</div>
+        <div class="ctx-divider"></div>
+        <div class="ctx-item" onclick="deleteActiveNode()" style="color:var(--red)">🗑️ Delete Node (Del)</div>
+      `;
+    }
+  } else {
+    html = `
+      <div class="ctx-header">Add Component</div>
+      <div class="ctx-item" onclick="addNode('action', 'spawnEffect', ${x}, ${y})">🎇 Effect</div>
+      <div class="ctx-item" onclick="addNode('action', 'showBanner', ${x}, ${y})">📢 Banner</div>
+      <div class="ctx-item" onclick="addNode('action', 'playSound', ${x}, ${y})">🔊 Sound</div>
+      <div class="ctx-item" onclick="addNode('action', 'startTimer', ${x}, ${y})">⏲️ Timer</div>
+      <div class="ctx-divider"></div>
+      <div class="ctx-header">Flow</div>
+      <div class="ctx-item" onclick="createNewFlow()">🎨 New Flow</div>
+      <div class="ctx-item" onclick="deleteActiveFlow()" style="color:var(--red)">🗑️ Delete Current Flow</div>
+    `;
   }
+
+  showContextMenu(e.clientX, e.clientY, html);
 }
+
+function showContextMenu(x, y, html) {
+  if (!$ctxMenu) return;
+  $ctxMenu.innerHTML = html;
+  $ctxMenu.style.display = 'block';
+  $ctxMenu.style.left = `${x}px`;
+  $ctxMenu.style.top = `${y}px`;
+
+  // Adjust if off-screen
+  const mRect = $ctxMenu.getBoundingClientRect();
+  if (x + mRect.width > window.innerWidth) $ctxMenu.style.left = `${x - mRect.width}px`;
+  if (y + mRect.height > window.innerHeight) $ctxMenu.style.top = `${y - mRect.height}px`;
+}
+
+function hideContextMenu() {
+  if ($ctxMenu) $ctxMenu.style.display = 'none';
+}
+
+window.cloneNode = function(id) {
+  const node = activeFlow?.nodes?.[id];
+  if (!node) return;
+  const newNode = JSON.parse(JSON.stringify(node));
+  newNode.id = 'n' + Date.now();
+  newNode.x += 30;
+  newNode.y += 30;
+  activeFlow.nodes[newNode.id] = newNode;
+  hideContextMenu();
+  selectNode(newNode);
+};
+
+window.disconnectNode = function(id) {
+  if (!activeFlow) return;
+  activeFlow.edges = (activeFlow.edges || []).filter(e => e.src !== id && e.dst !== id);
+  hideContextMenu();
+  renderCanvas();
+};
+
+window.deleteActiveFlow = function() {
+  if (!activeFlow) return;
+  if (!confirm(`Delete flow "${activeFlow.name || activeFlow.id}"?`)) return;
+  flows = flows.filter(f => f.id !== activeFlow.id);
+  activeFlow = flows[0] || null;
+  hideContextMenu();
+  renderFlowList();
+  if (activeFlow) loadFlow(activeFlow.id);
+  else renderCanvas();
+};
 
 // ─── Node Management ────────────────────────────────────────────────────────
 
-window.addNode = function(type, action) {
+window.addNode = function(type, action, startX, startY) {
   if (!activeFlow) return;
   const id = 'n' + Date.now();
-  const node = { id, type, action, x: -offset.x / zoom + 100, y: -offset.y / zoom + 100, data: {} };
+  
+  // Default to center if no coords provided
+  const x = startX !== undefined ? (startX - offset.x) / zoom : -offset.x / zoom + 100;
+  const y = startY !== undefined ? (startY - offset.y) / zoom : -offset.y / zoom + 100;
+
+  const node = { id, type, action, x, y, data: {} };
   
   activeFlow.nodes = activeFlow.nodes || {};
   activeFlow.nodes[id] = node;
