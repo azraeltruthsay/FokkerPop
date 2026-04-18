@@ -47,6 +47,7 @@ function loadAndEnsureJson(name, defaultData) {
 // ── Client registry ───────────────────────────────────────────────────────────
 const overlays   = new Set();
 const dashboards = new Set();
+let layoutMode = false;
 
 function send(ws, obj) {
   if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(obj));
@@ -426,7 +427,12 @@ wss.on('connection', (ws, req) => {
       if (msg.client === 'dashboard') {
         overlays.delete(ws);
         dashboards.add(ws);
-        send(ws, { type: 'state-snapshot', state: { ...state.snapshot(), version: VERSION } });
+        const snapshot = {
+          ...state.snapshot(),
+          version: VERSION,
+          'overlay.layoutMode': layoutMode
+        };
+        send(ws, { type: 'state-snapshot', state: snapshot });
         send(ws, { type: 'state', path: 'twitch.status', value: twitchEventSub.status });
       } else {
         // Overlay: send current state
@@ -434,6 +440,7 @@ wss.on('connection', (ws, req) => {
         send(ws, { type: 'state', path: 'goals',        value: state.get('goals')         });
         send(ws, { type: 'state', path: 'leaderboard',  value: state.get('leaderboard')   });
         send(ws, { type: 'state', path: 'session',      value: state.get('session')        });
+        send(ws, { type: 'state', path: 'overlay.positions', value: state.get('overlay.positions') });
       }
       return;
     }
@@ -474,6 +481,18 @@ wss.on('connection', (ws, req) => {
         broadcast(overlays, { type: 'state', path: 'overlay.volume', value: msg.value });
         broadcast(dashboards, { type: 'state', path: 'overlay.volume', value: msg.value });
         break;
+      case '_dashboard.layout-mode':
+        layoutMode = msg.active;
+        broadcast(overlays, { type: 'state', path: 'overlay.layoutMode', value: msg.active });
+        broadcast(dashboards, { type: 'state', path: 'overlay.layoutMode', value: msg.active });
+        break;
+      case '_dashboard.save-position': {
+        const positions = state.get('overlay.positions') ?? {};
+        positions[msg.id] = { x: msg.x, y: msg.y };
+        state.set('overlay.positions', positions);
+        broadcastState('overlay.positions', positions);
+        break;
+      }
       case '_dashboard.session-reset':
         state.resetSession();
         broadcastState('session',     state.get('session'));

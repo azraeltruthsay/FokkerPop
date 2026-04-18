@@ -885,6 +885,20 @@ html, body {
       <div class="page-header"><div class="page-title">Config Editor</div></div>
 
       <div class="card">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <div class="card-title" style="margin:0;">Layout Mode</div>
+          <label class="toggle" title="Enable to drag widgets in OBS">
+            <input type="checkbox" id="layout-mode-cb" onchange="dashSend({type:'_dashboard.layout-mode',active:this.checked})">
+            <div class="toggle-slider"></div>
+          </label>
+        </div>
+        <p style="font-size:.82rem; color:var(--text-dim); margin-top:8px;">
+          When active, you can click and drag HUD elements (Crowd Meter, Goals, etc.) 
+          directly in your OBS browser source or preview window to reposition them.
+        </p>
+      </div>
+
+      <div class="card">
         <div class="card-title">Goal Config</div>
         <div id="config-goals-container"></div>
         <button class="btn btn-primary btn-sm" onclick="addGoalConfig()" style="margin-top:10px;">+ Add New Goal</button>

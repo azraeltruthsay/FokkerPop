@@ -118,6 +118,10 @@ function applyStateUpdate(path, value) {
   if (path === 'leaderboard')    renderLeaderboard(value);
   if (path === 'session')        renderSession(value);
   if (path === 'twitch.status')  setTwitchBadge(value);
+  if (path === 'overlay.layoutMode') {
+    const cb = document.getElementById('layout-mode-cb');
+    if (cb) cb.checked = value;
+  }
   if (path === 'overlay.volume') {
     const s = document.getElementById('volume-slider');
     const l = document.getElementById('volume-label');
