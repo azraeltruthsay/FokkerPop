@@ -14,7 +14,7 @@ echo:
 echo  Current Folder: "%cd%"
 echo:
 
-:: 1. Check if running from a Temp folder (un-extracted ZIP^)
+:: 1. Check if running from a Temp folder (un-extracted ZIP)
 echo "%cd%" | findstr /i "Temp" >nul
 if %errorlevel% equ 0 (
     echo:
@@ -33,7 +33,7 @@ if %errorlevel% equ 0 (
     exit /b
 )
 
-:: 2. Check for bundled Node (Release Indicator^)
+:: 2. Check for bundled Node (Release Indicator)
 if not exist "node\node.exe" (
     echo:
     echo  ERROR: Missing bundled Node.js.
@@ -47,8 +47,6 @@ if not exist "node\node.exe" (
     echo  2. Find the LATEST release.
     echo  3. Under "Assets", click: FokkerPop-vX.X.X-windows.zip
     echo     ^(NOT the Source code links^)
-    echo:
-    echo  TIP: Logs are saved to the "logs" folder.
     echo:
     pause
     exit /b
@@ -64,18 +62,30 @@ if not exist "node_modules\ws" (
     echo  The application folder is incomplete.
     echo  Try extracting the release zip again to a new folder.
     echo:
-    echo  TIP: Logs are saved to the "logs" folder.
-    echo:
     pause
     exit /b
 )
 
-:: 4. Final verification
-"%NODE%" -v >/dev/null 2>&1
+:: 4. Unblock node.exe (Windows marks downloaded files as untrusted)
+powershell -NoProfile -Command "Unblock-File -Path ('node\node.exe')" >nul 2>&1
+
+:: 5. Verify node.exe runs
+"%NODE%" -v >nul 2>&1
 if %errorlevel% neq 0 (
     echo:
     echo  ERROR: Bundled Node.js is failing to execute.
-    echo  Your antivirus or Windows security may be blocking it.
+    echo:
+    echo  Most likely cause: Antivirus or Windows Security is blocking node.exe.
+    echo:
+    echo  TO FIX THIS:
+    echo  1. Open Windows Security ^(search it in the Start menu^)
+    echo  2. Go to: Virus ^& threat protection
+    echo  3. Under "Current threats", look for node.exe and click Allow
+    echo  --- OR ---
+    echo  1. Right-click the "node" folder in this directory
+    echo  2. Open "node.exe" Properties
+    echo  3. At the bottom tick "Unblock" then click OK
+    echo  4. Run start.bat again.
     echo:
     pause
     exit /b
@@ -84,7 +94,7 @@ if %errorlevel% neq 0 (
 cls
 echo:
 echo  ==========================================
-echo    FokkerPop : Starting up...
+echo    FokkerPop v0.1.14 : Starting up...
 echo  ==========================================
 echo:
 echo  Overlay:    http://localhost:4747
@@ -95,10 +105,11 @@ echo:
 echo  Opening Dashboard in 3 seconds...
 echo:
 
-:: Launch the browser directly from the BAT
-timeout /t 3 /nobreak >/dev/null 2>&1 || ping 127.0.0.1 -n 4 >nul
+:: Launch browser then start server
+timeout /t 3 /nobreak >nul 2>&1
 
 start http://localhost:4747/dashboard
 
 "%NODE%" server/index.js
 pause
+
