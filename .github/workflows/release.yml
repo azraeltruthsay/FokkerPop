@@ -81,8 +81,11 @@ jobs:
           # Use SourceForge mirror which is generally more friendly to CI runners
           curl -L -f -o 7z-extra.7z "https://downloads.sourceforge.net/project/sevenzip/7-Zip/23.01/7z2301-extra.7z"
           
-          # Extract 7zS.sfx (using built-in 7z on runner)
-          7z e 7z-extra.7z 7zS.sfx -r -y
+          # Extract ALL sfx modules to be sure
+          7z e 7z-extra.7z "*.sfx" -r -y
+          
+          # Use the x64 version if it exists, otherwise the root one
+          [ -f x64/7zS.sfx ] && cp x64/7zS.sfx .
           
           # SFX Config (InstallPath="." means extract to current folder)
           printf ";!@Install@!UTF-8!\nTitle=\"FokkerPop Updater\"\nBeginPrompt=\"Update FokkerPop in the current folder?\"\nInstallPath=\".\"\n;!@InstallEnd@!\n" > sfx_config.txt
@@ -93,6 +96,7 @@ jobs:
           cd ..
           
           # Join: Stub + Config + Data = EXE
+          # Note: If 7zS.sfx is still missing, this will fail fast
           cat 7zS.sfx sfx_config.txt app.7z > "FokkerPop-Updater-${VERSION}.exe"
 
           echo "PKG=${PKG}" >> "$GITHUB_ENV"
