@@ -1,5 +1,5 @@
 import { createServer }                        from 'node:http';
-import { readFileSync, existsSync }            from 'node:fs';
+import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { extname, join, normalize, resolve }   from 'node:path';
 import { exec }                                from 'node:child_process';
 import { WebSocketServer, WebSocket }          from 'ws';
@@ -9,6 +9,7 @@ import state                 from './state.js';
 import { applyPipeline }     from './pipeline/index.js';
 import { TwitchEventSub }    from './twitch/eventsub.js';
 import settings, { ROOT }    from './settings-loader.js';
+import log                   from './logger.js';
 
 // ── Config ────────────────────────────────────────────────────────────────────
 const PORT   = settings.server?.port ?? 4747;
@@ -20,7 +21,13 @@ state.set('goals', goals);
 
 function loadJson(name) {
   const p = join(ROOT, name);
-  return existsSync(p) ? JSON.parse(readFileSync(p, 'utf8')) : null;
+  if (!existsSync(p)) return null;
+  try {
+    return JSON.parse(readFileSync(p, 'utf8'));
+  } catch (err) {
+    log.error(`Failed to parse ${name}:`, err.message);
+    return null;
+  }
 }
 
 // ── Client registry ───────────────────────────────────────────────────────────
@@ -44,6 +51,7 @@ function broadcastState(path, value) {
 
 // ── Pipeline ──────────────────────────────────────────────────────────────────
 bus.use(applyPipeline);
+bus.on('error', (err) => log.error('Bus error:', err?.message ?? err));
 
 // ── Crowd energy ──────────────────────────────────────────────────────────────
 let lastEventTs         = Date.now();
@@ -68,10 +76,15 @@ setInterval(() => {
 // ── Event → state + effects ───────────────────────────────────────────────────
 bus.on('*', async (event) => {
   lastEventTs = Date.now();
+  log.info(`event type=${event.type} source=${event.source ?? 'unknown'}`);
 
-  applyBoost(event);
-  updateSessionStats(event);
-  checkGoals();
+  try {
+    applyBoost(event);
+    updateSessionStats(event);
+    checkGoals();
+  } catch (err) {
+    log.error('Event handler error:', err.message, err.stack);
+  }
 
   // Dispatch routed effects
   for (const { effect, payload } of event.effects ?? []) {
@@ -191,8 +204,13 @@ function serveFile(res, filePath) {
 }
 
 const httpServer = createServer((req, res) => {
-  const url  = new URL(req.url, `http://${req.headers.host}`);
-  const path = url.pathname;
+  let url, path;
+  try {
+    url  = new URL(req.url, `http://${req.headers.host}`);
+    path = url.pathname;
+  } catch {
+    res.writeHead(400); res.end('Bad request'); return;
+  }
 
   // Overlay browser source
   if (path === '/' || path === '/overlay') {
@@ -212,6 +230,11 @@ const httpServer = createServer((req, res) => {
     return serveFile(res, join(ROOT, path.slice(1)));
   }
 
+  // Plugins (future-proofing)
+  if (path.startsWith('/plugins/')) {
+    return serveFile(res, join(ROOT, path.slice(1)));
+  }
+
   // REST API
   if (path === '/api/state' && req.method === 'GET') {
     res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -223,6 +246,26 @@ const httpServer = createServer((req, res) => {
     if (s.twitch) s.twitch = { ...s.twitch, accessToken: '***', refreshToken: '***', clientSecret: '***' };
     res.writeHead(200, { 'Content-Type': 'application/json' });
     return res.end(JSON.stringify(s));
+  }
+
+  if (path === '/api/settings' && req.method === 'POST') {
+    let body = '';
+    req.on('data', d => { body += d; if (body.length > 8192) req.destroy(); });
+    req.on('end', () => {
+      try {
+        const patch = JSON.parse(body);
+        settings.twitch ??= {};
+        if (patch.twitch?.clientId)     settings.twitch.clientId     = patch.twitch.clientId;
+        if (patch.twitch?.clientSecret) settings.twitch.clientSecret = patch.twitch.clientSecret;
+        writeFileSync(join(ROOT, 'settings.json'), JSON.stringify(settings, null, 2));
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end('{"ok":true}');
+      } catch (err) {
+        log.error('Settings POST error:', err.message);
+        res.writeHead(400); res.end('Bad request');
+      }
+    });
+    return;
   }
 
   // OAuth callback
@@ -249,8 +292,6 @@ async function handleOAuthCallback(params, res) {
     if (token.access_token) {
       settings.twitch.accessToken  = token.access_token;
       settings.twitch.refreshToken = token.refresh_token ?? '';
-      // Persist settings
-      const { writeFileSync } = await import('node:fs');
       writeFileSync(join(ROOT, 'settings.json'), JSON.stringify(settings, null, 2));
       res.writeHead(200, { 'Content-Type': 'text/html' });
       res.end('<html><body style="font:20px system-ui;text-align:center;padding:60px"><p>✅ Twitch connected! You can close this tab and return to the dashboard.</p></body></html>');
@@ -347,7 +388,17 @@ wss.on('connection', (ws, req) => {
 // ── Startup ───────────────────────────────────────────────────────────────────
 const twitchEventSub = new TwitchEventSub();
 
+httpServer.on('error', (err) => {
+  if (err.code === 'EADDRINUSE') {
+    log.error(`Port ${PORT} is already in use. Is FokkerPop already running?`);
+  } else {
+    log.error('HTTP server error:', err.message);
+  }
+  process.exit(1);
+});
+
 httpServer.listen(PORT, BIND, () => {
+  log.info(`FokkerPop listening on ${BIND}:${PORT}`);
   console.log(`
 ╔══════════════════════════════════════════════════╗
 ║   FokkerPop  v0.1.0   — live on ${BIND}:${PORT}   ║
@@ -363,5 +414,14 @@ httpServer.listen(PORT, BIND, () => {
   exec(cmd, () => {});
 });
 
-process.on('SIGINT',  () => { state.flush(); process.exit(0); });
-process.on('SIGTERM', () => { state.flush(); process.exit(0); });
+function shutdown(signal) {
+  log.info(`Received ${signal}, shutting down…`);
+  state.flush();
+  httpServer.close(() => process.exit(0));
+  setTimeout(() => process.exit(1), 5000).unref();
+}
+
+process.on('SIGINT',  () => shutdown('SIGINT'));
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('uncaughtException',  (err) => { log.error('Uncaught exception:',  err.message, err.stack); });
+process.on('unhandledRejection', (err) => { log.error('Unhandled rejection:', err?.message ?? err); });

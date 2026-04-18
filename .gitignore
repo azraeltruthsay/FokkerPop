@@ -3,4 +3,5 @@ settings.json
 state.json
 .env
 *.log
+logs/
 memory/

@@ -8,6 +8,7 @@ let appState  = { session: {}, crowd: { energy: 0 }, goals: [], leaderboard: {} 
 
 const WS_URL  = `ws://${location.hostname}:${location.port || 4747}`;
 const $badge  = document.getElementById('ws-badge');
+const $dot    = document.getElementById('live-dot');
 
 function connect() {
   ws = new WebSocket(WS_URL);
@@ -15,6 +16,7 @@ function connect() {
   ws.addEventListener('open', () => {
     retries = 0;
     setBadge('connected', '● Connected');
+    $dot?.classList.add('active');
     ws.send(JSON.stringify({ type: 'register', client: 'dashboard' }));
   });
 
@@ -27,11 +29,13 @@ function connect() {
   ws.addEventListener('close', () => {
     retries++;
     setBadge('disconnected', '○ Disconnected');
+    $dot?.classList.remove('active');
     setTimeout(connect, Math.min(2000 * retries, 15000));
   });
 
   ws.addEventListener('error', () => {
     setBadge('disconnected', '○ Server offline');
+    $dot?.classList.remove('active');
   });
 }
 
@@ -89,21 +93,42 @@ function refreshAll() {
 
 // ═══════════════════════════════════════════════ Renderers
 
+// Track previous stat values for bump animation
+const _prevStats = { subCount: null, bitsTotal: null, followCount: null, raidCount: null };
+
 function renderSession(s) {
   if (!s) return;
-  document.getElementById('stat-subs').textContent    = (s.subCount   ?? 0).toLocaleString();
-  document.getElementById('stat-bits').textContent    = (s.bitsTotal  ?? 0).toLocaleString();
-  document.getElementById('stat-follows').textContent = (s.followCount?? 0).toLocaleString();
-  document.getElementById('stat-raids').textContent   = (s.raidCount  ?? 0).toLocaleString();
+
+  const fields = [
+    { id: 'stat-subs',    key: 'subCount',    val: s.subCount    ?? 0 },
+    { id: 'stat-bits',    key: 'bitsTotal',   val: s.bitsTotal   ?? 0 },
+    { id: 'stat-follows', key: 'followCount', val: s.followCount ?? 0 },
+    { id: 'stat-raids',   key: 'raidCount',   val: s.raidCount   ?? 0 },
+  ];
+
+  for (const { id, key, val } of fields) {
+    const el = document.getElementById(id);
+    if (!el) continue;
+    el.textContent = val.toLocaleString();
+    if (_prevStats[key] !== null && val !== _prevStats[key]) {
+      el.classList.remove('bump');
+      void el.offsetWidth;  // force reflow to restart animation
+      el.classList.add('bump');
+      setTimeout(() => el.classList.remove('bump'), 450);
+    }
+    _prevStats[key] = val;
+  }
 }
 
 function renderCrowd(energy) {
   const pct  = Math.max(0, Math.min(100, energy));
   const fill = document.getElementById('db-crowd-fill');
+  if (!fill) return;
   fill.style.width = `${pct}%`;
   fill.classList.toggle('hot', pct >= 76);
   fill.classList.toggle('max', pct >= 99);
-  document.getElementById('db-crowd-val').textContent = `${Math.round(pct)} / 100`;
+  const val = document.getElementById('db-crowd-val');
+  if (val) val.textContent = `${Math.round(pct)} / 100`;
 }
 
 function renderLeaderboard(lb) {
@@ -113,6 +138,7 @@ function renderLeaderboard(lb) {
 
 function renderLbSection(elId, data, unit) {
   const el      = document.getElementById(elId);
+  if (!el) return;
   const entries = Object.entries(data).sort((a, b) => b[1] - a[1]).slice(0, 5);
   if (!entries.length) { el.innerHTML = '<span style="color:var(--text-dim)">—</span>'; return; }
   el.innerHTML  = entries.map(([user, val], i) =>
@@ -125,10 +151,10 @@ function renderLbSection(elId, data, unit) {
 
 function renderGoals(goals) {
   const el = document.getElementById('goals-list');
+  if (!el) return;
   if (!goals?.length) { el.innerHTML = '<p style="color:var(--text-dim);font-size:.82rem;">No goals configured. Edit goals.json to add some.</p>'; return; }
 
   el.innerHTML = goals.map(g => {
-    const metric  = g.metric?.split('.').at(-1) ?? 'value';
     const current = getNestedVal(appState, g.metric) ?? 0;
     const pct     = Math.min(100, (current / g.target) * 100).toFixed(1);
     return `
@@ -163,27 +189,48 @@ function getNestedVal(obj, path) {
 const MAX_LOG_ENTRIES = 150;
 const $log = document.getElementById('event-log');
 
+let activeFilter = 'all';
+
 const TYPE_CLASS = {
-  follow:              'follow',
-  sub:                 'sub',
-  'sub.gifted':        'gifted',
-  'sub.combo':         'combo',
-  cheer:               'cheer',
-  raid:                'raid',
-  redeem:              'redeem',
-  'hype-train.start':  'hype',
+  follow:               'follow',
+  sub:                  'sub',
+  'sub.gifted':         'gifted',
+  'sub.combo':          'combo',
+  cheer:                'cheer',
+  raid:                 'raid',
+  redeem:               'redeem',
+  'hype-train.start':   'hype',
   'hype-train.progress':'hype',
-  'hype-train.end':    'hype',
+  'hype-train.end':     'hype',
 };
+
+// Which CSS class names each filter pill should reveal
+const FILTER_GROUPS = {
+  all:    null,  // null = show everything
+  sub:    new Set(['sub', 'gifted', 'combo']),
+  cheer:  new Set(['cheer']),
+  follow: new Set(['follow']),
+  raid:   new Set(['raid']),
+  redeem: new Set(['redeem']),
+};
+
+function rowMatchesFilter(row, filter) {
+  if (!filter || filter === 'all') return true;
+  const group = FILTER_GROUPS[filter];
+  return group ? group.has(row.dataset.type) : true;
+}
 
 function appendLog(event) {
   if (!event) return;
-  const ts     = new Date(event.ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-  const cls    = TYPE_CLASS[event.type] ?? 'other';
-  const body   = buildLogBody(event);
+  const ts   = new Date(event.ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  const cls  = TYPE_CLASS[event.type] ?? 'other';
+  const body = buildLogBody(event);
 
   const row = document.createElement('div');
   row.className = 'log-entry';
+  row.dataset.type = cls;
+  if (!rowMatchesFilter(row, activeFilter)) row.classList.add('hidden');
+
   row.innerHTML =
     `<span class="log-ts">${ts}</span>` +
     `<span class="log-type ${cls}">${esc(event.type)}</span>` +
@@ -191,7 +238,6 @@ function appendLog(event) {
 
   $log.prepend(row);
 
-  // Trim old entries to keep DOM lean
   while ($log.children.length > MAX_LOG_ENTRIES) $log.lastChild?.remove();
 }
 
@@ -211,17 +257,42 @@ function buildLogBody(event) {
 
 window.clearLog = function () { $log.innerHTML = ''; };
 
+// ── Log filter pills ──────────────────────────────────────────────────────────
+document.getElementById('log-filters')?.addEventListener('click', (e) => {
+  const btn = e.target.closest('.log-filter');
+  if (!btn) return;
+
+  document.querySelectorAll('.log-filter').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  activeFilter = btn.dataset.filter ?? 'all';
+
+  document.querySelectorAll('#event-log .log-entry').forEach(row => {
+    row.classList.toggle('hidden', !rowMatchesFilter(row, activeFilter));
+  });
+});
+
 // ═══════════════════════════════════════════════ Effect / Event helpers
 
-window.testEffect = function (effect, payload) {
+function triggerRipple(btn) {
+  if (!btn) return;
+  btn.classList.remove('fired');
+  void btn.offsetWidth;
+  btn.classList.add('fired');
+  setTimeout(() => btn.classList.remove('fired'), 350);
+}
+
+window.fireEffect = function (effect, payload, btn) {
+  triggerRipple(btn);
   dashSend({ type: '_dashboard.effect', effect, payload });
 };
 
-window.testEvent = function (type, payload) {
+window.fireEvent = function (type, payload, btn) {
+  triggerRipple(btn);
   dashSend({ type: '_dashboard.test-event', event: { type, source: 'dashboard', payload } });
 };
 
-window.testCombo = function (level, label) {
+window.fireCombo = function (level, label, btn) {
+  triggerRipple(btn);
   dashSend({ type: '_dashboard.effect', effect: 'combo-display', payload: { level, label, expiresAt: Date.now() + 20000, count: level * 2 } });
 };
 
@@ -246,7 +317,6 @@ window.saveCredentialsAndAuth = function () {
     return;
   }
 
-  // Save to server then redirect to Twitch OAuth
   fetch('/api/settings', {
     method:  'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -287,7 +357,7 @@ document.querySelectorAll('.nav-item[data-page]').forEach(btn => {
     document.querySelectorAll('.nav-item').forEach(b => b.classList.remove('active'));
     document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
     btn.classList.add('active');
-    document.getElementById(`page-${btn.dataset.page}`).classList.add('active');
+    document.getElementById(`page-${btn.dataset.page}`)?.classList.add('active');
   });
 });
 

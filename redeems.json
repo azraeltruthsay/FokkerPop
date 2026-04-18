@@ -1,7 +1,13 @@
 {
-  "Balloon Party": { "effect": "balloon",       "count": 10      },
-  "Firework Show": { "effect": "firework-salvo", "count": 5       },
-  "Sticker Bomb":  { "effect": "sticker-rain",   "duration": 8000 },
-  "Hype Up":       { "effect": "crowd-boost",    "amount": 20     },
-  "Confetti":      { "effect": "confetti"                         }
+  "BUBLOOONS!!":           { "effect": "balloon",        "count": 10 },
+  "Fuel The Fokker":       { "effect": "firework-salvo", "count": 3  },
+  "KarebeChaos":           { "effect": "firework-salvo", "count": 7  },
+  "Karebec Slam Attack":   { "effect": "firework",       "count": 1  },
+  "Karebec Fully Loaded":  { "effect": "firework-salvo", "count": 5  },
+  "Roll 6s!":              { "effect": "firework",       "count": 1  },
+  "Roll 1s!":              { "effect": "confetti"                    },
+  "Show Ardrali Some Love!": { "effect": "balloon",      "count": 5  },
+  "NEW - Doggie Cam!!":    { "effect": "sticker-rain",   "duration": 5000 },
+
+  "_comment": "Add more redeems here. Key = exact Channel Point reward title in Twitch."
 }
