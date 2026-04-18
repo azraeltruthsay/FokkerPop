@@ -396,6 +396,11 @@ const httpServer = createServer((req, res) => {
           }
         }
 
+        if (patch.crowd) {
+          settings.crowd ??= {};
+          Object.assign(settings.crowd, patch.crowd);
+        }
+
         writeFileSync(join(ROOT, 'settings.json'), JSON.stringify(settings, null, 2));
         
         if (obsChanged) {

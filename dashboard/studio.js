@@ -11,14 +11,6 @@ let activeNode = null;
 let zoom = 1;
 let offset = { x: 0, y: 0 };
 
-// Canvas state
-const $wrap = document.getElementById('studio-canvas-wrap');
-const $nodes = document.getElementById('studio-nodes');
-const $svg = document.getElementById('studio-svg');
-const $props = document.getElementById('studio-props');
-const $fields = document.getElementById('prop-fields');
-const $flowSelect = document.getElementById('studio-flow-select');
-
 // Interaction state
 let isDragging = false;
 let isPanning = false;
@@ -29,9 +21,17 @@ let lastMouse = { x: 0, y: 0 };
 // ─── Initialization ──────────────────────────────────────────────────────────
 
 window.initStudio = async function() {
+  const $wrap = document.getElementById('studio-canvas-wrap');
+  if (!$wrap) return;
+
   await fetchFlows();
+  
+  if (flows.length === 0) {
+    flows.push({ id: 'flow-default', name: 'Default Flow', active: true, trigger: 'sub', nodes: { 't1': { id: 't1', type: 'trigger', x: 100, y: 100 } }, edges: [] });
+  }
+
   renderFlowList();
-  if (flows.length > 0) loadFlow(flows[0].id);
+  loadFlow(flows[0].id);
   
   // Canvas events
   $wrap.addEventListener('mousedown', onMouseDown);
@@ -48,23 +48,31 @@ async function fetchFlows() {
 }
 
 function renderFlowList() {
+  const $flowSelect = document.getElementById('studio-flow-select');
+  if (!$flowSelect) return;
   $flowSelect.innerHTML = flows.map(f => `<option value="${f.id}" ${activeFlow?.id === f.id ? 'selected' : ''}>${esc(f.name || f.id)}</option>`).join('');
 }
 
 window.loadSelectedFlow = function() {
-  loadFlow($flowSelect.value);
+  const $flowSelect = document.getElementById('studio-flow-select');
+  loadFlow($flowSelect?.value);
 };
 
 function loadFlow(id) {
   activeFlow = flows.find(f => f.id === id);
   activeNode = null;
-  $props.style.display = 'none';
+  const $props = document.getElementById('studio-props');
+  if ($props) $props.style.display = 'none';
   renderCanvas();
 }
 
 // ─── Canvas Rendering ───────────────────────────────────────────────────────
 
 function renderCanvas() {
+  const $nodes = document.getElementById('studio-nodes');
+  const $svg = document.getElementById('studio-svg');
+  if (!$nodes || !$svg) return;
+
   $nodes.innerHTML = '';
   $svg.innerHTML = '';
   if (!activeFlow) return;
@@ -86,14 +94,16 @@ function renderCanvas() {
 
     // Multi-port handling for Chance logic
     if (node.action === 'chance') {
-      div.querySelector('.out').remove();
+      const outPort = div.querySelector('.out');
+      if (outPort) outPort.remove();
       div.innerHTML += `
         <div class="studio-port out" data-port="true" style="top:30%"><span class="studio-port__label">Yes</span></div>
         <div class="studio-port out" data-port="false" style="top:70%"><span class="studio-port__label">No</span></div>
       `;
     }
     if (node.action === 'filter') {
-       div.querySelector('.out').remove();
+       const outPort = div.querySelector('.out');
+       if (outPort) outPort.remove();
        div.innerHTML += `<div class="studio-port out" data-port="true"><span class="studio-port__label">True</span></div>`;
     }
 
@@ -110,11 +120,18 @@ function renderCanvas() {
 }
 
 function updateTransform() {
-  $nodes.style.transform = `translate(${offset.x}px, ${offset.y}px) scale(${zoom})`;
-  $svg.style.transform = `translate(${offset.x}px, ${offset.y}px) scale(${zoom})`;
+  const $nodes = document.getElementById('studio-nodes');
+  const $svg = document.getElementById('studio-svg');
+  if ($nodes && $svg) {
+    $nodes.style.transform = `translate(${offset.x}px, ${offset.y}px) scale(${zoom})`;
+    $svg.style.transform = `translate(${offset.x}px, ${offset.y}px) scale(${zoom})`;
+  }
 }
 
 function drawEdge(edge) {
+  const $svg = document.getElementById('studio-svg');
+  if (!$svg) return;
+  
   const src = activeFlow.nodes[edge.src];
   const dst = activeFlow.nodes[edge.dst];
   if (!src || !dst) return;
@@ -151,7 +168,8 @@ function onMouseDown(e) {
   }
 
   isPanning = true;
-  $wrap.style.cursor = 'grabbing';
+  const $wrap = document.getElementById('studio-canvas-wrap');
+  if ($wrap) $wrap.style.cursor = 'grabbing';
 }
 
 function onMouseMove(e) {
@@ -183,7 +201,8 @@ function onMouseUp(e) {
   isPanning = false;
   dragNode = null;
   dragPort = null;
-  $wrap.style.cursor = 'grab';
+  const $wrap = document.getElementById('studio-canvas-wrap');
+  if ($wrap) $wrap.style.cursor = 'grab';
   renderCanvas();
 }
 

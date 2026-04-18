@@ -939,6 +939,29 @@ html, body {
       </div>
 
       <div class="card">
+        <div class="card-title">Engine Settings</div>
+        <div id="config-engine-container" style="display:grid; grid-template-columns:1fr 1fr; gap:14px;">
+           <div>
+             <label style="display:block; font-size:.7rem; color:var(--text-dim); margin-bottom:4px;">Crowd Drain / Sec</label>
+             <input id="set-crowd-drain" type="number" class="input-field" placeholder="1">
+           </div>
+           <div>
+             <label style="display:block; font-size:.7rem; color:var(--text-dim); margin-bottom:4px;">Crowd Sub Boost</label>
+             <input id="set-crowd-sub" type="number" class="input-field" placeholder="10">
+           </div>
+           <div>
+             <label style="display:block; font-size:.7rem; color:var(--text-dim); margin-bottom:4px;">Crowd Follow Boost</label>
+             <input id="set-crowd-follow" type="number" class="input-field" placeholder="1">
+           </div>
+           <div>
+             <label style="display:block; font-size:.7rem; color:var(--text-dim); margin-bottom:4px;">Crowd Raid Boost</label>
+             <input id="set-crowd-raid" type="number" class="input-field" placeholder="20">
+           </div>
+        </div>
+        <button class="btn btn-primary btn-sm" onclick="saveEngineSettings()" style="margin-top:14px;">Save Engine Settings</button>
+      </div>
+
+      <div class="card">
         <div class="card-title">Goal Config</div>
         <div id="config-goals-container"></div>
         <button class="btn btn-primary btn-sm" onclick="addGoalConfig()" style="margin-top:10px;">+ Add New Goal</button>

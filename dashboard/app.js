@@ -47,6 +47,16 @@ function connect() {
         if ($url) $url.value = s.obs.address || 'ws://127.0.0.1:4455';
         if ($pass) $pass.value = s.obs.password || '';
       }
+      if (s.crowd) {
+        const $drain  = document.getElementById('set-crowd-drain');
+        const $sub    = document.getElementById('set-crowd-sub');
+        const $follow = document.getElementById('set-crowd-follow');
+        const $raid   = document.getElementById('set-crowd-raid');
+        if ($drain)  $drain.value  = s.crowd.drainPerSec || 1;
+        if ($sub)    $sub.value    = s.crowd.subBoost || 10;
+        if ($follow) $follow.value = s.crowd.followBoost || 1;
+        if ($raid)   $raid.value   = s.crowd.raidBoost || 20;
+      }
     }).catch(err => console.warn('Settings fetch failed:', err));
   } catch (err) {
     console.error('Setup initialization error:', err);
@@ -570,6 +580,21 @@ window.saveObsSettings = function() {
     headers: { 'Content-Type': 'application/json' },
     body:    JSON.stringify({ obs: { address, password } }),
   }).then(r => r.ok ? alert('OBS Settings saved!') : alert('Save failed'));
+};
+
+window.saveEngineSettings = function() {
+  const crowd = {
+    drainPerSec: parseFloat(document.getElementById('set-crowd-drain').value),
+    subBoost:    parseInt(document.getElementById('set-crowd-sub').value),
+    followBoost: parseInt(document.getElementById('set-crowd-follow').value),
+    raidBoost:   parseInt(document.getElementById('set-crowd-raid').value)
+  };
+
+  fetch('/api/settings', {
+    method:  'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body:    JSON.stringify({ crowd }),
+  }).then(r => r.ok ? alert('Engine Settings saved!') : alert('Save failed'));
 };
 
 window.saveCredentialsAndAuth = function () {
