@@ -84,12 +84,14 @@ jobs:
           Name "FokkerPop Updater"
           OutFile "FokkerPop-Updater-${VERSION}.exe"
           RequestExecutionLevel user
-          SilentInstall silent
           
           Section "Update"
             SetOutPath "\$EXEDIR"
             SetOverwrite on
             File /r "${PKG}\\*.*"
+            
+            # Launch the app automatically after update
+            ExecShell "" "\$EXEDIR\\start.bat"
           SectionEnd
           EOF
 
