@@ -1,14 +1,16 @@
 @echo off
+setlocal
 title FokkerPop
 cd /d "%~dp0"
 
 echo.
 echo  ==========================================
-echo    FokkerPop  ^|  Diagnostic Check...
+echo    FokkerPop : Diagnostic Check
 echo  ==========================================
 
 :: 1. Check if running from a Temp folder (un-extracted ZIP)
-echo %cd% | findstr /i "Temp" >nul
+:: Quoting "%cd%" handles paths with spaces, &, (, ), etc.
+echo "%cd%" | findstr /i "Temp" >nul
 if %errorlevel% equ 0 (
     echo.
     echo  ERROR: You are running this from a Temporary folder.
@@ -21,6 +23,8 @@ if %errorlevel% equ 0 (
     echo  2. Right-click the ZIP file and choose "Extract All..."
     echo  3. Open the NEW folder that is created.
     echo  4. Run start.bat from there.
+    echo.
+    echo  Folder: "%cd%"
     echo.
     pause
     exit /b
@@ -41,7 +45,7 @@ if not exist "node\node.exe" (
     echo  3. Under "Assets", click: 'FokkerPop-vX.X.X-windows.zip'
     echo     (NOT the 'Source code' links!)
     echo.
-    echo  Running from: %cd%
+    echo  Folder: "%cd%"
     echo.
     pause
     exit /b
@@ -57,6 +61,19 @@ if not exist "node_modules\ws" (
     echo  The application folder is incomplete. If you used the correct 
     echo  zip, please try extracting it again to a new folder.
     echo.
+    echo  Folder: "%cd%"
+    echo.
+    pause
+    exit /b
+)
+
+:: 4. Final verification
+"%NODE%" -v >nul 2>&1
+if %errorlevel% neq 0 (
+    echo.
+    echo  ERROR: Bundled Node.js is failing to execute.
+    echo  Your antivirus or Windows security may be blocking it.
+    echo.
     pause
     exit /b
 )
@@ -64,7 +81,7 @@ if not exist "node_modules\ws" (
 cls
 echo.
 echo  ==========================================
-echo    FokkerPop  ^|  Starting up...
+echo    FokkerPop : Starting up...
 echo  ==========================================
 echo.
 echo  Overlay:    http://localhost:4747
@@ -76,8 +93,10 @@ echo  Opening Dashboard in 3 seconds...
 echo.
 
 :: Launch the browser directly from the BAT (more reliable than Node's exec)
-timeout /t 3 /nobreak >nul
+:: Use ping for delay if timeout is missing, but timeout is standard on Win7+
+timeout /t 3 /nobreak >nul 2>&1 || ping 127.0.0.1 -n 4 >nul
+
 start http://localhost:4747/dashboard
 
-%NODE% server/index.js
+"%NODE%" server/index.js
 pause
