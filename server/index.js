@@ -692,8 +692,14 @@ function shutdown(signal) {
   if (isShuttingDown) return;
   isShuttingDown = true;
   log.info(`Received ${signal}, shutting down…`);
+  
+  // Clear overlays immediately
+  broadcast(overlays, { type: '_system.shutdown' });
+  
   twitchEventSub.disconnect();
+  obs.disconnect();
   state.flush();
+  
   httpServer.close(() => process.exit(0));
   setTimeout(() => process.exit(1), 5000).unref();
 }

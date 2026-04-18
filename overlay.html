@@ -1224,6 +1224,22 @@ function connect() {
 function handleMessage(msg) {
   if (isLive && msg.isTest) return;
 
+  if (msg.type === '_system.shutdown') {
+    // Instant clear for clean exit
+    const containers = ['alert-container', 'dice-container', 'layer-fx-mid', 'lb-list'];
+    containers.forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.innerHTML = '';
+    });
+    const char = document.getElementById('character-sprite');
+    if (char) char.style.display = 'none';
+    audioCache.forEach(audio => {
+      audio.pause();
+      audio.currentTime = 0;
+    });
+    return;
+  }
+
   switch (msg.type) {
     case 'effect':
       dispatchEffect(msg.effect, msg.payload ?? {});

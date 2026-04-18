@@ -108,6 +108,11 @@ class ObsClient extends EventEmitter {
   }
 
   reconnect() {
+    this.disconnect();
+    this.connect();
+  }
+
+  disconnect() {
     if (this.#ws) {
       this.#ws.removeAllListeners();
       this.#ws.terminate();
@@ -115,7 +120,6 @@ class ObsClient extends EventEmitter {
     }
     this.#connected = false;
     this.#setStatus('disconnected');
-    this.connect();
   }
 
   setScene(sceneName) {
