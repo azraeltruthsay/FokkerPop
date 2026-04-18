@@ -5,14 +5,15 @@ A Twitch overlay app built for streamer **LilFokker** — spiritual successor to
 ## Features
 
 - **Live alerts** — follows, subs, gifted subs, bits, raids, hype trains
+- **Reactive Character** — mascot sprite that reacts to energy and events
+- **Sound Effects Engine** — link custom sounds to any alert or effect
 - **Balloons, fireworks, confetti, sticker rain** — CSS + canvas animations
 - **Crowd energy meter** — builds up during events, drives ambient glow effects
-- **Combo detector** — recognises sub trains and signals them with a banner
-- **Channel Point redeems** — maps reward titles to visual effects
-- **Goals tracker** — progress bars that fire effects when completed
-- **Leaderboards** — top bits donators and gift sub kings
-- **Dashboard** — control panel to test effects, monitor events, manage goals
-- **Demo mode** — press `?demo=1` in the overlay URL to see a full stream scenario without Twitch connected
+- **Combo detector** — recognises sub and bit trains and signals them with a banner
+- **Config Editor** — manage goals and redeems directly in the dashboard
+- **Leaderboards** — rotating display of top bits donators and gift sub kings
+- **Twitch Health** — real-time status of your Twitch connection in the sidebar
+- **Demo mode** — press `?demo=1` in the overlay URL to see a full stream scenario
 
 ## Quick Start (Windows)
 
@@ -35,85 +36,53 @@ You need a Twitch application to receive live events:
 4. Category: **Chat Bot**
 5. Copy the **Client ID** and generate a **Client Secret**
 6. Paste both into the Dashboard → **Setup** tab → click **Connect**
-7. Approve the Twitch permissions popup
+7. Approve the Twitch permissions popup (the window will close itself when done)
 
 Your `settings.json` is created automatically and is never uploaded anywhere.
 
 ## Updating
 
-Download the new zip, and **extract it directly into your existing folder** (overwrite everything). Your `settings.json`, `goals.json`, `redeems.json`, and any custom stickers/sounds will be preserved.
+Download the new zip, and **extract it directly into your existing folder** (overwrite all files). 
+Your `settings.json`, `goals.json`, `redeems.json`, and any custom stickers/sounds will be **preserved** during this process.
 
-## Manual Setup (for developers)
+## Customisation
 
-```bash
-git clone https://github.com/azraeltruthsay/FokkerPop.git
-cd FokkerPop
-npm install
-cp settings.example.json settings.json
-# edit settings.json with your credentials
-npm start
-```
+### Sound Effects
+Drop your WAV or MP3 files into `assets/sounds/`. You can then select these sounds from the dropdown menus in the **Config** tab of the dashboard. Use the volume slider in the **Live** tab to adjust levels.
+
+### Character Mascot
+Place your character GIFs in `characters/lilfokkermascot/`. The app looks for these specific filenames:
+- `idle.gif`: shown when energy is low (0-24%)
+- `active.gif`: shown when energy is moderate (25-74%)
+- `hype.gif`: shown when energy is high (75-98%)
+- `explosion.gif`: shown during crowd explosions (99-100%)
+
+### Stickers
+Drop PNG or GIF stickers into `assets/stickers/` to have them appear during the "Sticker Rain" effect.
+
+## Troubleshooting
+
+### "Module 'ws' missing" or "node_modules missing"
+This happens if you downloaded the **Source Code** zip from GitHub instead of the **Release** zip.
+**Fix:** Go to the [Releases page](../../releases) and download the file ending in `-windows.zip`.
+
+### Dashboard says "Twitch Offline" or "Twitch Error"
+1. Check your **Setup** tab. Ensure your Client ID and Client Secret are correct.
+2. Click **Connect** again to refresh your tokens.
+3. Ensure your Twitch App has the Redirect URL set to `http://localhost:4747/auth/callback`.
+
+### Sounds aren't playing
+1. Check the volume slider in the Dashboard's **Live** tab.
+2. Ensure the sound filename in the **Config** tab exactly matches the file in `assets/sounds/`.
+3. In OBS, check the Browser Source properties and ensure **"Control audio via OBS"** is NOT checked (unless you want to manage the volume in the OBS mixer).
 
 ## Configuration Files
 
 | File | Purpose |
 |------|---------|
 | `settings.json` | Twitch credentials and tuning (never commit this) |
-| `settings.example.json` | Template — copy to `settings.json` to start |
 | `goals.json` | Stream goals — targets, metrics, rewards |
 | `redeems.json` | Maps Channel Point reward titles → visual effects |
-
-### goals.json
-
-```json
-[
-  {
-    "id": "first-100-subs",
-    "label": "100 Subs",
-    "metric": "session.subCount",
-    "target": 100,
-    "reward": { "type": "effect", "effect": "crowd-explosion" },
-    "active": true,
-    "completed": false
-  }
-]
-```
-
-Valid metrics: `session.subCount`, `session.bitsTotal`, `session.followCount`, `session.raidCount`.  
-Valid reward effects: `balloon`, `firework`, `firework-salvo`, `confetti`, `sticker-rain`, `crowd-explosion`.
-
-### redeems.json
-
-```json
-{
-  "BUBLOOONS!!": { "effect": "balloon", "count": 10 },
-  "Fuel The Fokker": { "effect": "firework-salvo", "count": 3 }
-}
-```
-
-The key must exactly match the Channel Point reward title in Twitch (case-sensitive).
-
-### settings.example.json tuning options
-
-| Key | Default | Description |
-|-----|---------|-------------|
-| `server.port` | `4747` | HTTP/WS port |
-| `crowd.drainPerSec` | `1` | Energy drain per second when idle |
-| `crowd.followBoost` | `1` | Energy boost per follow |
-| `crowd.subBoost` | `10` | Energy boost per sub |
-| `crowd.raidBoost` | `20` | Base energy boost per raid |
-
-## Asset Folders
-
-| Folder | Purpose |
-|--------|---------|
-| `assets/stickers/` | PNG/GIF stickers shown during `sticker-rain` effect |
-| `assets/sounds/` | WAV/MP3 played by sound effects (future feature) |
-| `characters/` | Character sprite sheets (future feature) |
-
-## Logs
-
-Log files are written to `logs/fokkerpop-YYYY-MM-DD.log`. Set the environment variable `LOG_LEVEL=debug` for verbose output.
 
 ## Architecture
 
@@ -139,19 +108,17 @@ enricher  combinator     throttler
             (browser source)   (control panel)
 ```
 
-All communication between server, overlay, and dashboard uses a local WebSocket on `127.0.0.1`. No external services beyond the Twitch API.
-
 ## Security
 
 - Server binds to `127.0.0.1` only — not accessible from your local network
 - WebSocket server rejects any connection not from localhost
 - Path traversal guard on all HTTP file requests
 - Only one npm dependency (`ws`) — vendored in release zips
-- `settings.json` is gitignored and never committed
 
 ## Development
 
 ```bash
+npm install
 npm run dev   # starts with --watch (auto-restart on file changes)
 ```
 
