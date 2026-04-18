@@ -78,8 +78,8 @@ jobs:
           zip -r "${PKG}.zip" "${PKG}/"
           
           # Create Self-Extracting Installer (SFX)
-          # Use curl with User-Agent to avoid being blocked, and try a different version if needed
-          curl -L -A "Mozilla/5.0" -o 7z-extra.7z "https://www.7-zip.org/a/7z2408-extra.7z"
+          # Use SourceForge mirror which is generally more friendly to CI runners
+          curl -L -f -o 7z-extra.7z "https://downloads.sourceforge.net/project/sevenzip/7-Zip/23.01/7z2301-extra.7z"
           
           # Extract 7zS.sfx (using built-in 7z on runner)
           7z e 7z-extra.7z 7zS.sfx -r -y
