@@ -349,7 +349,14 @@ async function handleOAuthCallback(params, res) {
       settings.twitch.refreshToken = token.refresh_token ?? '';
       writeFileSync(join(ROOT, 'settings.json'), JSON.stringify(settings, null, 2));
       res.writeHead(200, { 'Content-Type': 'text/html' });
-      res.end('<html><body style="font:20px system-ui;text-align:center;padding:60px"><p>✅ Twitch connected! You can close this tab and return to the dashboard.</p></body></html>');
+      res.end(`
+        <html>
+        <body style="font:20px system-ui;text-align:center;padding:60px;background:#0d0d14;color:#fff">
+          <p>✅ Twitch connected!</p>
+          <p style="font-size:16px;color:#aaa">Closing this window in 2 seconds...</p>
+          <script>setTimeout(() => window.close(), 2000);</script>
+        </body>
+        </html>`);
       // Re-connect EventSub with new token
       twitchEventSub.connect();
     } else {

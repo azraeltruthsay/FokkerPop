@@ -169,6 +169,7 @@ function renderGoals(goals) {
             <input type="checkbox" ${g.active ? 'checked' : ''} onchange="dashSend({type:'_dashboard.goal-toggle',id:'${g.id}'})">
             <div class="toggle-slider"></div>
           </label>
+          ${g.reward?.effect ? `<button class="btn btn-ghost btn-sm" onclick="dashSend({type:'_dashboard.effect',effect:'${g.reward.effect}',payload:{}})">Test Reward</button>` : ''}
           ${g.completed
             ? `<button class="btn btn-ghost btn-sm" onclick="dashSend({type:'_dashboard.goal-reset',id:'${g.id}'})">Reset</button>`
             : ''}
