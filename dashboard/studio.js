@@ -18,11 +18,21 @@ let dragNode = null;
 let dragPort = null;
 let lastMouse = { x: 0, y: 0 };
 
+// Canvas state
+let $wrap, $nodes, $svg, $props, $fields, $flowSelect;
+let studioInitialized = false;
+
 // ─── Initialization ──────────────────────────────────────────────────────────
 
 window.initStudio = async function() {
-  const $wrap = document.getElementById('studio-canvas-wrap');
-  if (!$wrap) return;
+  $wrap = document.getElementById('studio-canvas-wrap');
+  $nodes = document.getElementById('studio-nodes');
+  $svg = document.getElementById('studio-svg');
+  $props = document.getElementById('studio-props');
+  $fields = document.getElementById('prop-fields');
+  $flowSelect = document.getElementById('studio-flow-select');
+
+  if (!$wrap || studioInitialized) return;
 
   await fetchFlows();
   
@@ -38,6 +48,8 @@ window.initStudio = async function() {
   window.addEventListener('mousemove', onMouseMove);
   window.addEventListener('mouseup', onMouseUp);
   $wrap.addEventListener('wheel', onWheel, { passive: false });
+
+  studioInitialized = true;
 };
 
 async function fetchFlows() {
@@ -61,7 +73,6 @@ window.loadSelectedFlow = function() {
 function loadFlow(id) {
   activeFlow = flows.find(f => f.id === id);
   activeNode = null;
-  const $props = document.getElementById('studio-props');
   if ($props) $props.style.display = 'none';
   renderCanvas();
 }
