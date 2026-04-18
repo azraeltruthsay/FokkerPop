@@ -41,6 +41,12 @@ function connect() {
           document.querySelector('.nav-item[data-page="setup"]')?.click();
         }
       }
+      if (s.obs) {
+        const $url = document.getElementById('setup-obs-url');
+        const $pass = document.getElementById('setup-obs-password');
+        if ($url) $url.value = s.obs.address || 'ws://127.0.0.1:4455';
+        if ($pass) $pass.value = s.obs.password || '';
+      }
     }).catch(err => console.warn('Settings fetch failed:', err));
   } catch (err) {
     console.error('Setup initialization error:', err);
@@ -554,6 +560,17 @@ function populateSimulatorRedeems() {
 }
 
 // ═══════════════════════════════════════════════ Setup helpers
+
+window.saveObsSettings = function() {
+  const address  = document.getElementById('setup-obs-url').value.trim();
+  const password = document.getElementById('setup-obs-password').value.trim();
+
+  fetch('/api/settings', {
+    method:  'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body:    JSON.stringify({ obs: { address, password } }),
+  }).then(r => r.ok ? alert('OBS Settings saved!') : alert('Save failed'));
+};
 
 window.saveCredentialsAndAuth = function () {
   const clientId     = document.getElementById('setup-client-id').value.trim();

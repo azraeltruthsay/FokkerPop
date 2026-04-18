@@ -1067,17 +1067,21 @@ html, body {
             <p style="margin-bottom:12px;">Allow Fokker Studio to switch your scenes automatically.</p>
             
             <div style="background:var(--surface2); padding:16px; border-radius:12px; border:1px solid var(--border); margin-bottom:20px;">
-              <ol style="margin-left:20px; font-size:.85rem; line-height:1.6;">
+              <ol style="margin-left:20px; font-size:.85rem; line-height:1.6; margin-bottom:12px;">
                 <li>Open <strong>OBS Studio</strong></li>
                 <li>Go to <strong>Tools</strong> → <strong>WebSocket Server Settings</strong></li>
                 <li>Check <strong>"Enable WebSocket Server"</strong></li>
-                <li>Server Port: <code>4455</code></li>
-                <li>If you set a password, add it to your <code>settings.json</code></li>
               </ol>
+
+              <div class="input-row" style="margin-bottom:8px;">
+                <input id="setup-obs-url" class="input-field" placeholder="WebSocket URL" value="ws://127.0.0.1:4455">
+                <input id="setup-obs-password" class="input-field" type="password" placeholder="Password (Optional)">
+                <button class="btn btn-primary" onclick="saveObsSettings()">Save &amp; Connect</button>
+              </div>
             </div>
             
             <p style="font-size:.8rem; color:var(--text-dim);">
-              Once enabled, the <strong>OBS Status</strong> badge in the sidebar will turn green.
+              The <strong>OBS Status</strong> badge in the sidebar will turn green when connected.
             </p>
           </div>
         </div>

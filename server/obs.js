@@ -39,6 +39,9 @@ class ObsClient extends EventEmitter {
 
   connect() {
     if (this.#ws) return;
+    this.#address = settings.obs?.address || 'ws://127.0.0.1:4455';
+    this.#password = settings.obs?.password || '';
+    
     this.#setStatus('connecting');
     this.#ws = new WebSocket(this.#address);
 
@@ -102,6 +105,17 @@ class ObsClient extends EventEmitter {
     }
 
     this.#ws.send(JSON.stringify(identify));
+  }
+
+  reconnect() {
+    if (this.#ws) {
+      this.#ws.removeAllListeners();
+      this.#ws.terminate();
+      this.#ws = null;
+    }
+    this.#connected = false;
+    this.#setStatus('disconnected');
+    this.connect();
   }
 
   setScene(sceneName) {

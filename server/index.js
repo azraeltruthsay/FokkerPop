@@ -376,10 +376,33 @@ const httpServer = createServer((req, res) => {
     req.on('end', () => {
       try {
         const patch = JSON.parse(body);
-        settings.twitch ??= {};
-        if (patch.twitch?.clientId)     settings.twitch.clientId     = patch.twitch.clientId;
-        if (patch.twitch?.clientSecret) settings.twitch.clientSecret = patch.twitch.clientSecret;
+        let obsChanged = false;
+
+        if (patch.twitch) {
+          settings.twitch ??= {};
+          if (patch.twitch.clientId)     settings.twitch.clientId     = patch.twitch.clientId;
+          if (patch.twitch.clientSecret) settings.twitch.clientSecret = patch.twitch.clientSecret;
+        }
+
+        if (patch.obs) {
+          settings.obs ??= {};
+          if (patch.obs.address !== undefined && patch.obs.address !== settings.obs.address) {
+            settings.obs.address = patch.obs.address;
+            obsChanged = true;
+          }
+          if (patch.obs.password !== undefined && patch.obs.password !== settings.obs.password) {
+            settings.obs.password = patch.obs.password;
+            obsChanged = true;
+          }
+        }
+
         writeFileSync(join(ROOT, 'settings.json'), JSON.stringify(settings, null, 2));
+        
+        if (obsChanged) {
+          log.info('OBS settings updated — reconnecting...');
+          obs.reconnect();
+        }
+
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end('{"ok":true}');
       } catch (err) {
