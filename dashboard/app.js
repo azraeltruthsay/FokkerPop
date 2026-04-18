@@ -8,31 +8,28 @@ let appState  = { session: {}, crowd: { energy: 0 }, goals: [], leaderboard: {} 
 
 const WS_URL  = `ws://${location.hostname}:${location.port || 4747}`;
 const $badge  = document.getElementById('ws-badge');
+const $tBadge = document.getElementById('twitch-badge');
 const $dot    = document.getElementById('live-dot');
 
 function connect() {
   ws = new WebSocket(WS_URL);
-
   ws.addEventListener('open', () => {
     retries = 0;
     setBadge('connected', '● Connected');
     $dot?.classList.add('active');
     ws.send(JSON.stringify({ type: 'register', client: 'dashboard' }));
   });
-
   ws.addEventListener('message', ({ data }) => {
     let msg;
     try { msg = JSON.parse(data); } catch { return; }
     handleMessage(msg);
   });
-
   ws.addEventListener('close', () => {
     retries++;
     setBadge('disconnected', '○ Disconnected');
     $dot?.classList.remove('active');
     setTimeout(connect, Math.min(2000 * retries, 15000));
   });
-
   ws.addEventListener('error', () => {
     setBadge('disconnected', '○ Server offline');
     $dot?.classList.remove('active');
@@ -44,30 +41,23 @@ function setBadge(cls, label) {
   $badge.textContent = label;
 }
 
+function setTwitchBadge(status) {
+  if (!$tBadge) return;
+  const map = {
+    connected:    { cls: 'connected',    label: '● Twitch Live' },
+    connecting:   { cls: 'connecting',   label: '○ Connecting…' },
+    disconnected: { cls: 'disconnected', label: '○ Twitch Offline' },
+    error:        { cls: 'disconnected', label: '⚠️ Twitch Error' },
+  };
+  const { cls, label } = map[status] ?? map.disconnected;
+  $tBadge.className   = `connection-badge ${cls}`;
+  $tBadge.textContent = label;
+}
+
 function dashSend(obj) {
   if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify(obj));
 }
-
 window.dashSend = dashSend;
-
-// ═══════════════════════════════════════════════ Message handling
-
-function handleMessage(msg) {
-  switch (msg.type) {
-    case 'state-snapshot':
-      appState = { ...appState, ...msg.state };
-      refreshAll();
-      break;
-
-    case 'state':
-      applyStateUpdate(msg.path, msg.value);
-      break;
-
-    case 'event-log':
-      appendLog(msg.event);
-      break;
-  }
-}
 
 function applyStateUpdate(path, value) {
   const parts = path.split('.');
@@ -82,6 +72,13 @@ function applyStateUpdate(path, value) {
   if (path === 'goals')          renderGoals(value);
   if (path === 'leaderboard')    renderLeaderboard(value);
   if (path === 'session')        renderSession(value);
+  if (path === 'twitch.status')  setTwitchBadge(value);
+  if (path === 'overlay.volume') {
+    const s = document.getElementById('volume-slider');
+    const l = document.getElementById('volume-label');
+    if (s) s.value = value;
+    if (l) l.textContent = `${Math.round(value * 100)}%`;
+  }
 }
 
 function refreshAll() {
@@ -152,7 +149,7 @@ function renderLbSection(elId, data, unit) {
 function renderGoals(goals) {
   const el = document.getElementById('goals-list');
   if (!el) return;
-  if (!goals?.length) { el.innerHTML = '<p style="color:var(--text-dim);font-size:.82rem;">No goals configured. Edit goals.json to add some.</p>'; return; }
+  if (!goals?.length) { el.innerHTML = '<p style="color:var(--text-dim);font-size:.82rem;">No goals configured. Edit the Config tab to add some.</p>'; return; }
 
   el.innerHTML = goals.map(g => {
     const current = getNestedVal(appState, g.metric) ?? 0;
@@ -178,7 +175,116 @@ function renderGoals(goals) {
         </div>
       </div>`;
   }).join('');
+
+  renderConfigEditors(); // sync config editor if open
 }
+
+function renderConfigEditors() {
+  const gContainer = document.getElementById('config-goals-container');
+  if (gContainer) {
+    gContainer.innerHTML = appState.goals.map((g, i) => `
+      <div class="card" style="margin-bottom:10px;padding:12px;background:var(--surface2);">
+        <div class="input-row">
+          <input class="input-field g-id" placeholder="ID" value="${esc(g.id)}" style="max-width:120px;">
+          <input class="input-field g-label" placeholder="Label" value="${esc(g.label)}">
+          <input class="input-field g-target" type="number" placeholder="Target" value="${g.target}" style="max-width:100px;">
+          <button class="btn btn-ghost btn-sm" onclick="this.closest('.card').remove()" style="color:var(--red);">Delete</button>
+        </div>
+        <div class="input-row" style="margin-top:8px;">
+          <input class="input-field g-metric" placeholder="Metric (e.g. session.subCount)" value="${esc(g.metric)}">
+          <input class="input-field g-effect" placeholder="Reward Effect" value="${esc(g.reward?.effect)}">
+        </div>
+      </div>
+    `).join('');
+  }
+
+  const rContainer = document.getElementById('config-redeems-container');
+  if (rContainer) {
+    fetch('/api/redeems').then(r => r.json()).then(redeems => {
+      rContainer.innerHTML = Object.entries(redeems).filter(([k]) => k !== '_comment').map(([title, def]) => `
+        <div class="card" style="margin-bottom:10px;padding:12px;background:var(--surface2);">
+          <div class="input-row">
+            <input class="input-field r-title" placeholder="Reward Title" value="${esc(title)}">
+            <input class="input-field r-effect" placeholder="Effect" value="${esc(def.effect)}" style="max-width:150px;">
+            <input class="input-field r-count" type="number" placeholder="Count" value="${def.count ?? ''}" style="max-width:80px;">
+            <button class="btn btn-ghost btn-sm" onclick="this.closest('.card').remove()" style="color:var(--red);">Delete</button>
+          </div>
+        </div>
+      `).join('');
+    });
+  }
+}
+
+window.addGoalConfig = function() {
+  const container = document.getElementById('config-goals-container');
+  const div = document.createElement('div');
+  div.className = 'card';
+  div.style.cssText = 'margin-bottom:10px;padding:12px;background:var(--surface2);';
+  div.innerHTML = `
+    <div class="input-row">
+      <input class="input-field g-id" placeholder="ID" value="new-goal" style="max-width:120px;">
+      <input class="input-field g-label" placeholder="Label" value="New Goal">
+      <input class="input-field g-target" type="number" placeholder="Target" value="100" style="max-width:100px;">
+      <button class="btn btn-ghost btn-sm" onclick="this.closest('.card').remove()" style="color:var(--red);">Delete</button>
+    </div>
+    <div class="input-row" style="margin-top:8px;">
+      <input class="input-field g-metric" placeholder="Metric" value="session.subCount">
+      <input class="input-field g-effect" placeholder="Reward Effect" value="firework-salvo">
+    </div>`;
+  container.appendChild(div);
+};
+
+window.saveGoalsConfig = function() {
+  const goals = Array.from(document.querySelectorAll('#config-goals-container .card')).map(card => ({
+    id:        card.querySelector('.g-id').value,
+    label:     card.querySelector('.g-label').value,
+    target:    parseInt(card.querySelector('.g-target').value),
+    metric:    card.querySelector('.g-metric').value,
+    reward:    { type: 'effect', effect: card.querySelector('.g-effect').value },
+    active:    true,
+    completed: false
+  }));
+
+  fetch('/api/goals', {
+    method:  'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body:    JSON.stringify(goals)
+  }).then(r => r.ok ? alert('Goals saved!') : alert('Save failed'));
+};
+
+window.addRedeemConfig = function() {
+  const container = document.getElementById('config-redeems-container');
+  const div = document.createElement('div');
+  div.className = 'card';
+  div.style.cssText = 'margin-bottom:10px;padding:12px;background:var(--surface2);';
+  div.innerHTML = `
+    <div class="input-row">
+      <input class="input-field r-title" placeholder="Reward Title" value="">
+      <input class="input-field r-effect" placeholder="Effect" value="balloon" style="max-width:150px;">
+      <input class="input-field r-count" type="number" placeholder="Count" value="10" style="max-width:80px;">
+      <button class="btn btn-ghost btn-sm" onclick="this.closest('.card').remove()" style="color:var(--red);">Delete</button>
+    </div>`;
+  container.appendChild(div);
+};
+
+window.saveRedeemsConfig = function() {
+  const redeems = {};
+  document.querySelectorAll('#config-redeems-container .card').forEach(card => {
+    const title  = card.querySelector('.r-title').value;
+    const effect = card.querySelector('.r-effect').value;
+    const count  = parseInt(card.querySelector('.r-count').value);
+    if (title) {
+      redeems[title] = { effect };
+      if (!isNaN(count)) redeems[title].count = count;
+    }
+  });
+
+  fetch('/api/redeems', {
+    method:  'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body:    JSON.stringify(redeems)
+  }).then(r => r.ok ? alert('Redeems saved!') : alert('Save failed'));
+};
 
 function getNestedVal(obj, path) {
   return path?.split('.').reduce((o, k) => o?.[k], obj);

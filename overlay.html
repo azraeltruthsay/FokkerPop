@@ -34,6 +34,31 @@ html, body {
 }
 #ws-dot.disconnected { background: #FF6B6B; animation: dot-blink 1.2s ease-in-out infinite; }
 
+/* ═══════════════════════════════════════════════════════ Character */
+#character-wrap {
+  position: fixed;
+  bottom: 0;
+  left: 40px;
+  width: 240px;
+  height: 240px;
+  z-index: 20;
+  pointer-events: none;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+#character-sprite {
+  width: 100%;
+  height: auto;
+  image-rendering: pixelated;
+  transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+#character-sprite.bounce { animation: char-bounce 0.4s ease-out; }
+@keyframes char-bounce {
+  0%, 100% { transform: scale(1); }
+  50%       { transform: scale(1.15) translateY(-15px); }
+}
+
 /* ═══════════════════════════════════════════════════════ Alert Banner */
 #alert-container {
   position: absolute;
@@ -502,6 +527,10 @@ html, body {
 <div id="edge-glow"></div>
 <div id="ws-dot"></div>
 
+<div id="character-wrap">
+  <img id="character-sprite" src="/characters/lilfokkermascot/idle.gif" onerror="this.style.display='none'">
+</div>
+
 <!-- z-10: persistent HUD widgets -->
 <div class="layer" id="layer-hud">
   <div id="widget-crowd-meter">
@@ -634,6 +663,31 @@ const BALLOON_COLORS = [
   ['#C77DFF','#7a2ecc'],['#00C9FF','#007acc'],
 ];
 const $mid = document.getElementById('layer-fx-mid');
+
+// ── Audio Manager ──
+const audioCache = new Map();
+let globalVolume = 0.5;
+
+function playSound(file, vol = 1.0) {
+  if (!file) return;
+  const path = `/assets/sounds/${file}`;
+  
+  // Reuse audio objects for the same file to avoid excessive memory usage
+  let audio = audioCache.get(path);
+  if (!audio) {
+    audio = new Audio(path);
+    audioCache.set(path, audio);
+  } else {
+    // If already playing, clone it to allow overlapping sounds
+    const clone = audio.cloneNode();
+    clone.volume = globalVolume * vol;
+    clone.play().catch(() => {});
+    return;
+  }
+  
+  audio.volume = globalVolume * vol;
+  audio.play().catch(err => console.warn('Audio play blocked:', err));
+}
 
 function spawnBalloon(count = 1) {
   for (let i = 0; i < count; i++) {
@@ -853,6 +907,31 @@ function setCrowdEnergy(v) {
   $crowdMeter.classList.toggle('crowd-meter-max', pct >= 99);
   $crowdEmoji.textContent = (CROWD_EMOJIS.find(([t]) => pct >= t) ?? [0,'💤'])[1];
   setEdgeGlow(pct);
+  updateCharacter(pct);
+}
+
+function updateCharacter(pct) {
+  const img = document.getElementById('character-sprite');
+  if (!img) return;
+  img.style.display = 'block';
+  
+  let state = 'idle';
+  if      (pct >= 99) state = 'explosion';
+  else if (pct >= 75) state = 'hype';
+  else if (pct >= 25) state = 'active';
+
+  const newSrc = `/characters/lilfokkermascot/${state}.gif`;
+  if (!img.src.endsWith(newSrc)) {
+    img.src = newSrc;
+  }
+}
+
+function triggerCharacterReaction() {
+  const img = document.getElementById('character-sprite');
+  if (!img) return;
+  img.classList.remove('bounce');
+  void img.offsetWidth;
+  img.classList.add('bounce');
 }
 
 function setEdgeGlow(pct) {
@@ -1008,6 +1087,11 @@ function handleMessage(msg) {
 }
 
 function dispatchEffect(effect, p) {
+  if (p.sound) playSound(p.sound, p.vol);
+
+  const heavyEffects = ['firework-salvo', 'crowd-explosion', 'combo-display'];
+  if (heavyEffects.includes(effect)) triggerCharacterReaction();
+
   switch (effect) {
     case 'balloon':         spawnBalloon(p.count ?? 1);         break;
     case 'firework':        spawnFireworkRandom();               break;
@@ -1031,6 +1115,9 @@ const state = { crowdEnergy: 0, goals: [], session: {} };
 
 function handleState(path, value) {
   switch (path) {
+    case 'overlay.volume':
+      globalVolume = Math.max(0, Math.min(1, value));
+      break;
     case 'crowd.energy':
       state.crowdEnergy = value;
       setCrowdEnergy(value);

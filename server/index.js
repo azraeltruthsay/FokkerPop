@@ -241,6 +241,48 @@ const httpServer = createServer((req, res) => {
     return res.end(JSON.stringify(state.snapshot()));
   }
 
+  if (path === '/api/goals' && req.method === 'GET') {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    return res.end(JSON.stringify(state.get('goals') ?? []));
+  }
+
+  if (path === '/api/goals' && req.method === 'POST') {
+    let body = '';
+    req.on('data', d => { body += d; });
+    req.on('end', () => {
+      try {
+        const goals = JSON.parse(body);
+        state.set('goals', goals);
+        broadcastState('goals', goals);
+        writeFileSync(join(ROOT, 'goals.json'), JSON.stringify(goals, null, 2));
+        res.writeHead(200); res.end('{"ok":true}');
+      } catch (err) { res.writeHead(400); res.end(err.message); }
+    });
+    return;
+  }
+
+  if (path === '/api/redeems' && req.method === 'GET') {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    return res.end(JSON.stringify(redeems));
+  }
+
+  if (path === '/api/redeems' && req.method === 'POST') {
+    let body = '';
+    req.on('data', d => { body += d; });
+    req.on('end', () => {
+      try {
+        const patch = JSON.parse(body);
+        Object.assign(redeems, patch);
+        // If we want to support full replacement:
+        // Object.keys(redeems).forEach(k => delete redeems[k]);
+        // Object.assign(redeems, patch);
+        writeFileSync(join(ROOT, 'redeems.json'), JSON.stringify(redeems, null, 2));
+        res.writeHead(200); res.end('{"ok":true}');
+      } catch (err) { res.writeHead(400); res.end(err.message); }
+    });
+    return;
+  }
+
   if (path === '/api/settings' && req.method === 'GET') {
     const s = { ...settings };
     if (s.twitch) s.twitch = { ...s.twitch, accessToken: '***', refreshToken: '***', clientSecret: '***' };
@@ -327,6 +369,7 @@ wss.on('connection', (ws, req) => {
         overlays.delete(ws);
         dashboards.add(ws);
         send(ws, { type: 'state-snapshot', state: state.snapshot() });
+        send(ws, { type: 'state', path: 'twitch.status', value: twitchEventSub.status });
       } else {
         // Overlay: send current state
         send(ws, { type: 'state', path: 'crowd.energy', value: state.get('crowd.energy') });
@@ -369,6 +412,10 @@ wss.on('connection', (ws, req) => {
         if (g) { g.completed = false; state.set('goals', goals); broadcastState('goals', goals); }
         break;
       }
+      case '_dashboard.volume':
+        broadcast(overlays, { type: 'state', path: 'overlay.volume', value: msg.value });
+        broadcast(dashboards, { type: 'state', path: 'overlay.volume', value: msg.value });
+        break;
       case '_dashboard.session-reset':
         state.resetSession();
         broadcastState('session',     state.get('session'));
@@ -387,6 +434,10 @@ wss.on('connection', (ws, req) => {
 
 // ── Startup ───────────────────────────────────────────────────────────────────
 const twitchEventSub = new TwitchEventSub();
+
+twitchEventSub.on('status', (status) => {
+  broadcast(dashboards, { type: 'state', path: 'twitch.status', value: status });
+});
 
 httpServer.on('error', (err) => {
   if (err.code === 'EADDRINUSE') {

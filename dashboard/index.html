@@ -589,6 +589,9 @@ html, body {
     <button class="nav-item" data-page="goals">
       <span class="nav-icon">🎯</span> Goals
     </button>
+    <button class="nav-item" data-page="config">
+      <span class="nav-icon">📝</span> Config
+    </button>
     <button class="nav-item" data-page="log">
       <span class="nav-icon">📋</span> Event Log
     </button>
@@ -597,6 +600,7 @@ html, body {
     </button>
 
     <div class="sidebar-spacer"></div>
+    <div id="twitch-badge" class="connection-badge disconnected" style="margin-bottom: 8px;">○ Twitch Offline</div>
     <div id="ws-badge" class="connection-badge connecting">Connecting…</div>
   </nav>
 
@@ -642,6 +646,17 @@ html, body {
             <button class="btn btn-gold  btn-sm" onclick="dashSend({type:'_dashboard.crowd-boost',amount:100})">MAX</button>
             <button class="btn btn-ghost btn-sm" onclick="dashSend({type:'_dashboard.crowd-reset'})">Reset</button>
           </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">Overlay Audio</div>
+        <div style="display:flex;align-items:center;gap:15px;">
+          <span style="font-size:1.2rem;">🔊</span>
+          <input type="range" id="volume-slider" min="0" max="1" step="0.01" value="0.5" 
+                 style="flex:1;accent-color:var(--accent);" 
+                 oninput="dashSend({type:'_dashboard.volume',value:parseFloat(this.value)})">
+          <span id="volume-label" style="font-size:.8rem;color:var(--text-dim);min-width:35px;">50%</span>
         </div>
       </div>
 
@@ -780,12 +795,32 @@ html, body {
       <div class="card">
         <div class="card-title">Active Goals</div>
         <div id="goals-list">
-          <p style="color:var(--text-dim);font-size:.82rem;">Loading goals…</p>
+          <p style="color:var(--text-dim)">Loading goals…</p>
         </div>
       </div>
     </div>
 
+    <!-- ════════════════════════ CONFIG PAGE -->
+    <div class="page" id="page-config">
+      <div class="page-header"><div class="page-title">Config Editor</div></div>
+
+      <div class="card">
+        <div class="card-title">Goal Config</div>
+        <div id="config-goals-container"></div>
+        <button class="btn btn-primary btn-sm" onclick="addGoalConfig()" style="margin-top:10px;">+ Add New Goal</button>
+        <button class="btn btn-primary btn-sm" onclick="saveGoalsConfig()" style="margin-top:10px;float:right;">Save Goals</button>
+      </div>
+
+      <div class="card">
+        <div class="card-title">Channel Point Redeems</div>
+        <div id="config-redeems-container"></div>
+        <button class="btn btn-primary btn-sm" onclick="addRedeemConfig()" style="margin-top:10px;">+ Add New Redeem</button>
+        <button class="btn btn-primary btn-sm" onclick="saveRedeemsConfig()" style="margin-top:10px;float:right;">Save Redeems</button>
+      </div>
+    </div>
+
     <!-- ════════════════════════ LOG PAGE -->
+
     <div class="page" id="page-log">
       <div class="page-header">
         <div class="page-title">Event Log</div>
