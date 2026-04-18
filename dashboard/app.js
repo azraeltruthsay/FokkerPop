@@ -172,6 +172,17 @@ function setVersion(v) {
   if (!v) return;
   const cleanV = String(v).startsWith('v') ? v : `v${v}`;
   document.querySelectorAll('.v-badge, .v-string').forEach(el => { el.textContent = cleanV; });
+
+  // Safety check: Is he actually on the latest?
+  if (v && v < '0.2.33') {
+    const el = document.getElementById('error-reporter');
+    const msgEl = document.getElementById('error-msg');
+    if (el && msgEl) {
+      msgEl.innerHTML = `⚠️ UPDATE FAILED: You are running an old version (${v}). Please run the Auto-Updater EXE again and ensure you overwrite everything!`;
+      el.style.background = 'var(--gold)';
+      el.style.display = 'block';
+    }
+  }
 }
 
 function refreshAll() {

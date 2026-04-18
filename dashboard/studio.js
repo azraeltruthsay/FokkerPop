@@ -424,7 +424,7 @@ function renderProps() {
   html += `<div class="prop-field"><label>Label</label><input class="input-field" value="${esc(n.label || '')}" oninput="activeNode.label=this.value;renderCanvas()"></div>`;
 
   if (n.type === 'trigger') {
-    const triggerOptions = ['sub', 'follow', 'cheer', 'raid', 'redeem', 'hype-train.start', 'hype-train.progress', 'hype-train.end'];
+    const triggerOptions = ['sub', 'sub.gifted', 'follow', 'cheer', 'raid', 'redeem', 'chat', 'hype-train.start', 'hype-train.progress', 'hype-train.end'];
     html += selectField('Event Type', 'trigger', triggerOptions, activeFlow.trigger);
   }
 
