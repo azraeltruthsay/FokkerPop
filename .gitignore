@@ -1,7 +1,10 @@
 node_modules/
 settings.json
 state.json
+goals.json
+redeems.json
 .env
 *.log
 logs/
 memory/
+conductor/

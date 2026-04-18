@@ -285,10 +285,9 @@ const httpServer = createServer((req, res) => {
     req.on('end', () => {
       try {
         const patch = JSON.parse(body);
+        // Full replacement — Config editor saves the complete current set
+        Object.keys(redeems).forEach(k => delete redeems[k]);
         Object.assign(redeems, patch);
-        // If we want to support full replacement:
-        // Object.keys(redeems).forEach(k => delete redeems[k]);
-        // Object.assign(redeems, patch);
         writeFileSync(join(ROOT, 'redeems.json'), JSON.stringify(redeems, null, 2));
         res.writeHead(200); res.end('{"ok":true}');
       } catch (err) { res.writeHead(400); res.end(err.message); }
@@ -484,7 +483,7 @@ httpServer.listen(PORT, BIND, () => {
   log.info(`FokkerPop listening on ${BIND}:${PORT}`);
   console.log(`
 ╔══════════════════════════════════════════════════╗
-║   FokkerPop  v0.1.0   — live on ${BIND}:${PORT}   ║
+║   FokkerPop  v0.1.5   — live on ${BIND}:${PORT}   ║
 ╠══════════════════════════════════════════════════╣
 ║  Overlay   →  http://localhost:${PORT}/          ║
 ║  Dashboard →  http://localhost:${PORT}/dashboard ║
