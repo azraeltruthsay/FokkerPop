@@ -101,7 +101,10 @@ bus.on('*', async (event) => {
   log.info(`event type=${event.type} source=${event.source ?? 'unknown'}`);
 
   // Track chatters from any event that carries a user
-  if (event.payload?.user) state.addChatter(event.payload.user);
+  if (event.payload?.user) {
+    state.addChatter(event.payload.user);
+    broadcastState('chatters', state.get('chatters'));
+  }
 
   try {
     applyBoost(event);

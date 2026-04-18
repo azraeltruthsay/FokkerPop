@@ -32,7 +32,10 @@ class StateStore extends EventEmitter {
   set(path, value) {
     const keys = path.split('.');
     const last = keys.pop();
-    const node = keys.reduce((o, k) => o[k], this.#data);
+    const node = keys.reduce((o, k) => {
+      if (!o[k] || typeof o[k] !== 'object') o[k] = {};
+      return o[k];
+    }, this.#data);
     node[last] = value;
     this.emit('change',        { path, value });
     this.emit(`change:${path}`, value);
@@ -58,6 +61,8 @@ class StateStore extends EventEmitter {
     if (idx !== -1) list.splice(idx, 1);  // move to front if already present
     list.unshift(user);
     if (list.length > 300) list.length = 300;
+    this.emit('change', { path: 'chatters', value: list });
+    this.emit('change:chatters', list);
   }
 
   resetSession() {

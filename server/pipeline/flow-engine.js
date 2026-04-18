@@ -39,13 +39,18 @@ export class FlowEngine {
 
     const startNodes = Object.values(nodes).filter(n => n.type === 'trigger');
     for (const startNode of startNodes) {
-      await this.runNode(startNode, nodes, edges, { event, broadcastEffect, exprCtx });
+      await this.runNode(startNode, nodes, edges, { event, broadcastEffect, exprCtx }, 0);
     }
   }
 
-  async runNode(node, allNodes, allEdges, ctx) {
+  async runNode(node, allNodes, allEdges, ctx, depth = 0) {
     const { event, broadcastEffect, exprCtx } = ctx;
     let outputPort = 'next';
+
+    if (depth > 20) {
+      log.warn(`Flow recursion limit reached for flow [${node.id}] — check for infinite loops.`);
+      return;
+    }
 
     log.debug(`  Node: ${node.id} (${node.label || node.action || node.type})`);
 
@@ -109,7 +114,7 @@ export class FlowEngine {
     // Execute all connected children in parallel
     await Promise.all(nextEdges.map(edge => {
       const nextNode = allNodes[edge.dst];
-      if (nextNode) return this.runNode(nextNode, allNodes, allEdges, ctx);
+      if (nextNode) return this.runNode(nextNode, allNodes, allEdges, ctx, depth + 1);
     }));
   }
 
