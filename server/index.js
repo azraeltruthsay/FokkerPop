@@ -1,6 +1,6 @@
 import { createServer }                                  from 'node:http';
 import { readFileSync, writeFileSync, existsSync, readdirSync } from 'node:fs';
-import { extname, join, normalize, resolve }             from 'node:path';
+import { extname, join, normalize, resolve, sep }        from 'node:path';
 import { exec }                                from 'node:child_process';
 import { WebSocketServer, WebSocket }          from 'ws';
 
@@ -203,7 +203,9 @@ const MIME = {
 function serveFile(res, filePath) {
   // Path traversal guard: resolved path must stay within ROOT
   const safe = resolve(filePath);
-  if (!safe.startsWith(ROOT + '/') && safe !== ROOT) {
+  const rootPrefix = ROOT.endsWith(sep) ? ROOT : ROOT + sep;
+  
+  if (!safe.startsWith(rootPrefix) && safe !== ROOT) {
     res.writeHead(403); res.end('Forbidden'); return;
   }
   if (!existsSync(safe)) {
