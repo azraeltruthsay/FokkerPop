@@ -14,6 +14,20 @@ const $dot    = document.getElementById('live-dot');
 
 function connect() {
   fetch('/api/assets').then(r => r.json()).then(a => assets = a).catch(() => {});
+  
+  // Initial setup check
+  fetch('/api/settings').then(r => r.json()).then(s => {
+    if (s.twitch) {
+      document.getElementById('setup-client-id').value     = s.twitch.clientId     || '';
+      document.getElementById('setup-client-secret').value = s.twitch.clientSecret || '';
+      
+      // Auto-switch to setup if credentials missing
+      if (!s.twitch.clientId || !s.twitch.clientSecret) {
+        document.querySelector('.nav-item[data-page="setup"]')?.click();
+      }
+    }
+  }).catch(() => {});
+
   ws = new WebSocket(WS_URL);
   ws.addEventListener('open', () => {
     retries = 0;
