@@ -41,6 +41,16 @@ export class TwitchEventSub extends EventEmitter {
     this.#dial(EVENTSUB_URL);
   }
 
+  disconnect() {
+    clearTimeout(this.#keepaliveTimer);
+    if (this.#ws) {
+      this.#ws.removeAllListeners();
+      this.#ws.terminate();
+      this.#ws = null;
+    }
+    this.#setStatus('disconnected');
+  }
+
   #dial(url) {
     if (this.#ws) {
       this.#ws.removeAllListeners();

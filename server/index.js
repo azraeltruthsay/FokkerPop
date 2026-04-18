@@ -55,6 +55,7 @@ function loadAndEnsureJson(name, defaultData) {
 const overlays   = new Set();
 const dashboards = new Set();
 let layoutMode = false;
+let isShuttingDown = false;
 
 function send(ws, obj) {
   if (ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(obj));
@@ -97,6 +98,7 @@ setInterval(() => {
 
 // ── Event → state + effects ───────────────────────────────────────────────────
 bus.on('*', async (event) => {
+  if (isShuttingDown) return;
   lastEventTs = Date.now();
   log.info(`event type=${event.type} source=${event.source ?? 'unknown'}`);
 
@@ -664,7 +666,10 @@ httpServer.listen(PORT, BIND, () => {
 });
 
 function shutdown(signal) {
+  if (isShuttingDown) return;
+  isShuttingDown = true;
   log.info(`Received ${signal}, shutting down…`);
+  twitchEventSub.disconnect();
   state.flush();
   httpServer.close(() => process.exit(0));
   setTimeout(() => process.exit(1), 5000).unref();

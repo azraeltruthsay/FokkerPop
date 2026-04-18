@@ -403,10 +403,12 @@ function renderProps() {
 
   if (n.action === 'delay') {
     html += exprField('Wait (ms)', 'ms', n.data.ms ?? 1000);
+    html += `<div style="font-size:0.6rem; color:var(--text-dim); margin-top:-8px; margin-bottom:8px;">(1000 = 1 second)</div>`;
   }
 
   if (n.action === 'chance') {
     html += exprField('Probability (%)', 'probability', n.data.probability ?? 50);
+    html += `<div style="font-size:0.6rem; color:var(--text-dim); margin-top:-8px; margin-bottom:8px;">(50 = Half the time it happens)</div>`;
   }
 
   if (n.action === 'spawnEffect') {
