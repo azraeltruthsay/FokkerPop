@@ -155,6 +155,7 @@ function applyStateUpdate(path, value) {
   if (path === 'session')        renderSession(value);
   if (path === 'twitch.status')  setTwitchBadge(value);
   if (path === 'obs.status')     setObsBadge(value);
+  if (path === 'version')        setVersion(value);
   if (path === 'overlay.layoutMode') {
     const cb = document.getElementById('layout-mode-cb');
     if (cb) cb.checked = value;
@@ -169,7 +170,8 @@ function applyStateUpdate(path, value) {
 
 function setVersion(v) {
   if (!v) return;
-  document.querySelectorAll('.v-badge, .v-string').forEach(el => { el.textContent = `v${v}`; });
+  const cleanV = String(v).startsWith('v') ? v : `v${v}`;
+  document.querySelectorAll('.v-badge, .v-string').forEach(el => { el.textContent = cleanV; });
 }
 
 function refreshAll() {

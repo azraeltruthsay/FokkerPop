@@ -523,6 +523,7 @@ wss.on('connection', (ws, req) => {
           'overlay.layoutMode': layoutMode
         };
         send(ws, { type: 'state-snapshot', state: snapshot });
+        send(ws, { type: 'state', path: 'version',      value: VERSION });
         send(ws, { type: 'state', path: 'twitch.status', value: twitchEventSub.status });
         send(ws, { type: 'state', path: 'obs.status',    value: obs.status });
       } else {
