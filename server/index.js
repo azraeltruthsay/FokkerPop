@@ -513,7 +513,13 @@ httpServer.listen(PORT, BIND, () => {
   twitchEventSub.connect();
 
   const url = `http://localhost:${activePort}/dashboard`;
-  const cmd = process.platform === 'win32' ? `start ${url}` : `xdg-open ${url} 2>/dev/null || open ${url}`;
+  let cmd;
+  if (process.platform === 'win32') {
+    // Try Edge App Mode -> Chrome App Mode -> Default Browser
+    cmd = `start msedge --app="${url}" || start chrome --app="${url}" || start ${url}`;
+  } else {
+    cmd = `xdg-open "${url}" 2>/dev/null || open "${url}"`;
+  }
   exec(cmd, () => {});
   
   log.info('FokkerPop is ready! Use the dashboard to test your overlay.');
