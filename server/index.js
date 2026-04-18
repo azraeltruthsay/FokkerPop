@@ -205,7 +205,12 @@ function serveFile(res, filePath) {
   const safe = resolve(filePath);
   const rootPrefix = ROOT.endsWith(sep) ? ROOT : ROOT + sep;
   
-  if (!safe.startsWith(rootPrefix) && safe !== ROOT) {
+  const isWindows = process.platform === 'win32';
+  const safeStr = isWindows ? safe.toLowerCase() : safe;
+  const rootStr = isWindows ? rootPrefix.toLowerCase() : rootPrefix;
+  const rootDirStr = isWindows ? ROOT.toLowerCase() : ROOT;
+
+  if (!safeStr.startsWith(rootStr) && safeStr !== rootDirStr) {
     res.writeHead(403); res.end('Forbidden'); return;
   }
   if (!existsSync(safe)) {

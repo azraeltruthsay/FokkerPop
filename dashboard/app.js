@@ -88,7 +88,7 @@ function applyStateUpdate(path, value) {
     node[parts[i]] ??= {};
     node = node[parts[i]];
   }
-  node[parts.at(-1)] = value;
+  node[parts[parts.length - 1]] = value;
 
   if (path === 'crowd.energy')   renderCrowd(value);
   if (path === 'goals')          renderGoals(value);
