@@ -64,15 +64,15 @@ export class FlowEngine {
 
         case 'action':
           if (node.action === 'spawnEffect') {
-            broadcastEffect(data.effect, data.payload || {});
+            broadcastEffect(data.effect, data.payload || {}, event.isTest);
           } else if (node.action === 'playSound') {
-            broadcastEffect('alert-banner', { sound: data.file, vol: data.volume });
+            broadcastEffect('alert-banner', { sound: data.file, vol: data.volume }, event.isTest);
           } else if (node.action === 'startTimer') {
-            broadcastEffect('start-timer', { seconds: data.seconds, label: data.label });
+            broadcastEffect('start-timer', { seconds: data.seconds, label: data.label }, event.isTest);
           } else if (node.action === 'obsScene') {
-            bus.publish({ source: 'studio', type: 'obs.set-scene', scene: data.scene });
+            bus.publish({ source: 'studio', type: 'obs.set-scene', scene: data.scene, isTest: event.isTest });
           } else if (node.action === 'showBanner') {
-            broadcastEffect('alert-banner', { tier: data.tier || 'B', icon: data.icon || '📢', text: data.text, subText: data.subText });
+            broadcastEffect('alert-banner', { tier: data.tier || 'B', icon: data.icon || '📢', text: data.text, subText: data.subText }, event.isTest);
           }
           break;
 

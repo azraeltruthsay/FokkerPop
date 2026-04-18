@@ -1136,7 +1136,10 @@ let   demoFired    = false;
 let   demoTimeout  = null;
 const WS_URL       = `ws://${location.hostname}:${location.port || 4747}`;
 
-function connectWS() {
+const isLive = new URLSearchParams(location.search).get('live') === '1';
+
+function connect() {
+
   clearTimeout(demoTimeout);
   ws = new WebSocket(WS_URL);
 
@@ -1163,6 +1166,8 @@ function connectWS() {
 }
 
 function handleMessage(msg) {
+  if (isLive && msg.isTest) return;
+
   switch (msg.type) {
     case 'effect':
       dispatchEffect(msg.effect, msg.payload ?? {});

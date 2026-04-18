@@ -27,6 +27,8 @@ const $dot    = document.getElementById('live-dot');
 function connect() {
   fetch('/api/assets').then(r => r.json()).then(a => assets = a).catch(() => {});
   
+  document.getElementById('overlay-url').textContent = `http://localhost:${location.port || 4747}/?live=1`;
+
   // Initial setup check
   try {
     fetch('/api/settings').then(r => r.json()).then(s => {

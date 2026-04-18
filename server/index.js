@@ -62,8 +62,8 @@ function send(ws, obj) {
 function broadcast(clients, obj) {
   for (const ws of clients) send(ws, obj);
 }
-function broadcastEffect(effect, payload = {}) {
-  broadcast(overlays, { type: 'effect', effect, payload });
+function broadcastEffect(effect, payload = {}, isTest = false) {
+  broadcast(overlays, { type: 'effect', effect, payload, isTest });
 }
 function broadcastState(path, value) {
   const msg = { type: 'state', path, value };
@@ -117,7 +117,7 @@ bus.on('*', async (event) => {
 
   // Dispatch routed effects
   for (const { effect, payload } of event.effects ?? []) {
-    broadcastEffect(effect, payload);
+    broadcastEffect(effect, payload, event.isTest);
   }
 
   // Redeem mapping — supports expressions, effects arrays, and chaining
@@ -533,11 +533,12 @@ wss.on('connection', (ws, req) => {
 
     switch (msg.type) {
       case '_dashboard.test-event':
-        bus.publish({ source: 'dashboard', ...(msg.event ?? {}) });
+        bus.publish({ source: 'dashboard', isTest: true, ...(msg.event ?? {}) });
         break;
       case '_dashboard.effect':
-        broadcastEffect(msg.effect, msg.payload ?? {});
+        broadcastEffect(msg.effect, msg.payload ?? {}, true);
         break;
+
       case '_dashboard.crowd-boost': {
         const next = Math.min(100, (state.get('crowd.energy') ?? 0) + (msg.amount ?? 10));
         state.set('crowd.energy', next);
