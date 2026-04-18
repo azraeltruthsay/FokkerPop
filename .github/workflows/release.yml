@@ -76,6 +76,23 @@ jobs:
 
           # Zip it up
           zip -r "${PKG}.zip" "${PKG}/"
+          
+          # Create Self-Extracting Installer (SFX)
+          wget -qO 7z-extra.7z https://www.7-zip.org/a/7z2408-extra.7z
+          sudo apt-get install -y p7zip-full
+          7z e 7z-extra.7z 7zS.sfx -r -y
+          
+          # SFX Config (InstallPath="." means extract to current folder)
+          printf ";!@Install@!UTF-8!\nTitle=\"FokkerPop Updater\"\nBeginPrompt=\"Extract and update FokkerPop in the current folder?\"\nInstallPath=\".\"\n;!@InstallEnd@!\n" > sfx_config.txt
+          
+          # 7z Archive of the *contents* of the folder (so it extracts flat)
+          cd "${PKG}"
+          7z a ../app.7z *
+          cd ..
+          
+          # Join: Stub + Config + Data = EXE
+          cat 7zS.sfx sfx_config.txt app.7z > "FokkerPop-Updater-${VERSION}.exe"
+
           echo "PKG=${PKG}" >> "$GITHUB_ENV"
 
       - name: Create GitHub Release
@@ -87,23 +104,23 @@ jobs:
 
           # Write release notes
           sed 's/^          //' > release-notes.md << NOTES
-          ## How to install
+          ## FokkerPop Updater (Recommended)
 
-          1. Download \`FokkerPop-${VERSION}-windows.zip\` below
-          2. Extract it anywhere on your PC (Desktop, C:\\Apps, etc.)
-          3. Double-click **start.bat**
-          4. The dashboard opens automatically — go to the **Setup** tab to connect Twitch
-          5. In OBS: add a **Browser Source** → URL \`http://localhost:4747/\` → 1920 × 1080
+          1. Download \`FokkerPop-Updater-${VERSION}.exe\` below
+          2. Place it **inside** your existing FokkerPop folder
+          3. Double-click it and click **Yes** to update
+          4. Run **start.bat** as usual. Your settings are safe!
 
-          Node.js is bundled inside the zip. Nothing else to install, no npm required.
+          ## First-time Install
 
-          ## Updating
+          1. Download \`FokkerPop-${VERSION}-windows.zip\`
+          2. Extract it anywhere and run **start.bat**
 
-          Download the new zip, extract it next to the old folder, and copy your
-          \`settings.json\` across. The old folder can be deleted.
+          Node.js is bundled. No setup required.
           NOTES
 
           gh release create "${VERSION}" \
-            "${PKG}.zip#FokkerPop ${VERSION} (Windows)" \
+            "${PKG}.zip#FokkerPop ${VERSION} (Windows ZIP)" \
+            "FokkerPop-Updater-${VERSION}.exe#FokkerPop ${VERSION} (Auto-Updater EXE)" \
             --title "FokkerPop ${VERSION}" \
             --notes-file release-notes.md

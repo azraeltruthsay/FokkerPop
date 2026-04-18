@@ -1,11 +1,12 @@
 import { WebSocket } from 'ws';
+import { createHash } from 'node:crypto';
 import bus from './bus.js';
 import log from './logger.js';
 import settings from './settings-loader.js';
 
 /**
  * Minimal OBS WebSocket v5 Client
- * Keeps LilFokker in control of his scenes from Fokker Studio.
+ * Handles authentication and scene switching for Fokker Studio.
  */
 
 class ObsClient {
@@ -27,18 +28,17 @@ class ObsClient {
 
   connect() {
     if (this.#ws) return;
-    log.info(`Connecting to OBS at ${this.#address}...`);
     this.#ws = new WebSocket(this.#address);
 
     this.#ws.on('open', () => {
-      log.info('OBS WebSocket connected (Waiting for Hello)');
+      log.info(`OBS WebSocket connected to ${this.#address} (Waiting for Hello)`);
     });
 
     this.#ws.on('message', (raw) => {
       try {
         const msg = JSON.parse(raw);
         if (msg.op === 0) { // Hello
-          this.#identify();
+          this.#identify(msg.d);
         } else if (msg.op === 2) { // Identified
           log.info('OBS Handshake successful');
           this.#connected = true;
@@ -48,25 +48,43 @@ class ObsClient {
       }
     });
 
-    this.#ws.on('close', () => {
+    this.#ws.on('close', (code) => {
+      if (this.#connected) log.warn(`OBS connection closed (code ${code}), retrying in 10s...`);
       this.#connected = false;
       this.#ws = null;
-      log.warn('OBS disconnected, retrying in 10s...');
       setTimeout(() => this.connect(), 10000);
     });
 
     this.#ws.on('error', (err) => {
-      log.debug('OBS connection failed (Is OBS running?)');
+      if (err.code === 'ECONNREFUSED') {
+        // Quietly wait for OBS to be opened
+        return;
+      }
+      log.debug('OBS WebSocket error:', err.message);
     });
   }
 
-  #identify() {
-    // Note: This is a minimal ID without password auth for now.
-    // OBS v5 requires password auth if configured. 
-    this.#ws.send(JSON.stringify({
+  #identify(helloData) {
+    const identify = {
       op: 1,
       d: { rpcVersion: 1 }
-    }));
+    };
+
+    // Handle Authentication if required
+    if (helloData.authentication) {
+      if (!this.#password) {
+        log.warn('OBS requires a password, but none is set in FokkerPop settings.');
+        return;
+      }
+      const { salt, challenge } = helloData.authentication;
+      
+      const passHash = createHash('sha256').update(this.#password + salt).digest('base64');
+      const authResp = createHash('sha256').update(passHash + challenge).digest('base64');
+      
+      identify.d.authentication = authResp;
+    }
+
+    this.#ws.send(JSON.stringify(identify));
   }
 
   setScene(sceneName) {

@@ -43,8 +43,15 @@ Your `settings.json` is created automatically and is never uploaded anywhere.
 
 ## Updating
 
-Download the new zip, and **extract it directly into your existing folder** (overwrite all files). 
-Your `settings.json`, `goals.json`, `redeems.json`, and any custom stickers/sounds will be **preserved** during this process.
+The easiest way to update is using the **Auto-Updater**:
+
+1. Download `FokkerPop-Updater-vX.X.X.exe` from the [Releases page](../../releases)
+2. Place the file **inside** your current `FokkerPop` folder
+3. Double-click it and click **Yes** to extract/overwrite
+4. Your `settings.json`, `goals.json`, and custom assets will be **preserved**.
+5. Run `start.bat` as usual!
+
+Alternatively, you can download the `.zip` and manually extract it over your existing folder.
 
 ## Customisation
 
