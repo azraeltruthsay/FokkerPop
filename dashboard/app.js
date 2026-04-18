@@ -87,6 +87,23 @@ function setTwitchBadge(status) {
   $tBadge.textContent = label;
 }
 
+function handleMessage(msg) {
+  switch (msg.type) {
+    case 'state-snapshot':
+      appState = { ...appState, ...msg.state };
+      refreshAll();
+      break;
+
+    case 'state':
+      applyStateUpdate(msg.path, msg.value);
+      break;
+
+    case 'event-log':
+      appendLog(msg.event);
+      break;
+  }
+}
+
 function applyStateUpdate(path, value) {
   const parts = path.split('.');
   let node = appState;
