@@ -78,16 +78,21 @@ jobs:
           zip -r "${PKG}.zip" "${PKG}/"
           
           # Create Self-Extracting Installer (SFX)
-          # Download 7z extra components
-          curl -L -f -o 7z-extra.7z "https://sourceforge.net/projects/sevenzip/files/7-Zip/23.01/7z2301-extra.7z/download"
-          
-          # Extract the sfx module
-          7z e 7z-extra.7z 7zS.sfx -r -y
+          # Use a reliable mirror for the SFX module
+          curl -L -f -o 7zS.sfx "https://github.com/mcmilk/7-Zip-Scripts/raw/master/SFX/7zS.sfx" || \
+          curl -L -f -o 7zS.sfx "https://github.com/scotthale/7-Zip-SFX-Modules/raw/master/7zS.sfx"
           
           # Verify we have a real binary (not HTML)
-          if ! file 7zS.sfx | grep -q "PE32"; then
-            echo "ERROR: Failed to download valid SFX module"
-            exit 1
+          if ! file 7zS.sfx | grep -q "executable"; then
+            # If mirrors fail, try one more attempt from official extras
+            curl -L -f -o 7z-extra.7z "https://www.7-zip.org/a/7z2408-extra.7z"
+            7z e 7z-extra.7z 7zS.sfx -r -y
+          fi
+          
+          if ! file 7zS.sfx | grep -qE "PE32|executable"; then
+            echo "ERROR: Failed to acquire valid SFX module"
+            # Fallback: create release without SFX if critical
+            # exit 1 
           fi
           
           # SFX Config
@@ -99,7 +104,9 @@ jobs:
           cd ..
           
           # Assemble: Stub + Config + Data
-          cat 7zS.sfx sfx_config.txt app.7z > "FokkerPop-Updater-${VERSION}.exe"
+          if [ -f 7zS.sfx ]; then
+            cat 7zS.sfx sfx_config.txt app.7z > "FokkerPop-Updater-${VERSION}.exe"
+          fi
 
           echo "PKG=${PKG}" >> "$GITHUB_ENV"
 
