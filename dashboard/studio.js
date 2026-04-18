@@ -259,6 +259,7 @@ function onContextMenu(e) {
       <div class="ctx-divider"></div>
       <div class="ctx-header">Flow</div>
       <div class="ctx-item" onclick="createNewFlow()">🎨 New Flow</div>
+      <div class="ctx-item" onclick="duplicateActiveFlow()">👯 Duplicate Current Flow</div>
       <div class="ctx-item" onclick="deleteActiveFlow()" style="color:var(--red)">🗑️ Delete Current Flow</div>
     `;
   }
@@ -311,6 +312,17 @@ window.deleteActiveFlow = function() {
   renderFlowList();
   if (activeFlow) loadFlow(activeFlow.id);
   else renderCanvas();
+};
+
+window.duplicateActiveFlow = function() {
+  if (!activeFlow) return;
+  const newFlow = JSON.parse(JSON.stringify(activeFlow));
+  newFlow.id = 'flow-' + Date.now();
+  newFlow.name = (newFlow.name || 'Untitled') + ' (Copy)';
+  flows.push(newFlow);
+  hideContextMenu();
+  renderFlowList();
+  loadFlow(newFlow.id);
 };
 
 // ─── Node Management ────────────────────────────────────────────────────────
@@ -408,6 +420,15 @@ function renderProps() {
     html += exprField('Sub Text', 'subText', n.data.subText || '');
     html += selectField('Tier', 'tier', ['S', 'A', 'B', 'C'], n.data.tier || 'B');
     html += exprField('Icon', 'icon', n.data.icon || '📢');
+  }
+
+  if (n.action === 'setEnergy') {
+    html += exprField('Value (0–100) or {{ expr }}', 'amount', n.data.amount ?? 100);
+  }
+
+  if (n.action === 'updateStat') {
+    html += exprField('Path (e.g. session.subCount)', 'path', n.data.path || '');
+    html += exprField('Increment By', 'by', n.data.by ?? 1);
   }
 
   if (n.action === 'playSound') {

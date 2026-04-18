@@ -73,6 +73,13 @@ export class FlowEngine {
             bus.publish({ source: 'studio', type: 'obs.set-scene', scene: data.scene, isTest: event.isTest });
           } else if (node.action === 'showBanner') {
             broadcastEffect('alert-banner', { tier: data.tier || 'B', icon: data.icon || '📢', text: data.text, subText: data.subText }, event.isTest);
+          } else if (node.action === 'setEnergy') {
+            const next = Math.max(0, Math.min(100, Number(data.amount)));
+            state.set('crowd.energy', next);
+            bus.publish({ source: 'studio', type: 'state', path: 'crowd.energy', value: next }); // notify dash/overlay
+            if (next >= 100) broadcastEffect('crowd-explosion', {}, event.isTest);
+          } else if (node.action === 'updateStat') {
+            if (data.path) state.increment(data.path, Number(data.by ?? 1));
           }
           break;
 

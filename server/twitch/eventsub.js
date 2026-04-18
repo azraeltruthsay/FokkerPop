@@ -1,7 +1,10 @@
 import { EventEmitter } from 'node:events';
 import { WebSocket }    from 'ws';
+import { join }         from 'node:path';
+import { writeFileSync } from 'node:fs';
 import bus             from '../bus.js';
-import settings        from '../settings-loader.js';
+import settings, { ROOT } from '../settings-loader.js';
+import { refreshAccessToken } from './helix.js';
 import log             from '../logger.js';
 
 const EVENTSUB_URL = 'wss://eventsub.wss.twitch.tv/ws';
@@ -126,6 +129,23 @@ export class TwitchEventSub extends EventEmitter {
           headers: { 'Authorization': `Bearer ${accessToken}`, 'Client-Id': clientId, 'Content-Type': 'application/json' },
           body:    JSON.stringify({ type, version, condition, transport: { method: 'websocket', session_id: this.#sessionId } }),
         });
+        
+        if (res.status === 401) {
+          log.warn('Twitch token expired — attempting auto-refresh...');
+          const newTokens = await refreshAccessToken();
+          if (newTokens?.access_token) {
+            settings.twitch.accessToken = newTokens.access_token;
+            if (newTokens.refresh_token) settings.twitch.refreshToken = newTokens.refresh_token;
+            writeFileSync(join(ROOT, 'settings.json'), JSON.stringify(settings, null, 2));
+            log.info('Token refreshed successfully — retrying subscription.');
+            return this.#subscribe(); // Retry entire loop once
+          } else {
+            log.error('Auto-refresh failed — please re-connect Twitch in the dashboard.');
+            this.#setStatus('error');
+            return;
+          }
+        }
+
         if (res.ok) {
           ok++;
         } else {

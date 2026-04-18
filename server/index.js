@@ -578,6 +578,10 @@ wss.on('connection', (ws, req) => {
         broadcastState('overlay.positions', positions);
         break;
       }
+      case '_dashboard.reset-layout':
+        state.set('overlay.positions', {});
+        broadcastState('overlay.positions', {});
+        break;
       case '_dashboard.session-reset':
         state.resetSession();
         broadcastState('session',     state.get('session'));

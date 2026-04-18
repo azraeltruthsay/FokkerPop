@@ -984,6 +984,7 @@ html, body {
             When active, you can click and drag HUD elements (Crowd Meter, Goals, etc.) 
             directly in your OBS browser source or preview window to reposition them.
           </p>
+          <button class="btn btn-ghost btn-sm" onclick="resetLayout()" style="margin-top:12px; color:var(--red);">Reset All Positions</button>
         </div>
 
         <div class="card">
@@ -1046,6 +1047,8 @@ html, body {
           <button class="btn btn-ghost btn-sm" onclick="addNode('action', 'spawnEffect')">🎇 Effect</button>
           <button class="btn btn-ghost btn-sm" onclick="addNode('action', 'showBanner')">📢 Banner</button>
           <button class="btn btn-ghost btn-sm" onclick="addNode('action', 'playSound')">🔊 Sound</button>
+          <button class="btn btn-ghost btn-sm" onclick="addNode('action', 'setEnergy')">🔋 Set Energy</button>
+          <button class="btn btn-ghost btn-sm" onclick="addNode('action', 'updateStat')">📈 Update Stat</button>
           <button class="btn btn-ghost btn-sm" onclick="addNode('action', 'startTimer')">⏲️ Timer</button>
           <button class="btn btn-ghost btn-sm" onclick="addNode('action', 'obsScene')">🎥 OBS Scene</button>
           <button class="btn btn-ghost btn-sm" onclick="addNode('logic', 'delay')">⏳ Delay</button>

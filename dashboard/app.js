@@ -606,6 +606,12 @@ window.saveEngineSettings = function() {
   }).then(r => r.ok ? alert('Engine Settings saved!') : alert('Save failed'));
 };
 
+window.resetLayout = function() {
+  if (confirm('Reset all widget positions to defaults?')) {
+    dashSend({ type: '_dashboard.reset-layout' });
+  }
+};
+
 window.saveCredentialsAndAuth = function () {
   const clientId     = document.getElementById('setup-client-id').value.trim();
   const clientSecret = document.getElementById('setup-client-secret').value.trim();
