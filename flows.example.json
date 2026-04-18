@@ -15,5 +15,41 @@
       { "src": "f1", "outPort": "true", "dst": "d1" },
       { "src": "d1", "outPort": "next", "dst": "a1" }
     ]
+  },
+  {
+    "id": "chat-hype",
+    "name": "Secret !hype Command",
+    "active": true,
+    "trigger": "chat",
+    "nodes": {
+      "t1": { "id": "t1", "type": "trigger", "x": 100, "y": 300 },
+      "f1": { "id": "f1", "type": "logic", "action": "filter", "data": { "field": "payload.message", "operator": "==", "value": "!hype" }, "x": 300, "y": 300 },
+      "a1": { "id": "a1", "type": "action", "action": "spawnEffect", "data": { "effect": "confetti" }, "x": 500, "y": 250 },
+      "a2": { "id": "a2", "type": "action", "action": "playSound", "data": { "file": "yay.wav" }, "x": 500, "y": 350 }
+    },
+    "edges": [
+      { "src": "t1", "outPort": "next", "dst": "f1" },
+      { "src": "f1", "outPort": "true", "dst": "a1" },
+      { "src": "f1", "outPort": "true", "dst": "a2" }
+    ]
+  },
+  {
+    "id": "mystery-box",
+    "name": "Mystery Redeem",
+    "active": true,
+    "trigger": "redeem",
+    "nodes": {
+      "t1": { "id": "t1", "type": "trigger", "x": 100, "y": 550 },
+      "f1": { "id": "f1", "type": "logic", "action": "filter", "data": { "field": "payload.rewardTitle", "operator": "==", "value": "Mystery Box" }, "x": 300, "y": 550 },
+      "c1": { "id": "c1", "type": "logic", "action": "chance", "data": { "probability": 50 }, "x": 500, "y": 550 },
+      "a1": { "id": "a1", "type": "action", "action": "spawnEffect", "data": { "effect": "balloon", "payload": { "count": 20 } }, "x": 700, "y": 500 },
+      "a2": { "id": "a2", "type": "action", "action": "spawnEffect", "data": { "effect": "firework", "payload": { "count": 1 } }, "x": 700, "y": 600 }
+    },
+    "edges": [
+      { "src": "t1", "outPort": "next", "dst": "f1" },
+      { "src": "f1", "outPort": "true", "dst": "c1" },
+      { "src": "c1", "outPort": "true", "dst": "a1" },
+      { "src": "c1", "outPort": "false", "dst": "a2" }
+    ]
   }
 ]
