@@ -19,6 +19,9 @@ class StateStore extends EventEmitter {
     this.#data = existsSync(STATE_FILE)
       ? { ...structuredClone(DEFAULTS), ...JSON.parse(readFileSync(STATE_FILE, 'utf8')) }
       : structuredClone(DEFAULTS);
+
+    // Periodic flush every 5 minutes
+    setInterval(() => this.flush(), 300_000).unref();
   }
 
   get(path) {
