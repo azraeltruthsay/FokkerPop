@@ -42,6 +42,14 @@ const EFFECT_MAP = {
       : [{ effect: 'confetti',        payload: { sound: 'confetti.wav' } }]),
   ],
 
+  // ── Cheer Combo ──────────────────────────────────────────────────────────────
+  'cheer.combo': (e) => [
+    { effect: 'combo-display', payload: { ...e.payload, sound: 'combo.wav' } },
+    ...(e.payload.level >= 3
+      ? [{ effect: 'firework-salvo',  payload: { count: 3, sound: 'boom.wav' } }]
+      : [{ effect: 'firework',        payload: { sound: 'boom.wav' } }]),
+  ],
+
   // ── Cheer ────────────────────────────────────────────────────────────────────
   cheer: (e) => {
     const bits = e.payload.bits ?? 0;
