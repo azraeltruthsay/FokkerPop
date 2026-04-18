@@ -601,41 +601,15 @@ html, body {
   cursor: crosshair;
   transition: background 0.2s, border-color 0.2s;
 }
-.studio-port:hover { background: var(--accent); border-color: var(--accent); }
 .studio-port.in { left: -7px; top: 50%; transform: translateY(-50%); }
 .studio-port.out { right: -7px; top: 50%; transform: translateY(-50%); }
+.studio-port:hover { background: var(--accent); border-color: var(--accent); transform: translateY(-50%) scale(1.4); }
 .studio-port__label { position: absolute; font-size: 0.6rem; color: var(--text-dim); pointer-events: none; }
 .studio-port.out .studio-port__label { right: 16px; top: -1px; }
 
 #studio-svg path { stroke: var(--text-dim); stroke-width: 2.5; fill: none; transition: stroke 0.2s; }
 #studio-svg path.active { stroke: var(--accent); }
-
-/* ── Context Menu ── */
-#studio-ctx-menu {
-  position: fixed;
-  z-index: 10000;
-  background: var(--surface2);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  min-width: 160px;
-  padding: 6px 0;
-  box-shadow: 0 10px 25px rgba(0,0,0,0.5);
-  display: none;
-}
-.ctx-item {
-  padding: 8px 16px;
-  font-size: 0.78rem;
-  font-weight: 600;
-  color: var(--text);
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-.ctx-item:hover { background: var(--accent); color: #fff; }
-.ctx-divider { height: 1px; background: var(--border); margin: 6px 0; }
-.ctx-header { padding: 4px 16px; font-size: 0.6rem; text-transform: uppercase; color: var(--text-dim); letter-spacing: 0.05em; font-weight: 800; }
-</style>
+#studio-svg path.ghost-wire { stroke: var(--accent); stroke-dasharray: 6 4; opacity: 0.6; pointer-events: none; }
 
 #page-studio.active { display: flex; }
 </style>
@@ -1072,6 +1046,11 @@ html, body {
         <div id="studio-canvas-wrap" style="flex:1; position:relative; cursor:grab;">
           <svg id="studio-svg" style="width:100%; height:100%; position:absolute; top:0; left:0; pointer-events:none;"></svg>
           <div id="studio-nodes" style="position:absolute; top:0; left:0; width:100%; height:100%;"></div>
+          
+          <!-- UX Hint -->
+          <div style="position:absolute; bottom:20px; left:50%; transform:translateX(-50%); background:rgba(0,0,0,0.4); color:var(--text-dim); padding:6px 15px; border-radius:99px; font-size:.65rem; pointer-events:none; border:1px solid rgba(255,255,255,0.05); text-transform:uppercase; letter-spacing:.05em; z-index:10;">
+             💡 Drag from <strong style="color:var(--text)">Right Circle</strong> (Output) to <strong style="color:var(--text)">Left Circle</strong> (Input) to connect
+          </div>
         </div>
 
         <!-- Properties Panel -->

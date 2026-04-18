@@ -171,7 +171,22 @@ function onMouseDown(e) {
   
   const port = e.target.closest('.studio-port.out');
   if (port) {
-    dragPort = { node: activeNode, id: port.dataset.port, x1: e.clientX, y1: e.clientY };
+    const nodeEl = port.closest('.studio-node');
+    const nodeId = nodeEl.id.replace('node-', '');
+    const node   = activeFlow?.nodes?.[nodeId];
+    
+    // Create ghost wire
+    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+    path.className.baseVal = 'ghost-wire';
+    $svg.appendChild(path);
+
+    dragPort = { 
+      node, 
+      id: port.dataset.port, 
+      path,
+      x1: node.x + port.offsetLeft + 6,
+      y1: node.y + port.offsetTop + 6
+    };
     return;
   }
 
@@ -183,6 +198,16 @@ function onMouseMove(e) {
   const dx = e.clientX - lastMouse.x;
   const dy = e.clientY - lastMouse.y;
   lastMouse = { x: e.clientX, y: e.clientY };
+
+  if (dragPort) {
+    const rect = $wrap.getBoundingClientRect();
+    const x2 = (e.clientX - rect.left - offset.x) / zoom;
+    const y2 = (e.clientY - rect.top - offset.y) / zoom;
+    const { x1, y1 } = dragPort;
+    const curve = Math.abs(x1 - x2) * 0.5;
+    dragPort.path.setAttribute('d', `M ${x1} ${y1} C ${x1 + curve} ${y1}, ${x2 - curve} ${y2}, ${x2} ${y2}`);
+    return;
+  }
 
   if (isPanning) {
     offset.x += dx;
@@ -197,6 +222,7 @@ function onMouseMove(e) {
 
 function onMouseUp(e) {
   if (dragPort) {
+    dragPort.path.remove();
     const inPort = e.target.closest('.studio-port.in');
     if (inPort) {
       const dstNodeId = inPort.parentElement.id.replace('node-', '');
