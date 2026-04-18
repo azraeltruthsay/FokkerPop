@@ -1398,12 +1398,13 @@ window.addEventListener('mousemove', (e) => {
   if (!dragTarget) return;
   e.preventDefault();
 
+  const rect = document.body.getBoundingClientRect();
   const x = e.clientX - dragOffset.x;
   const y = e.clientY - dragOffset.y;
 
-  // Convert to percentage for resolution-independence
-  const px = (x / window.innerWidth) * 100;
-  const py = (y / window.innerHeight) * 100;
+  // Convert to percentage for resolution-independence based on container size
+  const px = (x / rect.width) * 100;
+  const py = (y / rect.height) * 100;
 
   dragTarget.style.left = `${px}%`;
   dragTarget.style.top  = `${py}%`;

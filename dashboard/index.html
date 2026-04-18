@@ -969,7 +969,13 @@ html, body {
             When active, you can click and drag HUD elements (Crowd Meter, Goals, etc.) 
             directly in your OBS browser source or preview window to reposition them.
           </p>
-          <button class="btn btn-ghost btn-sm" onclick="resetLayout()" style="margin-top:12px; color:var(--red);">Reset All Positions</button>
+          <div style="display:flex; gap:10px; margin-top:12px;">
+            <button class="btn btn-primary btn-sm" onclick="window.open('/overlay', '_blank', 'width=1280,height=720')">🎨 Pop-out Editor</button>
+            <button class="btn btn-ghost btn-sm" onclick="resetLayout()" style="color:var(--red);">Reset All Positions</button>
+          </div>
+          <div style="background:rgba(255,215,0,0.05); padding:10px; border-radius:8px; border:1px solid rgba(255,215,0,0.1); margin-top:14px; font-size:.78rem; line-height:1.4;">
+            <strong>Pro Tip:</strong> To move things directly in OBS, right-click your Browser Source and select <strong>Interact</strong>.
+          </div>
         </div>
 
         <div class="card">
