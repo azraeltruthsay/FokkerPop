@@ -76,6 +76,24 @@ jobs:
 
           # Zip it up
           zip -r "${PKG}.zip" "${PKG}/"
+          
+          # Create NSIS Auto-Updater
+          sudo apt-get update && sudo apt-get install -y nsis
+          
+          cat > updater.nsi << EOF
+          Name "FokkerPop Updater"
+          OutFile "FokkerPop-Updater-${VERSION}.exe"
+          RequestExecutionLevel user
+          SilentInstall silent
+          
+          Section "Update"
+            SetOutPath "\$EXEDIR"
+            SetOverwrite on
+            File /r "${PKG}\\*.*"
+          SectionEnd
+          EOF
+
+          makensis updater.nsi
 
           echo "PKG=${PKG}" >> "$GITHUB_ENV"
 
@@ -90,16 +108,23 @@ jobs:
           sed 's/^          //' > release-notes.md << NOTES
           ## FokkerPop v${VERSION}
 
-          1. Download \`FokkerPop-${VERSION}-windows.zip\` below
+          ### 🚀 FokkerPop Updater (Recommended)
+          1. Download \`FokkerPop-Updater-${VERSION}.exe\` below
+          2. Place it **inside** your existing FokkerPop folder
+          3. Double-click it. (It runs silently to update your files)
+          4. Run **start.bat** as usual. Your settings are safe!
+
+          ### 📦 First-time Install
+          1. Download \`FokkerPop-${VERSION}-windows.zip\`
           2. Extract it anywhere and run **start.bat**
 
-          Note: Auto-Updater EXE is temporarily disabled while we fix a build snag.
-          Please use the ZIP for this version!
+          Note: The Updater EXE is now built with NSIS for maximum reliability.
 
           Node.js is bundled. No setup required.
           NOTES
 
           gh release create "${VERSION}" \
             "${PKG}.zip#FokkerPop ${VERSION} (Windows ZIP)" \
+            "FokkerPop-Updater-${VERSION}.exe#FokkerPop ${VERSION} (Auto-Updater EXE)" \
             --title "FokkerPop ${VERSION}" \
             --notes-file release-notes.md
