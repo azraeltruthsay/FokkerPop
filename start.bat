@@ -22,7 +22,7 @@ if not exist "node_modules\ws" (
     echo.
     echo    TO FIX THIS:
     echo    1. Go to: https://github.com/azraeltruthsay/FokkerPop/releases
-    echo    2. Download 'FokkerPop-v0.1.0-windows.zip' (NOT the source code)
+    echo    2. Download the latest 'FokkerPop-vX.X.X-windows.zip'
     echo    3. Extract that zip and run start.bat from there.
     echo.
     echo    OR (for developers):
