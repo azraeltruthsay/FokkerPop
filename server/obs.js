@@ -18,7 +18,7 @@ class ObsClient {
     this.#address = settings.obs?.address || 'ws://127.0.0.1:4455';
     this.#password = settings.obs?.password || '';
     
-    bus.subscribe(msg => {
+    bus.on('*', msg => {
       if (msg.type === 'obs.set-scene' && msg.scene) {
         this.setScene(msg.scene);
       }
