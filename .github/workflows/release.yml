@@ -78,12 +78,14 @@ jobs:
           zip -r "${PKG}.zip" "${PKG}/"
           
           # Create Self-Extracting Installer (SFX)
-          wget -qO 7z-extra.7z https://www.7-zip.org/a/7z2408-extra.7z
+          # Use 24.08 as a known stable version for now
+          wget -q https://www.7-zip.org/a/7z2408-extra.7z -O 7z-extra.7z
           sudo apt-get install -y p7zip-full
           7z e 7z-extra.7z 7zS.sfx -r -y
           
           # SFX Config (InstallPath="." means extract to current folder)
-          printf ";!@Install@!UTF-8!\nTitle=\"FokkerPop Updater\"\nBeginPrompt=\"Extract and update FokkerPop in the current folder?\"\nInstallPath=\".\"\n;!@InstallEnd@!\n" > sfx_config.txt
+          # Note: Title and BeginPrompt are optional but helpful
+          printf ";!@Install@!UTF-8!\nTitle=\"FokkerPop Updater\"\nBeginPrompt=\"Update FokkerPop in the current folder?\"\nInstallPath=\".\"\n;!@InstallEnd@!\n" > sfx_config.txt
           
           # 7z Archive of the *contents* of the folder (so it extracts flat)
           cd "${PKG}"
