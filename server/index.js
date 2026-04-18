@@ -471,32 +471,48 @@ twitchEventSub.on('status', (status) => {
   broadcast(dashboards, { type: 'state', path: 'twitch.status', value: status });
 });
 
+// ── Port binding with auto-fallback ───────────────────────────────────────────
+let activePort = PORT;
+const MAX_PORT_TRIES = 5;
+
 httpServer.on('error', (err) => {
-  if (err.code === 'EADDRINUSE') {
-    log.error(`Port ${PORT} is already in use. Is FokkerPop already running?`);
-    log.error(`If not, change "server": { "port": ${PORT} } in settings.json to a different port.`);
+  if ((err.code === 'EADDRINUSE' || err.code === 'EACCES') && activePort < PORT + MAX_PORT_TRIES) {
+    log.warn(`Port ${activePort} unavailable (${err.code}), trying ${activePort + 1}…`);
+    activePort++;
+    httpServer.listen(activePort, BIND);
+  } else if (err.code === 'EADDRINUSE') {
+    log.error(`Ports ${PORT}–${activePort} are all in use. Is FokkerPop already running?`);
+    process.exit(1);
   } else if (err.code === 'EACCES') {
-    log.error(`Permission denied on port ${PORT}. Windows has reserved this port (common with Hyper-V, WSL, or Docker).`);
-    log.error(`Fix option 1: change the port in settings.json — add "server": { "port": 4748 } and restart.`);
-    log.error(`Fix option 2: run this in an admin Command Prompt, then restart your PC:`);
+    log.error(`Ports ${PORT}–${activePort} are all reserved by Windows (Hyper-V/WSL/Docker).`);
+    log.error(`Run in an admin Command Prompt to release them, then restart:`);
     log.error(`  netsh int ipv4 delete excludedportrange protocol=tcp numberofports=1 startport=${PORT}`);
+    process.exit(1);
   } else {
     log.error('HTTP server error:', err.message);
+    process.exit(1);
   }
-  process.exit(1);
 });
 
 httpServer.listen(PORT, BIND, () => {
-  log.info(`FokkerPop listening on ${BIND}:${PORT}`);
+  log.info(`FokkerPop listening on ${BIND}:${activePort}`);
+  if (activePort !== PORT) {
+    log.warn(`Default port ${PORT} was unavailable — using port ${activePort} instead.`);
+    log.warn(`Add "server": { "port": ${activePort} } to settings.json to make this permanent.`);
+  }
   console.log(`
 ╔══════════════════════════════════════════════════╗
-║   FokkerPop  v${VERSION}  — live on ${BIND}:${PORT}   ║
+║   FokkerPop  v${VERSION}  — live on ${BIND}:${activePort}   ║
 ╠══════════════════════════════════════════════════╣
-║  Overlay   →  http://localhost:${PORT}/          ║
-║  Dashboard →  http://localhost:${PORT}/dashboard ║
+║  Overlay   →  http://localhost:${activePort}/          ║
+║  Dashboard →  http://localhost:${activePort}/dashboard ║
 ╚══════════════════════════════════════════════════╝`);
 
   twitchEventSub.connect();
+
+  const url = `http://localhost:${activePort}/dashboard`;
+  const cmd = process.platform === 'win32' ? `start ${url}` : `xdg-open ${url} 2>/dev/null || open ${url}`;
+  exec(cmd, () => {});
 });
 
 function shutdown(signal) {
