@@ -1,6 +1,6 @@
-import { createServer }                        from 'node:http';
-import { readFileSync, writeFileSync, existsSync } from 'node:fs';
-import { extname, join, normalize, resolve }   from 'node:path';
+import { createServer }                                  from 'node:http';
+import { readFileSync, writeFileSync, existsSync, readdirSync } from 'node:fs';
+import { extname, join, normalize, resolve }             from 'node:path';
 import { exec }                                from 'node:child_process';
 import { WebSocketServer, WebSocket }          from 'ws';
 
@@ -294,6 +294,18 @@ const httpServer = createServer((req, res) => {
       } catch (err) { res.writeHead(400); res.end(err.message); }
     });
     return;
+  }
+
+  if (path === '/api/assets' && req.method === 'GET') {
+    const assets = { sounds: [], stickers: [] };
+    try {
+      const sDir = join(ROOT, 'assets/sounds');
+      if (existsSync(sDir)) assets.sounds = readdirSync(sDir).filter(f => !f.startsWith('.'));
+      const tDir = join(ROOT, 'assets/stickers');
+      if (existsSync(tDir)) assets.stickers = readdirSync(tDir).filter(f => !f.startsWith('.'));
+    } catch (err) { log.error('Asset scan error:', err.message); }
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    return res.end(JSON.stringify(assets));
   }
 
   if (path === '/api/settings' && req.method === 'GET') {

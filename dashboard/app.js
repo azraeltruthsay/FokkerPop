@@ -5,6 +5,7 @@
 let ws        = null;
 let retries   = 0;
 let appState  = { session: {}, crowd: { energy: 0 }, goals: [], leaderboard: {} };
+let assets    = { sounds: [], stickers: [] };
 
 const WS_URL  = `ws://${location.hostname}:${location.port || 4747}`;
 const $badge  = document.getElementById('ws-badge');
@@ -12,6 +13,7 @@ const $tBadge = document.getElementById('twitch-badge');
 const $dot    = document.getElementById('live-dot');
 
 function connect() {
+  fetch('/api/assets').then(r => r.json()).then(a => assets = a).catch(() => {});
   ws = new WebSocket(WS_URL);
   ws.addEventListener('open', () => {
     retries = 0;
@@ -193,7 +195,7 @@ function renderConfigEditors() {
         </div>
         <div class="input-row" style="margin-top:8px;">
           <input class="input-field g-metric" placeholder="Metric (e.g. session.subCount)" value="${esc(g.metric)}">
-          <input class="input-field g-effect" placeholder="Reward Effect" value="${esc(g.reward?.effect)}">
+          ${buildEffectSelect('g-effect', g.reward?.effect)}
         </div>
       </div>
     `).join('');
@@ -206,14 +208,35 @@ function renderConfigEditors() {
         <div class="card" style="margin-bottom:10px;padding:12px;background:var(--surface2);">
           <div class="input-row">
             <input class="input-field r-title" placeholder="Reward Title" value="${esc(title)}">
-            <input class="input-field r-effect" placeholder="Effect" value="${esc(def.effect)}" style="max-width:150px;">
+            ${buildEffectSelect('r-effect', def.effect)}
+          </div>
+          <div class="input-row" style="margin-top:8px;">
             <input class="input-field r-count" type="number" placeholder="Count" value="${def.count ?? ''}" style="max-width:80px;">
+            ${buildSoundSelect('r-sound', def.sound)}
             <button class="btn btn-ghost btn-sm" onclick="this.closest('.card').remove()" style="color:var(--red);">Delete</button>
           </div>
         </div>
       `).join('');
     });
   }
+}
+
+function buildEffectSelect(cls, current) {
+  const effects = ['balloon', 'firework', 'firework-salvo', 'confetti', 'sticker-rain', 'crowd-explosion', 'alert-banner'];
+  return `
+    <select class="input-field ${cls}" style="flex:1;">
+      <option value="">-- Select Effect --</option>
+      ${effects.map(e => `<option value="${e}" ${e === current ? 'selected' : ''}>Effect: ${e}</option>`).join('')}
+    </select>`;
+}
+
+function buildSoundSelect(cls, current) {
+  const sounds = assets.sounds ?? [];
+  return `
+    <select class="input-field ${cls}" style="flex:1;">
+      <option value="">-- No Sound --</option>
+      ${sounds.map(s => `<option value="${s}" ${s === current ? 'selected' : ''}>Sound: ${s}</option>`).join('')}
+    </select>`;
 }
 
 window.addGoalConfig = function() {
@@ -230,7 +253,7 @@ window.addGoalConfig = function() {
     </div>
     <div class="input-row" style="margin-top:8px;">
       <input class="input-field g-metric" placeholder="Metric" value="session.subCount">
-      <input class="input-field g-effect" placeholder="Reward Effect" value="firework-salvo">
+      ${buildEffectSelect('g-effect', 'firework-salvo')}
     </div>`;
   container.appendChild(div);
 };
@@ -261,8 +284,11 @@ window.addRedeemConfig = function() {
   div.innerHTML = `
     <div class="input-row">
       <input class="input-field r-title" placeholder="Reward Title" value="">
-      <input class="input-field r-effect" placeholder="Effect" value="balloon" style="max-width:150px;">
+      ${buildEffectSelect('r-effect', 'balloon')}
+    </div>
+    <div class="input-row" style="margin-top:8px;">
       <input class="input-field r-count" type="number" placeholder="Count" value="10" style="max-width:80px;">
+      ${buildSoundSelect('r-sound', '')}
       <button class="btn btn-ghost btn-sm" onclick="this.closest('.card').remove()" style="color:var(--red);">Delete</button>
     </div>`;
   container.appendChild(div);
@@ -274,9 +300,11 @@ window.saveRedeemsConfig = function() {
     const title  = card.querySelector('.r-title').value;
     const effect = card.querySelector('.r-effect').value;
     const count  = parseInt(card.querySelector('.r-count').value);
+    const sound  = card.querySelector('.r-sound').value;
     if (title) {
       redeems[title] = { effect };
       if (!isNaN(count)) redeems[title].count = count;
+      if (sound)         redeems[title].sound = sound;
     }
   });
 

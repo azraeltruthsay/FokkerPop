@@ -7,7 +7,13 @@ const THROTTLE_MS = {
 const lastFired = new Map();
 
 export function throttler(ctx) {
-  const limit = THROTTLE_MS[ctx.event.type];
+  let limit = THROTTLE_MS[ctx.event.type];
+
+  // Extra throttling for micro-cheers to prevent spam floods
+  if (ctx.event.type === 'cheer' && (ctx.event.payload?.bits ?? 0) < 10) {
+    limit = 2000;
+  }
+
   if (!limit) return;
 
   const now  = Date.now();

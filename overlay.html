@@ -549,7 +549,7 @@ html, body {
   <div id="widget-goals"></div>
 
   <div id="widget-leaderboard">
-    <div class="lb-title">Top Supporters</div>
+    <div class="lb-title" id="lb-title">Top Supporters</div>
     <div id="lb-list"></div>
   </div>
 </div>
@@ -1021,22 +1021,57 @@ function getNestedVal(obj, path) {
 }
 
 // Leaderboard
-const $lb     = document.getElementById('widget-leaderboard');
-const $lbList = document.getElementById('lb-list');
+const $lb      = document.getElementById('widget-leaderboard');
+const $lbList  = document.getElementById('lb-list');
+const $lbTitle = document.getElementById('lb-title');
+
+let currentLbData = null;
+let lbCategory    = 'bits'; // bits, gifts, subs
 
 function renderLeaderboard(lb) {
-  const entries = Object.entries(lb?.bits ?? {})
+  currentLbData = lb;
+  updateLbDisplay();
+}
+
+function updateLbDisplay() {
+  if (!currentLbData) return;
+  
+  const categories = {
+    bits:  { label: 'Top Cheerers', unit: 'bits' },
+    gifts: { label: 'Top Gifters',  unit: 'subs' }
+  };
+
+  const info    = categories[lbCategory];
+  const entries = Object.entries(currentLbData[lbCategory] ?? {})
     .sort((a, b) => b[1] - a[1]).slice(0, 5);
-  if (!entries.length) { $lb.classList.remove('has-data'); return; }
+
+  if (!entries.length) {
+    // If no data for this category, try the other one
+    lbCategory = lbCategory === 'bits' ? 'gifts' : 'bits';
+    const otherEntries = Object.entries(currentLbData[lbCategory] ?? {})
+      .sort((a, b) => b[1] - a[1]).slice(0, 5);
+    if (!otherEntries.length) { $lb.classList.remove('has-data'); return; }
+    // Fallthrough to render other category if it has data
+    return updateLbDisplay();
+  }
+
   $lb.classList.add('has-data');
-  $lbList.innerHTML = entries.map(([user, bits], i) =>
+  $lbTitle.textContent = info.label;
+  $lbList.innerHTML = entries.map(([user, val], i) =>
     `<div class="lb-entry">
       <div class="lb-rank lb-rank--${i+1}">${i+1}</div>
       <div class="lb-name">${escHtml(user)}</div>
-      <div class="lb-value">${bits.toLocaleString()} bits</div>
+      <div class="lb-value">${val.toLocaleString()} ${info.unit}</div>
     </div>`
   ).join('');
 }
+
+// Rotate leaderboard every 15 seconds
+setInterval(() => {
+  if (!currentLbData) return;
+  lbCategory = lbCategory === 'bits' ? 'gifts' : 'bits';
+  updateLbDisplay();
+}, 15000);
 
 // ═══════════════════════════════════════════════════════ WebSocket
 
