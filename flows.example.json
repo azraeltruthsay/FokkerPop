@@ -51,5 +51,28 @@
       { "src": "c1", "outPort": "true", "dst": "a1" },
       { "src": "c1", "outPort": "false", "dst": "a2" }
     ]
+  },
+  {
+    "id": "dice-fate",
+    "name": "D20 Roll of Fate",
+    "active": true,
+    "trigger": "redeem",
+    "nodes": {
+      "t1": { "id": "t1", "type": "trigger", "x": 100, "y": 800 },
+      "f1": { "id": "f1", "type": "logic", "action": "filter", "data": { "field": "payload.rewardTitle", "operator": "==", "value": "Roll for Luck" }, "x": 300, "y": 800 },
+      "r1": { "id": "r1", "type": "action", "action": "rollDice", "data": { "sides": 20 }, "x": 500, "y": 800 },
+      "crit": { "id": "crit", "type": "logic", "action": "filter", "data": { "field": "roll", "operator": "==", "value": 20 }, "x": 700, "y": 700 },
+      "fail": { "id": "fail", "type": "logic", "action": "filter", "data": { "field": "roll", "operator": "==", "value": 1 }, "x": 700, "y": 900 },
+      "a1": { "id": "a1", "type": "action", "action": "spawnEffect", "data": { "effect": "firework-salvo", "payload": { "count": 20 } }, "x": 900, "y": 700 },
+      "a2": { "id": "a2", "type": "action", "action": "spawnEffect", "data": { "effect": "sticker-rain", "payload": { "duration": 3000 } }, "x": 900, "y": 900 }
+    },
+    "edges": [
+      { "src": "t1", "outPort": "next", "dst": "f1" },
+      { "src": "f1", "outPort": "true", "dst": "r1" },
+      { "src": "r1", "outPort": "next", "dst": "crit" },
+      { "src": "r1", "outPort": "next", "dst": "fail" },
+      { "src": "crit", "outPort": "true", "dst": "a1" },
+      { "src": "fail", "outPort": "true", "dst": "a2" }
+    ]
   }
 ]

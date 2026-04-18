@@ -7,6 +7,7 @@
   "Karebec Slam Attack":   { "effect": "firework",       "count": 1,  "sound": "boom.wav" },
   "Roll 6s!":              { "effect": "firework",       "count": 1,  "sound": "yay.wav" },
   "Roll 1s!":              { "effect": "confetti",       "sound": "pop.wav" },
+  "Roll for Luck":         { "effect": "balloon",        "count": 1, "sound": "alert.wav" },
   "Mascot Hype":           { "effect": "alert-banner",   "payload": { "tier": "S", "icon": "🔥", "text": "LIL FOKKER IS HYPED!" }, "sound": "alert.wav" },
 
   "_comment": "Add more redeems here. Key = exact Channel Point reward title in Twitch."

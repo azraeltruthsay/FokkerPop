@@ -382,6 +382,7 @@ const EXPR_REF = `
     <summary style="font-size:0.62rem;color:var(--text-dim);cursor:pointer;letter-spacing:0.05em;text-transform:uppercase;">Variables reference</summary>
     <div style="font-size:0.65rem;color:var(--text-dim);line-height:2;margin-top:6px;font-family:monospace;">
       <div><span style="color:var(--accent2)">payload.user</span> · .bits · .count · .viewers</div>
+      <div><span style="color:var(--accent2)">roll</span> — result of the last 🎲 Dice Roll</div>
       <div><span style="color:var(--accent2)">chatters</span> — recent chatter list</div>
       <div><span style="color:var(--accent2)">pick(chatters)</span> — random chatter</div>
       <div><span style="color:var(--accent2)">session</span>.subCount · .bitsTotal</div>
@@ -452,6 +453,11 @@ function renderProps() {
 
   if (n.action === 'setEnergy') {
     html += exprField('Value (0–100) or {{ expr }}', 'amount', n.data.amount ?? 100);
+  }
+
+  if (n.action === 'rollDice') {
+    html += exprField('Sides (e.g. 20)', 'sides', n.data.sides ?? 20);
+    html += `<div style="font-size:0.6rem; color:var(--text-dim); margin-top:-8px; margin-bottom:8px;">Result available as {{ roll }}</div>`;
   }
 
   if (n.action === 'updateStat') {

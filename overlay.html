@@ -66,6 +66,61 @@ html, body {
   line-height: 1;
 }
 
+/* ═══════════════════════════════════════════════════════ Dice */
+#dice-container {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 150;
+  pointer-events: none;
+}
+.dice-roll-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 15px;
+  animation: dice-pop 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.dice-box {
+  width: 140px;
+  height: 140px;
+  background: var(--surface2);
+  border: 4px solid var(--accent);
+  border-radius: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 5rem;
+  font-weight: 900;
+  color: #fff;
+  box-shadow: 0 10px 40px rgba(0,0,0,0.6), 0 0 20px rgba(145,71,255,0.4);
+  text-shadow: 0 0 15px rgba(255,255,255,0.3);
+}
+.dice-box.rolling { animation: dice-shake 0.15s infinite; }
+.dice-user {
+  background: var(--accent);
+  color: #fff;
+  padding: 4px 16px;
+  border-radius: 99px;
+  font-weight: 800;
+  font-size: 0.9rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+}
+
+@keyframes dice-pop {
+  0% { transform: scale(0) rotate(-45deg); opacity: 0; }
+  100% { transform: scale(1) rotate(0); opacity: 1; }
+}
+@keyframes dice-shake {
+  0%, 100% { transform: translate(0,0) rotate(0); }
+  25% { transform: translate(4px, -4px) rotate(3deg); }
+  50% { transform: translate(-4px, 4px) rotate(-3deg); }
+  75% { transform: translate(4px, 4px) rotate(3deg); }
+}
+
 /* ═══════════════════════════════════════════════════════ Layout Mode */
 .draggable {
   cursor: default;
@@ -576,6 +631,7 @@ body.layout-mode .draggable:hover {
 <div id="screen-flash"></div>
 <div id="edge-glow"></div>
 <div id="ws-dot"></div>
+<div id="dice-container"></div>
 
 <div id="character-wrap" class="draggable">
   <img id="character-sprite" src="/characters/lilfokkermascot/idle.gif" onerror="this.style.display='none'">
@@ -1208,6 +1264,40 @@ function startTimer(seconds, label = 'COUNTDOWN') {
   timerInterval = setInterval(update, 1000);
 }
 
+function spawnDiceRoll(result, sides, user) {
+  const container = document.getElementById('dice-container');
+  if (!container) return;
+
+  const wrap = document.createElement('div');
+  wrap.className = 'dice-roll-wrap';
+  wrap.innerHTML = `
+    <div class="dice-box rolling">?</div>
+    <div class="dice-user">${escHtml(user || 'STREAM')} ROLLED D${sides}</div>
+  `;
+  container.appendChild(wrap);
+
+  const box = wrap.querySelector('.dice-box');
+  let duration = 1200;
+  let interval = setInterval(() => {
+    box.textContent = Math.floor(Math.random() * sides) + 1;
+  }, 80);
+
+  setTimeout(() => {
+    clearInterval(interval);
+    box.classList.remove('rolling');
+    box.textContent = result;
+    playSound('yay.wav');
+    
+    // Cleanup
+    setTimeout(() => {
+      wrap.style.transition = 'opacity 1s, transform 1s';
+      wrap.style.opacity = '0';
+      wrap.style.transform = 'translateY(-100px) scale(0.8)';
+      setTimeout(() => wrap.remove(), 1000);
+    }, 4000);
+  }, duration);
+}
+
 function dispatchEffect(effect, p) {
   if (p.sound) playSound(p.sound, p.vol);
 
@@ -1215,6 +1305,7 @@ function dispatchEffect(effect, p) {
   if (heavyEffects.includes(effect)) triggerCharacterReaction();
 
   switch (effect) {
+    case 'dice-roll':       spawnDiceRoll(p.result, p.sides ?? 20, p.user); break;
     case 'start-timer':     startTimer(p.seconds ?? 60, p.label); break;
     case 'balloon':         spawnBalloon(p.count ?? 1);         break;
     case 'firework':        spawnFireworkRandom();               break;

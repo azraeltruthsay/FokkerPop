@@ -83,6 +83,11 @@ export class FlowEngine {
             if (next >= 100) broadcastEffect('crowd-explosion', {}, event.isTest);
           } else if (node.action === 'updateStat') {
             if (data.path) state.increment(data.path, Number(data.by ?? 1));
+          } else if (node.action === 'rollDice') {
+            const sides = Number(data.sides || 20);
+            const roll  = Math.floor(Math.random() * sides) + 1;
+            ctx.exprCtx.roll = roll; // Inject into context for future nodes
+            broadcastEffect('dice-roll', { result: roll, sides, user: event.payload?.user }, event.isTest);
           }
           break;
 
