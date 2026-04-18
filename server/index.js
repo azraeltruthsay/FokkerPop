@@ -483,17 +483,13 @@ httpServer.listen(PORT, BIND, () => {
   log.info(`FokkerPop listening on ${BIND}:${PORT}`);
   console.log(`
 ╔══════════════════════════════════════════════════╗
-║   FokkerPop  v0.1.7   — live on ${BIND}:${PORT}   ║
+║   FokkerPop  v0.1.8   — live on ${BIND}:${PORT}   ║
 ╠══════════════════════════════════════════════════╣
 ║  Overlay   →  http://localhost:${PORT}/          ║
 ║  Dashboard →  http://localhost:${PORT}/dashboard ║
 ╚══════════════════════════════════════════════════╝`);
 
   twitchEventSub.connect();
-
-  const url = `http://localhost:${PORT}/dashboard`;
-  const cmd = process.platform === 'win32' ? `start ${url}` : `xdg-open ${url} 2>/dev/null || open ${url}`;
-  exec(cmd, () => {});
 });
 
 function shutdown(signal) {
