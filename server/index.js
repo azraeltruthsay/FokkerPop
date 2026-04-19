@@ -778,6 +778,14 @@ wss.on('connection', (ws, req) => {
           payload: { result: msg.result, sides: msg.sides, widgetId: msg.widgetId },
         });
       }
+      if (msg.type === '_overlay.dice-tray-rolled' && Array.isArray(msg.dice)) {
+        log.info(`Dice tray rolled: [${msg.dice.map(d => d.result).join(', ')}] sum=${msg.sum}`);
+        bus.publish({
+          type:    'dice-tray.rolled',
+          source:  'overlay',
+          payload: { dice: msg.dice, sum: msg.sum, widgetId: msg.widgetId },
+        });
+      }
       if (msg.type === '_dashboard.save-position') {
         const positions = state.get('overlay.positions') ?? {};
         positions[msg.id] = { x: msg.x, y: msg.y };

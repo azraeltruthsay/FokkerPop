@@ -473,6 +473,7 @@ window.addWidget = function (type) {
     ],
   };
   if (type === 'dice')        base.config = { visible: true, autoHide: true, sides: 20, triggerEvent: 'redeem', width: 220, height: 220 };
+  if (type === 'dice-tray')   base.config = { visible: true, autoHide: true, count: 2, triggerEvent: 'redeem', width: 420, height: 280, dieSize: 0.45, trayWidth: 2.5, trayDepth: 1.6 };
   if (type === 'model-3d')    base.config = { visible: true, modelUrl: '', rotationSpeed: 0.005, scale: 1, reactiveScale: '', width: 300, height: 300 };
   widgets.push(base);
   saveWidgets().then(renderWidgetList);
@@ -532,7 +533,7 @@ function renderWidgetList() {
       'hot-button': 'Hot Button', 'event-badge': 'Event Badge',
       'progress-bar': 'Progress Bar', 'leaderboard-top': 'Leaderboard Top-N',
       'physics-pit': 'Physics Pit (2D)', 'physics-pit-3d': 'Physics Pit (3D)',
-      dice: 'Dice', 'model-3d': '3D Model',
+      dice: 'Dice', 'dice-tray': 'Dice Tray', 'model-3d': '3D Model',
     }[w.type] || w.type;
     const body = (() => {
       if (w.type === 'counter') return `
@@ -603,6 +604,13 @@ function renderWidgetList() {
           ${EVENT_OPTIONS.map(e => `<option value="${e}" ${e === c.triggerEvent ? 'selected' : ''}>${e}</option>`).join('')}
         </select>
         <span style="font-size:.7rem; color:var(--text-dim);">Result fires bus event <code>dice.rolled</code> {result, sides} — use Studio to branch on it.</span>`;
+      if (w.type === 'dice-tray') return `
+        <input class="input-field" type="number" min="1" max="20" value="${c.count ?? 2}" oninput="updateWidgetField('${w.id}','count',parseInt(this.value)||1)" style="max-width:80px;" title="Number of D6 dice in the tray">
+        <select class="input-field" onchange="updateWidgetField('${w.id}','triggerEvent',this.value)" title="Event type that rolls the tray">
+          ${EVENT_OPTIONS.map(e => `<option value="${e}" ${e === c.triggerEvent ? 'selected' : ''}>${e}</option>`).join('')}
+        </select>
+        <input class="input-field" type="number" step="0.05" value="${c.dieSize ?? 0.45}" oninput="updateWidgetField('${w.id}','dieSize',parseFloat(this.value)||0)" style="max-width:80px;" title="Die half-extent (world units)">
+        <span style="font-size:.7rem; color:var(--text-dim);">Rolls N D6s together. Result fires bus event <code>dice-tray.rolled</code> {dice:[{sides,result}], sum}.</span>`;
       if (w.type === 'model-3d') {
         const models = (window.assets?.models) || [];
         return `
@@ -616,7 +624,7 @@ function renderWidgetList() {
       }
       return '';
     })();
-    const autoHideTypes = new Set(['physics-pit', 'physics-pit-3d', 'dice', 'event-badge']);
+    const autoHideTypes = new Set(['physics-pit', 'physics-pit-3d', 'dice', 'dice-tray', 'event-badge']);
     const showAutoHide = autoHideTypes.has(w.type);
     return `
       <div class="card" style="margin-bottom:10px; padding:12px; background:var(--surface2); ${visible ? '' : 'opacity:0.55;'}">

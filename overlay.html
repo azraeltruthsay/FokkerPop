@@ -1435,7 +1435,7 @@ function pokeAutoHide(widget, holdMs = 8000) {
 }
 
 function widgetMatchesEvent(w, event) {
-  if (w.type === 'event-badge' || w.type === 'dice') {
+  if (w.type === 'event-badge' || w.type === 'dice' || w.type === 'dice-tray') {
     return !w.config?.eventType || w.config.eventType === event.type;
   }
   if (w.type === 'physics-pit' || w.type === 'physics-pit-3d') {
@@ -1457,11 +1457,12 @@ function flashEventBadges(event) {
     el.classList.remove('fire'); void el.offsetWidth; el.classList.add('fire');
     setTimeout(() => el.classList.remove('fire'), 900);
   }
-  // Physics pits (2D and 3D) + dice widgets also react to matching event types.
+  // Physics pits (2D and 3D) + dice + dice tray also react to matching event types.
   if (widgetModule) {
     widgetModule.onPhysicsPitEvent?.(state.widgets, event);
     widgetModule.onPhysicsPit3DEvent?.(state.widgets, event);
     widgetModule.triggerDice?.(state.widgets, event.type);
+    widgetModule.triggerDiceTray?.(state.widgets, event.type);
   }
 }
 
@@ -1767,6 +1768,13 @@ function renderCustomWidgets() {
       el.style.minWidth = (cfg.width || 360) + 'px';
       el.style.minHeight = (cfg.height || 260) + 'px';
       ensureWidgetModule().then(m => m.mountPhysicsPit3D(w, el, readMetric));
+    } else if (w.type === 'dice-tray') {
+      el.style.background = 'transparent';
+      el.style.border = 'none';
+      el.style.padding = '0';
+      el.style.minWidth = (cfg.width || 420) + 'px';
+      el.style.minHeight = (cfg.height || 280) + 'px';
+      ensureWidgetModule().then(m => m.mountDiceTray(w, el, (msg) => { try { ws?.send?.(JSON.stringify(msg)); } catch {} }));
     }
 
     // Per-widget visibility toggle (default true). Hidden widgets stay hidden

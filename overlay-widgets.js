@@ -463,6 +463,222 @@ export function triggerDice(widgets, eventType) {
   }
 }
 
+// ─── Dice Tray (multi-die pit with summed/individual readback) ────────────
+// Uses cannon-es for 3D physics and three.js BoxGeometry bodies (D6 first
+// pass — the tray rolls N D6s as ConvexPolyhedron-approximated cubes so
+// they tumble realistically and the face-up is readable). Reports
+// dice-tray.rolled { widgetId, dice: [{sides,result}], sum } after all settle.
+
+const diceTrays = new Map();
+
+export async function mountDiceTray(widget, el, sendToServer) {
+  const T = await loadThree();
+  const C = await loadCannon();
+  const cfg = widget.config || {};
+
+  const w = cfg.width || 420;
+  const h = cfg.height || 280;
+  el.style.width  = w + 'px';
+  el.style.height = h + 'px';
+  el.style.position = 'absolute';
+  el.innerHTML = '';
+
+  const scene = new T.Scene();
+  const camera = new T.PerspectiveCamera(45, w / h, 0.1, 100);
+  camera.position.set(0, 4, 6);
+  camera.lookAt(0, 0, 0);
+
+  scene.add(new T.AmbientLight(0xffffff, 0.7));
+  const key = new T.DirectionalLight(0xffffff, 1.1);
+  key.position.set(3, 5, 3);
+  scene.add(key);
+
+  const renderer = new T.WebGLRenderer({ alpha: true, antialias: true });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.setSize(w, h);
+  renderer.setClearColor(0x000000, 0);
+  renderer.domElement.style.cssText = 'display:block; width:100%; height:100%; border-radius:12px; background:rgba(8,8,16,0.25); border:1px solid rgba(255,255,255,0.08);';
+  el.appendChild(renderer.domElement);
+
+  const world = new C.World({ gravity: new C.Vec3(0, -20, 0) });
+  world.broadphase = new C.NaiveBroadphase();
+  world.allowSleep = true;
+  world.defaultContactMaterial.restitution = 0.3;
+  world.defaultContactMaterial.friction    = 0.4;
+
+  // Tray dimensions
+  const halfX = cfg.trayWidth  ?? 2.5;
+  const halfZ = cfg.trayDepth  ?? 1.6;
+  const wallH = 1.2;
+  const wallT = 0.08;
+
+  // Ground + walls
+  world.addBody(new C.Body({ type: C.Body.STATIC, shape: new C.Plane(),
+    quaternion: new C.Quaternion().setFromEuler(-Math.PI / 2, 0, 0) }));
+  const wall = (w2, h2, d2, px, py, pz) => world.addBody(new C.Body({
+    type: C.Body.STATIC, shape: new C.Box(new C.Vec3(w2, h2, d2)), position: new C.Vec3(px, py, pz)
+  }));
+  wall(wallT, wallH / 2, halfZ + wallT, -halfX - wallT, wallH / 2, 0);
+  wall(wallT, wallH / 2, halfZ + wallT,  halfX + wallT, wallH / 2, 0);
+  wall(halfX + wallT, wallH / 2, wallT, 0, wallH / 2, -halfZ - wallT);
+  wall(halfX + wallT, wallH / 2, wallT, 0, wallH / 2,  halfZ + wallT);
+
+  // Tray visual
+  const trayGeo = new T.PlaneGeometry(halfX * 2, halfZ * 2);
+  const trayMat = new T.MeshStandardMaterial({ color: 0x181822, roughness: 0.8 });
+  const trayMesh = new T.Mesh(trayGeo, trayMat);
+  trayMesh.rotation.x = -Math.PI / 2;
+  scene.add(trayMesh);
+  scene.add(new T.Box3Helper(new T.Box3(new T.Vector3(-halfX, 0, -halfZ), new T.Vector3(halfX, wallH, halfZ)), 0x9147FF));
+
+  // Pre-build D6 textures (shared across all dice in this tray)
+  const faceTextures = [1, 2, 3, 4, 5, 6].map(n => {
+    const s = 128;
+    const c = document.createElement('canvas');
+    c.width = s; c.height = s;
+    const ctx = c.getContext('2d');
+    ctx.fillStyle = '#FFD700'; ctx.fillRect(0, 0, s, s);
+    ctx.fillStyle = '#1a0f00';
+    ctx.font = 'bold 80px system-ui, sans-serif';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(String(n), s / 2, s / 2 + 4);
+    const tex = new T.CanvasTexture(c);
+    tex.colorSpace = T.SRGBColorSpace;
+    return tex;
+  });
+
+  // Cube-face -> number mapping. three.js BoxGeometry groups materials by
+  // side: [+X, -X, +Y, -Y, +Z, -Z]. Standard dice have opposite faces
+  // summing to 7: 1↔6, 2↔5, 3↔4.
+  const FACE_NUMBERS = [1, 6, 2, 5, 3, 4];
+  const FACE_NORMALS = [
+    new T.Vector3( 1, 0,  0),
+    new T.Vector3(-1, 0,  0),
+    new T.Vector3( 0, 1,  0),
+    new T.Vector3( 0,-1,  0),
+    new T.Vector3( 0, 0,  1),
+    new T.Vector3( 0, 0, -1),
+  ];
+
+  const dice = []; // { body, mesh, settled, stillFor, result? }
+  let rollActive = false;
+
+  function spawnDice(count) {
+    const size = cfg.dieSize ?? 0.45;
+    for (let i = 0; i < count; i++) {
+      const body = new C.Body({
+        mass: 0.5, shape: new C.Box(new C.Vec3(size, size, size)),
+        position: new C.Vec3((Math.random() - 0.5) * halfX, 1.5 + Math.random() * 1.5, (Math.random() - 0.5) * halfZ),
+        angularDamping: 0.15, linearDamping: 0.08,
+      });
+      body.velocity.set((Math.random() - 0.5) * 3, 0, (Math.random() - 0.5) * 3);
+      body.angularVelocity.set(Math.random() * 10, Math.random() * 10, Math.random() * 10);
+      body.quaternion.setFromEuler(Math.random() * 6.28, Math.random() * 6.28, Math.random() * 6.28);
+      world.addBody(body);
+
+      const mats = faceTextures.map(tex => new T.MeshStandardMaterial({ map: tex, roughness: 0.35 }));
+      const mesh = new T.Mesh(new T.BoxGeometry(size * 2, size * 2, size * 2), mats);
+      scene.add(mesh);
+      dice.push({ body, mesh, settled: false, stillFor: 0, result: null });
+    }
+  }
+
+  function readFaceUp(body) {
+    const q = new T.Quaternion(body.quaternion.x, body.quaternion.y, body.quaternion.z, body.quaternion.w);
+    const up = new T.Vector3(0, 1, 0);
+    let best = -Infinity, num = 1;
+    for (let i = 0; i < 6; i++) {
+      const n = FACE_NORMALS[i].clone().applyQuaternion(q);
+      const d = n.dot(up);
+      if (d > best) { best = d; num = FACE_NUMBERS[i]; }
+    }
+    return num;
+  }
+
+  function rollTray() {
+    // Remove previous dice
+    for (const d of dice) {
+      world.removeBody(d.body);
+      scene.remove(d.mesh);
+      d.mesh.geometry.dispose();
+      d.mesh.material.forEach(m => m.dispose());
+    }
+    dice.length = 0;
+    rollActive = true;
+    const n = Math.max(1, Math.min(20, cfg.count ?? 2));
+    spawnDice(n);
+  }
+
+  let last = performance.now();
+  let rafId = null;
+  function loop(now) {
+    const dt = Math.min(1 / 30, (now - last) / 1000);
+    last = now;
+    world.step(1 / 60, dt, 3);
+
+    let allSettled = true;
+    for (const d of dice) {
+      d.mesh.position.set(d.body.position.x, d.body.position.y, d.body.position.z);
+      d.mesh.quaternion.set(d.body.quaternion.x, d.body.quaternion.y, d.body.quaternion.z, d.body.quaternion.w);
+      const vel2 = d.body.velocity.lengthSquared();
+      const ang2 = d.body.angularVelocity.lengthSquared();
+      if (!d.settled && vel2 < 0.05 && ang2 < 0.05) {
+        d.stillFor += dt;
+        if (d.stillFor > 0.4) {
+          d.settled = true;
+          d.result = readFaceUp(d.body);
+        }
+      } else if (!d.settled) {
+        d.stillFor = 0;
+        allSettled = false;
+      }
+    }
+
+    if (rollActive && dice.length > 0 && allSettled && dice.every(d => d.settled)) {
+      rollActive = false;
+      const results = dice.map(d => ({ sides: 6, result: d.result }));
+      const sum = results.reduce((s, r) => s + r.result, 0);
+      sendToServer?.({ type: '_overlay.dice-tray-rolled', widgetId: widget.id, dice: results, sum });
+    }
+
+    renderer.render(scene, camera);
+    rafId = requestAnimationFrame(loop);
+  }
+  rafId = requestAnimationFrame(loop);
+
+  // Seed one idle die so layout mode shows the tray.
+  setTimeout(() => spawnDice(1), 60);
+
+  const entry = {
+    rollTray,
+    dispose: () => {
+      cancelAnimationFrame(rafId);
+      for (const d of dice) { scene.remove(d.mesh); d.mesh.geometry.dispose(); d.mesh.material.forEach(m => m.dispose()); }
+      faceTextures.forEach(t => t.dispose());
+      renderer.dispose();
+      renderer.domElement.remove();
+      trayGeo.dispose(); trayMat.dispose();
+    }
+  };
+  diceTrays.set(widget.id, entry);
+  return entry;
+}
+
+export function unmountDiceTray(widgetId) {
+  const t = diceTrays.get(widgetId);
+  if (t) { t.dispose(); diceTrays.delete(widgetId); }
+}
+
+export function triggerDiceTray(widgets, eventType) {
+  for (const w of widgets) {
+    if (w.type !== 'dice-tray') continue;
+    const cfg = w.config || {};
+    if (cfg.triggerEvent && cfg.triggerEvent !== eventType) continue;
+    const entry = diceTrays.get(w.id);
+    entry?.rollTray?.();
+  }
+}
+
 // ─── 3D Physics Pit (three.js + cannon-es) ───────────────────────────────
 // Like the 2D pit but with real 3D rigid bodies. Bodies are textured spheres
 // (emoji rendered onto a canvas texture). Collision layers map directly to
@@ -762,5 +978,6 @@ export function clearAll() {
   for (const id of [...physicsPits.keys()])   unmountPhysicsPit(id);
   for (const id of [...physicsPits3D.keys()]) unmountPhysicsPit3D(id);
   for (const id of [...diceWidgets.keys()])   unmountDice(id);
+  for (const id of [...diceTrays.keys()])     unmountDiceTray(id);
   for (const id of [...modelWidgets.keys()])  unmountModel3D(id);
 }
