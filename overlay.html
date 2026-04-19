@@ -1311,7 +1311,9 @@ function connect() {
     wsRetries++;
     $wsDot.classList.add('disconnected');
     if (wsRetries === 3 && !demoFired) demoTimeout = setTimeout(runDemo, 2000);
-    setTimeout(connectWS, Math.min(2000 * wsRetries, 20000));
+    // Tight backoff so OBS browser sources reconnect fast after a server restart
+    // or an auto-update (matches the dashboard-side 1s/2s/3s pattern).
+    setTimeout(connect, Math.min(1000 * wsRetries, 3000));
   });
 
   ws.addEventListener('error', () => {});
@@ -1625,7 +1627,7 @@ function runDemo() {
 
 // ═══════════════════════════════════════════════════════ Init
 
-connectWS();
+connect();
 // Run demo immediately if ?demo=1 in URL
 if (new URLSearchParams(location.search).get('demo') === '1') {
   demoFired = false;
