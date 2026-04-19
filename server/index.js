@@ -334,6 +334,9 @@ const httpServer = createServer((req, res) => {
   if (path === '/' || path === '/overlay') {
     return serveFile(res, join(ROOT, 'overlay.html'));
   }
+  if (path === '/overlay-widgets.js') {
+    return serveFile(res, join(ROOT, 'overlay-widgets.js'));
+  }
 
   // Dashboard static files
   if (path === '/dashboard/') {
@@ -346,6 +349,18 @@ const httpServer = createServer((req, res) => {
   // Assets (stickers, sounds, character sprites)
   if (path.startsWith('/assets/') || path.startsWith('/characters/')) {
     return serveFile(res, join(ROOT, path.slice(1)));
+  }
+
+  // Vendored libraries (three.js, matter.js, three GLTFLoader).
+  // Narrow allowlist so we don't expose the rest of node_modules.
+  const VENDOR = {
+    '/vendor/three.module.min.js': 'three/build/three.module.min.js',
+    '/vendor/matter.min.js':       'matter-js/build/matter.min.js',
+    '/vendor/GLTFLoader.js':       'three/examples/jsm/loaders/GLTFLoader.js',
+    '/vendor/BufferGeometryUtils.js': 'three/examples/jsm/utils/BufferGeometryUtils.js',
+  };
+  if (VENDOR[path]) {
+    return serveFile(res, join(ROOT, 'node_modules', VENDOR[path]));
   }
 
   // Plugins (future-proofing)
@@ -749,8 +764,17 @@ wss.on('connection', (ws, req) => {
           broadcastEffect(w.config.effect, w.config.payload ?? {}, true);
         }
       }
+      if (msg.type === '_overlay.dice-rolled' && typeof msg.result === 'number') {
+        // Overlay dice settled and read a face — rebroadcast as a bus event so
+        // Studio flows with trigger="dice.rolled" can branch on the result.
+        log.info(`Dice ${msg.sides} rolled: ${msg.result} (widget ${msg.widgetId})`);
+        bus.publish({
+          type:    'dice.rolled',
+          source:  'overlay',
+          payload: { result: msg.result, sides: msg.sides, widgetId: msg.widgetId },
+        });
+      }
       if (msg.type === '_dashboard.save-position') {
-        // allow overlays to save drag positions too (layout mode)
         const positions = state.get('overlay.positions') ?? {};
         positions[msg.id] = { x: msg.x, y: msg.y };
         state.set('overlay.positions', positions);

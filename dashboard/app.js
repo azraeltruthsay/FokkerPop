@@ -455,6 +455,8 @@ window.addWidget = function (type) {
   if (type === 'recent')      base.config = { visible: true, label: 'LATEST CHATTER', fontSize: 24, color: '#6BCB77' };
   if (type === 'hot-button')  base.config = { visible: true, label: '🎆 FIRE', effect: 'firework-salvo', payload: { count: 3 }, fontSize: 28, color: '#FFD700' };
   if (type === 'event-badge') base.config = { visible: true, label: '💜 SUB', eventType: 'sub', fontSize: 22, color: '#9147FF' };
+  if (type === 'physics-pit') base.config = { visible: true, triggerEvent: 'sub', emojis: ['🎈','✨','💜','🎉','🔥'], countPerEvent: 8, size: 18, gravity: 1, width: 320, height: 220, maxAlive: 60 };
+  if (type === 'dice')        base.config = { visible: true, sides: 20, triggerEvent: 'redeem', width: 220, height: 220 };
   widgets.push(base);
   saveWidgets().then(renderWidgetList);
 };
@@ -508,6 +510,21 @@ function renderWidgetList() {
         <select class="input-field" onchange="updateWidgetField('${w.id}','eventType',this.value)" title="Flashes when an event of this type fires">
           ${EVENT_OPTIONS.map(e => `<option value="${e}" ${e === c.eventType ? 'selected' : ''}>${e}</option>`).join('')}
         </select>`;
+      if (w.type === 'physics-pit') return `
+        <select class="input-field" onchange="updateWidgetField('${w.id}','triggerEvent',this.value)" title="Event type that drops emojis">
+          ${EVENT_OPTIONS.map(e => `<option value="${e}" ${e === c.triggerEvent ? 'selected' : ''}>${e}</option>`).join('')}
+        </select>
+        <input class="input-field" value="${esc((c.emojis ?? []).join(' '))}" placeholder="Emojis (space-separated)" oninput="updateWidgetField('${w.id}','emojis',this.value.split(/\\s+/).filter(Boolean))">
+        <input class="input-field" type="number" value="${c.countPerEvent ?? 8}" oninput="updateWidgetField('${w.id}','countPerEvent',parseInt(this.value)||0)" style="max-width:100px;" title="How many to drop per event">
+        <input class="input-field" type="number" step="0.1" value="${c.gravity ?? 1}" oninput="updateWidgetField('${w.id}','gravity',parseFloat(this.value)||0)" style="max-width:100px;" title="Gravity">`;
+      if (w.type === 'dice') return `
+        <select class="input-field" onchange="updateWidgetField('${w.id}','sides',parseInt(this.value))" title="Die type">
+          ${[4,6,8,12,20].map(n => `<option value="${n}" ${n === c.sides ? 'selected' : ''}>D${n}</option>`).join('')}
+        </select>
+        <select class="input-field" onchange="updateWidgetField('${w.id}','triggerEvent',this.value)" title="Event type that rolls the die">
+          ${EVENT_OPTIONS.map(e => `<option value="${e}" ${e === c.triggerEvent ? 'selected' : ''}>${e}</option>`).join('')}
+        </select>
+        <span style="font-size:.7rem; color:var(--text-dim);">Result fires bus event <code>dice.rolled</code> {result, sides} — use Studio to branch on it.</span>`;
       return '';
     })();
     return `
