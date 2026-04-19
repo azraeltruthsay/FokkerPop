@@ -143,6 +143,15 @@ function populateGallery() {
 
 window.triggerUpload = (type) => { document.getElementById('upload-' + type).click(); };
 
+window.refreshAssets = function() {
+  fetch('/api/assets').then(r => r.json()).then(a => {
+    window.assets = a;
+    populateGallery();
+    // Re-render any config editors that embed sound dropdowns so new/removed files show up
+    if (typeof renderConfigEditors === 'function') renderConfigEditors();
+  }).catch(err => alert('Refresh failed: ' + err.message));
+};
+
 window.handleFileUpload = async function(type, file) {
   if (!file) return;
   

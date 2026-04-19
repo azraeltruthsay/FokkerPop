@@ -90,5 +90,8 @@ echo  Keep this window open in the background while streaming.
 echo:
 
 "%NODE%" server/index.js
-pause
+echo.
+echo  FokkerPop stopped. This window will close automatically.
+echo  (Press any key now to close immediately.)
+timeout /t 6
 

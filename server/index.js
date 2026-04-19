@@ -601,22 +601,37 @@ async function handleOAuthCallback(params, res) {
       settings.twitch.accessToken  = token.access_token;
       settings.twitch.refreshToken = token.refresh_token ?? '';
       writeFileSync(join(ROOT, 'settings.json'), JSON.stringify(settings, null, 2));
+      log.info(`Twitch OAuth success. Token stored; reconnecting EventSub.`);
       res.writeHead(200, { 'Content-Type': 'text/html' });
-      res.end(`
-        <html>
-        <body style="font:20px system-ui;text-align:center;padding:60px;background:#0d0d14;color:#fff">
-          <p>✅ Twitch connected!</p>
-          <p style="font-size:16px;color:#aaa">Closing this window in 2 seconds...</p>
-          <script>setTimeout(() => window.close(), 2000);</script>
-        </body>
-        </html>`);
-      // Re-connect EventSub with new token
+      res.end(`<!doctype html>
+<html><body style="font:16px system-ui;text-align:center;padding:50px;background:#0d0d14;color:#fff">
+  <h1 style="color:#6BCB77;margin-bottom:6px;">✅ Twitch connected</h1>
+  <p style="color:#aaa;margin-top:4px">You can close this tab. The FokkerPop dashboard Twitch badge should now turn green.</p>
+  <button onclick="window.close()" style="margin-top:18px;padding:10px 24px;background:#9147FF;color:#fff;border:0;border-radius:8px;font-weight:800;cursor:pointer">Close</button>
+</body></html>`);
       twitchEventSub.connect();
     } else {
-      res.writeHead(400); res.end('Token exchange failed: ' + JSON.stringify(token));
+      const detail = token.message || token.error_description || token.error || JSON.stringify(token);
+      log.warn(`Twitch OAuth failed: ${detail}`);
+      res.writeHead(400, { 'Content-Type': 'text/html' });
+      res.end(`<!doctype html>
+<html><body style="font:16px system-ui;padding:40px;background:#0d0d14;color:#fff;line-height:1.5">
+  <h1 style="color:#FF6B6B;">⚠️ Twitch authorisation failed</h1>
+  <p>Twitch returned: <code style="background:#222;padding:4px 8px;border-radius:4px">${String(detail).replace(/</g,'&lt;')}</code></p>
+  <p style="color:#aaa;margin-top:24px">Common fixes:</p>
+  <ul style="color:#aaa">
+    <li>Double-check <strong>Client Secret</strong> — a fresh paste from the Twitch Developer Console.</li>
+    <li>In the Twitch Developer Console, register redirect URI <code>http://localhost:4747/auth/callback</code> exactly.</li>
+    <li>Close this tab and try "Connect Twitch" again.</li>
+  </ul>
+</body></html>`);
     }
   } catch (e) {
-    res.writeHead(500); res.end('OAuth error: ' + e.message);
+    log.error('OAuth callback error:', e.message);
+    res.writeHead(500, { 'Content-Type': 'text/html' });
+    res.end(`<!doctype html><html><body style="font:16px system-ui;padding:40px;background:#0d0d14;color:#fff">
+<h1 style="color:#FF6B6B;">⚠️ OAuth server error</h1>
+<p>${String(e.message).replace(/</g,'&lt;')}</p></body></html>`);
   }
 }
 

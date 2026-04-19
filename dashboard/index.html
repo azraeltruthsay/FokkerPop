@@ -1017,8 +1017,11 @@ html, body {
       </div>
 
       <div class="card">
-        <div class="card-title">Asset Gallery (Sounds & Stickers)</div>
-        <p style="font-size:.8rem; color:var(--text-dim); margin-bottom:12px;">Click a sound to play it, or hover over a sticker to preview.</p>
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <div class="card-title" style="margin:0;">Asset Gallery (Sounds & Stickers)</div>
+          <button class="btn btn-ghost btn-sm" onclick="refreshAssets()" title="Rescan the assets folder">🔄 Refresh</button>
+        </div>
+        <p style="font-size:.8rem; color:var(--text-dim); margin:6px 0 12px;">Click a sound to play it, or hover over a sticker to preview. Files you add/remove in the assets folder show up after Refresh.</p>
         
         <div style="display:flex; flex-direction:column; gap:20px;">
           <div>
