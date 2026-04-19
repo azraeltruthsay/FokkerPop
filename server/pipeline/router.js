@@ -2,25 +2,29 @@
 
 const rnd = () => Math.random();
 
+// Display-only username for banner text. We deliberately do NOT mutate
+// event.payload.user — that would leak "Someone" into state.chatters when
+// internal events (combinator, flow-engine fireEvent) pass through without a
+// real viewer attached.
+const u = (e) => e.payload?.user ?? 'Someone';
+
 export function router(ctx) {
   const { event } = ctx;
-  // Ensure payload and user exist so banner templates never render "undefined"
-  event.payload      = event.payload ?? {};
-  event.payload.user = event.payload.user ?? 'Someone';
-  event.effects      = EFFECT_MAP[event.type]?.(event) ?? [];
+  event.payload = event.payload ?? {};
+  event.effects = EFFECT_MAP[event.type]?.(event) ?? [];
 }
 
 const EFFECT_MAP = {
 
   // ── Follow ──────────────────────────────────────────────────────────────────
   follow: (e) => [
-    { effect: 'alert-banner',  payload: { tier: 'B', icon: '💚', text: `${e.payload.user} followed!`, sound: 'follow.wav' } },
+    { effect: 'alert-banner',  payload: { tier: 'B', icon: '💚', text: `${u(e)} followed!`, sound: 'follow.wav' } },
     { effect: 'balloon',       payload: { count: 1, sound: 'pop.wav' } },
   ],
 
   // ── Sub ─────────────────────────────────────────────────────────────────────
   sub: (e) => [
-    { effect: 'alert-banner',  payload: { tier: 'A', icon: '💜', text: `${e.payload.user} subscribed!`, subText: e.payload.message, bannerColor: '#9147FF', glowColor: 'rgba(145,71,255,0.6)', sound: 'sub.wav' } },
+    { effect: 'alert-banner',  payload: { tier: 'A', icon: '💜', text: `${u(e)} subscribed!`, subText: e.payload.message, bannerColor: '#9147FF', glowColor: 'rgba(145,71,255,0.6)', sound: 'sub.wav' } },
     { effect: 'balloon',       payload: { count: 3, sound: 'pop.wav' } },
     { effect: 'floating-text', payload: { text: '+1 SUB', x: rnd(), y: 0.75 } },
   ],
@@ -30,7 +34,7 @@ const EFFECT_MAP = {
     const n    = e.payload.count ?? 1;
     const tier = n >= 10 ? 'S' : 'A';
     return [
-      { effect: 'alert-banner',  payload: { tier, icon: '🎁', text: `${e.payload.user} gifted ${n} sub${n > 1 ? 's' : ''}!`, bannerColor: '#FF9A3C', glowColor: 'rgba(255,154,60,0.6)', sound: 'chime.wav' } },
+      { effect: 'alert-banner',  payload: { tier, icon: '🎁', text: `${u(e)} gifted ${n} sub${n > 1 ? 's' : ''}!`, bannerColor: '#FF9A3C', glowColor: 'rgba(255,154,60,0.6)', sound: 'chime.wav' } },
       { effect: n >= 5 ? 'firework-salvo' : 'firework', payload: { count: n >= 5 ? 4 : 1, sound: 'boom.wav' } },
       ...(n >= 10 ? [{ effect: 'confetti', payload: { sound: 'pop.wav' } }] : []),
       { effect: 'floating-text', payload: { text: `+${n} GIFT${n > 1 ? 'S' : ''}`, x: rnd(), y: 0.75 } },
@@ -57,11 +61,11 @@ const EFFECT_MAP = {
   cheer: (e) => {
     const bits = e.payload.bits ?? 0;
     if (bits >= 1000) return [
-      { effect: 'alert-banner',  payload: { tier: 'S', icon: '💎', text: `${e.payload.user} cheered ${bits.toLocaleString()} bits!!!`, sound: 'boom.wav' } },
+      { effect: 'alert-banner',  payload: { tier: 'S', icon: '💎', text: `${u(e)} cheered ${bits.toLocaleString()} bits!!!`, sound: 'boom.wav' } },
       { effect: 'crowd-explosion', payload: { sound: 'boom.wav' } },
     ];
     if (bits >= 100) return [
-      { effect: 'alert-banner',  payload: { tier: 'A', icon: '💎', text: `${e.payload.user} cheered ${bits} bits!`, bannerColor: '#FF6905', glowColor: 'rgba(255,105,5,0.6)', sound: 'ding.wav' } },
+      { effect: 'alert-banner',  payload: { tier: 'A', icon: '💎', text: `${u(e)} cheered ${bits} bits!`, bannerColor: '#FF6905', glowColor: 'rgba(255,105,5,0.6)', sound: 'ding.wav' } },
       { effect: 'firework',      payload: { sound: 'boom.wav' } },
     ];
     return [
@@ -75,7 +79,7 @@ const EFFECT_MAP = {
     const viewers = e.payload.viewers ?? 0;
     const tier    = viewers >= 50 ? 'S' : 'A';
     return [
-      { effect: 'alert-banner',    payload: { tier, icon: '⚡', text: `${e.payload.user} raided with ${viewers} viewers!`, bannerColor: '#00C8AF', glowColor: 'rgba(0,200,175,0.6)', sound: 'boom.wav' } },
+      { effect: 'alert-banner',    payload: { tier, icon: '⚡', text: `${u(e)} raided with ${viewers} viewers!`, bannerColor: '#00C8AF', glowColor: 'rgba(0,200,175,0.6)', sound: 'boom.wav' } },
       { effect: viewers >= 50 ? 'crowd-explosion' : 'firework', payload: { sound: viewers >= 50 ? 'explosion.wav' : 'boom.wav' } },
       { effect: 'confetti',        payload: { sound: 'pop.wav' } },
     ];
