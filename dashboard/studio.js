@@ -18,6 +18,29 @@ let isPanning = false;
 let dragNode = null;
 let dragPort = null;
 let lastMouse = { x: 0, y: 0 };
+let saveTimeout = null;
+
+window.queueStudioSave = function() {
+  clearTimeout(saveTimeout);
+  saveTimeout = setTimeout(() => silentSave(), 1000);
+};
+
+async function silentSave() {
+  try {
+    const res = await fetch('/api/flows', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify(flows)
+    });
+    if (res.ok) {
+      const $status = document.getElementById('studio-save-status');
+      if ($status) {
+        $status.style.opacity = '1';
+        setTimeout(() => { $status.style.opacity = '0'; }, 2000);
+      }
+    }
+  } catch (err) { console.warn('Auto-save failed'); }
+}
 
 // Canvas state
 let $wrap, $nodes, $svg, $props, $fields, $flowSelect, $ctxMenu;
@@ -253,8 +276,11 @@ function onMouseUp(e) {
       const dstNodeId = inPort.parentElement.id.replace('node-', '');
       activeFlow.edges = activeFlow.edges || [];
       activeFlow.edges.push({ src: dragPort.node.id, outPort: dragPort.id, dst: dstNodeId });
+      window.queueStudioSave();
     }
   }
+
+  if (dragNode) window.queueStudioSave();
 
   isPanning = false;
   dragNode = null;
@@ -347,29 +373,33 @@ function showContextMenu(x, y, html) {
   if (x + mRect.width > window.innerWidth) $ctxMenu.style.left = `${x - mRect.width}px`;
   if (y + mRect.height > window.innerHeight) $ctxMenu.style.top = `${y - mRect.height}px`;
 }
-
-function hideContextMenu() {
-  if ($ctxMenu) $ctxMenu.style.display = 'none';
-}
+activeFlow.nodes[id] = newNode;
+hideContextMenu();
+selectNode(newNode);
+window.queueStudioSave();
+};
 
 window.cloneNode = function(id) {
-  const node = activeFlow?.nodes?.[id];
-  if (!node) return;
-  const newNode = JSON.parse(JSON.stringify(node));
-  newNode.id = 'n' + Date.now();
-  newNode.x += 30;
-  newNode.y += 30;
-  activeFlow.nodes[newNode.id] = newNode;
-  hideContextMenu();
-  selectNode(newNode);
+const node = activeFlow?.nodes?.[id];
+if (!node) return;
+const newNode = JSON.parse(JSON.stringify(node));
+newNode.id = 'n' + Date.now();
+newNode.x += 30;
+newNode.y += 30;
+activeFlow.nodes[newNode.id] = newNode;
+hideContextMenu();
+selectNode(newNode);
+window.queueStudioSave();
 };
 
 window.disconnectNode = function(id) {
-  if (!activeFlow) return;
-  activeFlow.edges = (activeFlow.edges || []).filter(e => e.src !== id && e.dst !== id);
-  hideContextMenu();
-  renderCanvas();
+if (!activeFlow) return;
+activeFlow.edges = (activeFlow.edges || []).filter(e => e.src !== id && e.dst !== id);
+hideContextMenu();
+window.queueStudioSave();
+renderCanvas();
 };
+
 
 window.deleteActiveFlow = function() {
   if (!activeFlow) return;
@@ -455,6 +485,7 @@ window.addNode = function(type, action, startX, startY) {
   activeFlow.nodes = activeFlow.nodes || {};
   activeFlow.nodes[id] = node;
   selectNode(node);
+  window.queueStudioSave();
   renderCanvas();
 };
 
@@ -488,7 +519,7 @@ function exprField(label, dataKey, value, extra = '') {
   return `<div class="prop-field">
     <label>${label}</label>
     <input class="input-field" value="${esc(value)}" placeholder="{{ expression }}"
-      oninput="activeNode.data.${dataKey}=this.value${extra}" style="font-family:monospace;font-size:0.78rem;">
+      oninput="activeNode.data.${dataKey}=this.value${extra}; window.queueStudioSave()" style="font-family:monospace;font-size:0.78rem;">
     ${EXPR_HINT}
   </div>`;
 }
@@ -496,7 +527,7 @@ function exprField(label, dataKey, value, extra = '') {
 function selectField(label, dataKey, options, current) {
   return `<div class="prop-field">
     <label>${label}</label>
-    <select class="input-field" oninput="activeNode.data.${dataKey}=this.value">
+    <select class="input-field" oninput="activeNode.data.${dataKey}=this.value; window.queueStudioSave()">
       ${options.map(o => `<option value="${esc(o)}" ${o === current ? 'selected' : ''}>${esc(o)}</option>`).join('')}
     </select>
   </div>`;
@@ -515,7 +546,12 @@ function renderProps() {
 
   if (n.type === 'trigger') {
     const triggerOptions = ['sub', 'sub.gifted', 'follow', 'cheer', 'raid', 'redeem', 'chat', 'hype-train.start', 'hype-train.progress', 'hype-train.end'];
-    html += selectField('Event Type', 'trigger', triggerOptions, activeFlow.trigger);
+    html += `<div class="prop-field">
+      <label>Event Type</label>
+      <select class="input-field" oninput="activeFlow.trigger=this.value; window.queueStudioSave()">
+        ${triggerOptions.map(o => `<option value="${esc(o)}" ${o === activeFlow.trigger ? 'selected' : ''}>${esc(o)}</option>`).join('')}
+      </select>
+    </div>`;
   }
 
   if (n.action === 'delay') {
@@ -617,9 +653,11 @@ window.deleteActiveNode = function() {
   delete activeFlow.nodes[activeNode.id];
   activeFlow.edges = (activeFlow.edges || []).filter(e => e.src !== activeNode.id && e.dst !== activeNode.id);
   activeNode = null;
-  $props.style.display = 'none';
+  if ($props) $props.style.display = 'none';
+  window.queueStudioSave();
   renderCanvas();
 };
+
 
 // ─── Flow Management ────────────────────────────────────────────────────────
 
