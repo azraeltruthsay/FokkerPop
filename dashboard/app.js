@@ -412,7 +412,7 @@ window.switchSubTab = function(btn, pageId) {
 function renderGoals(goals) {
   const el = document.getElementById('goals-list');
   if (!el) return;
-  if (!goals?.length) { el.innerHTML = '<p style="color:var(--text-dim);font-size:.82rem;">No goals configured. Edit the Config tab to add some.</p>'; return; }
+  if (!goals?.length) { el.innerHTML = '<p style="color:var(--text-dim);font-size:.82rem;">No goals configured. Use <strong>+ Add Goal</strong> below to create one.</p>'; return; }
 
   el.innerHTML = goals.map(g => {
     const current = getNestedVal(appState, g.metric) ?? 0;

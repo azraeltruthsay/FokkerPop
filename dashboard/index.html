@@ -1053,6 +1053,19 @@ html, body {
           <p style="color:var(--text-dim)">Loading goals…</p>
         </div>
       </div>
+      <div class="card">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <div class="card-title" style="margin:0;">Configure Goals</div>
+          <div style="display:flex; gap:8px;">
+            <button class="btn btn-primary btn-sm" onclick="addGoalConfig()">+ Add Goal</button>
+            <button class="btn btn-primary btn-sm" onclick="saveGoalsConfig()">Save</button>
+          </div>
+        </div>
+        <p style="font-size:.78rem; color:var(--text-dim); margin:8px 0 12px;">
+          Create targets like <strong>100 subs</strong> or <strong>50,000 bits</strong>. When a goal is reached, the chosen reward effect fires automatically. Metric examples: <code>session.subCount</code>, <code>session.bitsTotal</code>, <code>session.followCount</code>, <code>session.raidCount</code>.
+        </p>
+        <div id="config-goals-container"></div>
+      </div>
     </div>
 
     <!-- ════════════════════════ CONFIG PAGE -->
@@ -1061,7 +1074,6 @@ html, body {
         <div class="page-title">Config Editor</div>
         <div style="display:flex; gap:10px; background:var(--surface2); padding:4px; border-radius:8px;">
           <button class="btn btn-ghost btn-sm active sub-tab" onclick="switchSubTab(this, 'config-general')">General</button>
-          <button class="btn btn-ghost btn-sm sub-tab" onclick="switchSubTab(this, 'config-goals')">Goals</button>
           <button class="btn btn-ghost btn-sm sub-tab" onclick="switchSubTab(this, 'config-redeems')">Redeems</button>
           <button class="btn btn-ghost btn-sm sub-tab" onclick="switchSubTab(this, 'config-commands')">Commands</button>
         </div>
@@ -1122,15 +1134,6 @@ html, body {
              </div>
           </div>
           <button class="btn btn-primary btn-sm" onclick="saveEngineSettings()" style="margin-top:14px;">Save Engine Settings</button>
-        </div>
-      </div>
-
-      <div id="config-goals" class="config-sub-page">
-        <div class="card" style="margin:0;">
-          <div class="card-title">Goal Config</div>
-          <div id="config-goals-container"></div>
-          <button class="btn btn-primary btn-sm" onclick="addGoalConfig()" style="margin-top:10px;">+ Add New Goal</button>
-          <button class="btn btn-primary btn-sm" onclick="saveGoalsConfig()" style="margin-top:10px;float:right;">Save Goals</button>
         </div>
       </div>
 
