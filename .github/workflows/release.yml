@@ -96,10 +96,6 @@ jobs:
           Page instfiles
 
           Section "Update"
-            ; Confirm so LilFokker can double-check this isn't his Downloads folder.
-            MessageBox MB_OKCANCEL|MB_ICONQUESTION "Install FokkerPop into:$\r$\n$\r$\n$INSTDIR$\r$\n$\r$\nClick OK to proceed, or Cancel to go back and pick a different folder." IDOK +2
-              Abort
-
             ; Terminate any running FokkerPop instance — Windows holds an exclusive
             ; lock on the bundled node\FokkerPop.exe while it's running, which
             ; would otherwise break the file overwrite below. Two passes with
@@ -115,7 +111,9 @@ jobs:
             ClearErrors
             File /r "__PKG__\*.*"
             IfErrors 0 +3
-              MessageBox MB_OK|MB_ICONEXCLAMATION "FokkerPop Updater could not overwrite files. The FokkerPop server is still running.$\r$\n$\r$\nClose the black FokkerPop terminal window (and any FokkerPop.exe in Task Manager), then run this updater again."
+              ; /SD IDOK: in silent (/S) auto-update mode, auto-dismiss and abort.
+              ; In attended mode, LilFokker sees the error and knows what to do.
+              MessageBox MB_OK|MB_ICONEXCLAMATION "FokkerPop Updater could not overwrite files. The FokkerPop server is still running.$\r$\n$\r$\nClose the black FokkerPop terminal window (and any FokkerPop.exe in Task Manager), then run this updater again." /SD IDOK
               Abort
 
             ; Persist the chosen install dir so next update defaults here again.
