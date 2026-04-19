@@ -338,6 +338,22 @@ body.layout-mode .draggable:hover {
   position: relative;
   filter: drop-shadow(0 6px 10px rgba(0,0,0,0.35));
   animation: wobble var(--wob-period) ease-in-out infinite alternate;
+  background-size: cover;
+  background-position: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: calc(var(--w) * 0.45);
+}
+.balloon--golden .balloon__body {
+  background: radial-gradient(circle at 35% 30%, #fff 0%, #FFD700 50%, #B8860B 100%);
+  box-shadow: 0 0 30px rgba(255, 215, 0, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  animation: wobble var(--wob-period) ease-in-out infinite alternate, golden-shimmer 2s linear infinite;
+}
+@keyframes golden-shimmer {
+  0%, 100% { filter: brightness(1) drop-shadow(0 6px 10px rgba(0,0,0,0.35)); }
+  50% { filter: brightness(1.3) drop-shadow(0 0 20px rgba(255, 215, 0, 0.8)); }
 }
 .balloon__body::before {
   content: '';
@@ -847,25 +863,36 @@ function playSound(file, vol = 1.0) {
   audio.play().catch(err => console.warn('Audio play blocked:', err));
 }
 
-function spawnBalloon(count = 1) {
+function spawnBalloon(count = 1, p = {}) {
   for (let i = 0; i < count; i++) {
     if (!canSpawn()) break;
     active++;
+    
+    // Rare variant logic: 2% chance for golden if no custom img/emoji
+    const isGolden = !p.img && !p.emoji && Math.random() < 0.02;
+    if (isGolden) playSound('yay.wav', 0.6);
+
     const [color, colorDark] = BALLOON_COLORS[Math.floor(Math.random() * BALLOON_COLORS.length)];
-    const w   = 50  + Math.random() * 38;
+    const w   = (isGolden ? 120 : 50)  + Math.random() * 38;
     const h   = w   * (1.22 + Math.random() * 0.2);
-    const dur = 5.5 + Math.random() * 5;
+    const dur = (isGolden ? 8 : 5.5) + Math.random() * 5;
     const wp  = 1.1 + Math.random() * 1.4;
     const wx  = `${8 + Math.random() * 18}px`;
     const wr  = `${2 + Math.random() * 6}deg`;
 
     const wrap = document.createElement('div');
-    wrap.className = 'balloon';
+    wrap.className = `balloon ${isGolden ? 'balloon--golden' : ''}`;
     wrap.style.cssText = `left:${3 + Math.random() * 94}%;--dur:${dur}s;--wob-period:${wp}s;`;
 
     const body = document.createElement('div');
     body.className = 'balloon__body';
     body.style.cssText = `--color:${color};--color-dark:${colorDark};--w:${w}px;--h:${h}px;--wob-x:${wx};--wob-r:${wr};`;
+    
+    if (p.img) {
+      body.style.backgroundImage = `url("${p.img}")`;
+    } else if (p.emoji) {
+      body.textContent = p.emoji;
+    }
 
     const str = document.createElement('div');
     str.className = 'balloon__string';
@@ -1377,7 +1404,7 @@ function dispatchEffect(effect, p) {
     case 'kaprekar-routine': spawnKaprekar(p); break;
     case 'dice-roll':       spawnDiceRoll(p.result, p.sides ?? 20, p.user); break;
     case 'start-timer':     startTimer(p.seconds ?? 60, p.label); break;
-    case 'balloon':         spawnBalloon(p.count ?? 1);         break;
+    case 'balloon':         spawnBalloon(p.count ?? 1, p);         break;
     case 'firework':        spawnFireworkRandom();               break;
     case 'firework-salvo':  spawnFireworkSalvo(p.count ?? 4);   break;
     case 'confetti':        spawnConfetti();                     break;

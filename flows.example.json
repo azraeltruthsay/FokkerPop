@@ -63,8 +63,9 @@
       "r1": { "id": "r1", "type": "action", "action": "rollDice", "data": { "sides": 20 }, "x": 500, "y": 800 },
       "crit": { "id": "crit", "type": "logic", "action": "filter", "data": { "field": "roll", "operator": "==", "value": 20 }, "x": 700, "y": 700 },
       "fail": { "id": "fail", "type": "logic", "action": "filter", "data": { "field": "roll", "operator": "==", "value": 1 }, "x": 700, "y": 900 },
-      "a1": { "id": "a1", "type": "action", "action": "spawnEffect", "data": { "effect": "firework-salvo", "payload": { "count": 20 } }, "x": 900, "y": 700 },
-      "a2": { "id": "a2", "type": "action", "action": "spawnEffect", "data": { "effect": "sticker-rain", "payload": { "duration": 3000 } }, "x": 900, "y": 900 }
+      "a1": { "id": "a1", "type": "action", "action": "spawnEffect", "data": { "effect": "balloon", "payload": { "count": 15, "img": "/characters/lilfokkermascot/hype.gif" } }, "x": 900, "y": 700 },
+      "a2": { "id": "a2", "type": "action", "action": "spawnEffect", "data": { "effect": "firework-salvo", "payload": { "count": 20 } }, "x": 1100, "y": 700 },
+      "a3": { "id": "a3", "type": "action", "action": "spawnEffect", "data": { "effect": "sticker-rain", "payload": { "duration": 3000 } }, "x": 900, "y": 900 }
     },
     "edges": [
       { "src": "t1", "outPort": "next", "dst": "f1" },
@@ -72,7 +73,8 @@
       { "src": "r1", "outPort": "next", "dst": "crit" },
       { "src": "r1", "outPort": "next", "dst": "fail" },
       { "src": "crit", "outPort": "true", "dst": "a1" },
-      { "src": "fail", "outPort": "true", "dst": "a2" }
+      { "src": "crit", "outPort": "true", "dst": "a2" },
+      { "src": "fail", "outPort": "true", "dst": "a3" }
     ]
   },
   {

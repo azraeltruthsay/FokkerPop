@@ -479,7 +479,7 @@ const EXPR_REF = `
       <div><span style="color:var(--accent2)">crowd</span>.energy</div>
       <div><span style="color:var(--accent2)">leaderboard</span>.bits · .gifts</div>
       <div><span style="color:var(--accent2)">plural(n, 'sub')</span> → "3 subs"</div>
-      <div><span style="color:var(--accent2)">clamp(v, min, max)</span></div>
+      <div><span style="color:var(--accent2)">Payload:</span> {"img":"url", "emoji":"⭐", "count":10}</div>
       <div>Full JS — ternary, Math, etc.</div>
     </div>
   </details>`;
