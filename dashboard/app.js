@@ -476,9 +476,27 @@ function renderConfigEditors() {
   renderCommandsConfig();
 }
 
+// Goals editor dirty-tracking: while the user has unsaved edits, skip re-renders
+// triggered by server-side goals state updates (e.g. a goal completing mid-stream).
+let goalsEditorDirty = false;
+let goalsEditorWired = false;
+
+function wireGoalsEditor(el) {
+  if (goalsEditorWired) return;
+  goalsEditorWired = true;
+  el.addEventListener('input', () => { goalsEditorDirty = true; });
+  el.addEventListener('click', (e) => {
+    // Any click inside a card (Delete button, etc.) counts as dirty.
+    if (e.target.closest('.card')) goalsEditorDirty = true;
+  });
+}
+
 function renderGoalsConfig() {
   const gContainer = document.getElementById('config-goals-container');
-  if (gContainer) {
+  if (!gContainer) return;
+  wireGoalsEditor(gContainer);
+  if (goalsEditorDirty) return; // preserve in-progress edits
+  {
     gContainer.innerHTML = appState.goals.map((g, i) => `
       <div class="card" style="margin-bottom:10px;padding:12px;background:var(--surface2);">
         <div class="input-row">
@@ -593,6 +611,7 @@ window.saveCommandsConfig = function() {
 };
 
 window.addGoalConfig = function() {
+  goalsEditorDirty = true;
   const container = document.getElementById('config-goals-container');
   const div = document.createElement('div');
   div.className = 'card';
@@ -638,7 +657,15 @@ window.saveGoalsConfig = function() {
     method:  'POST',
     headers: { 'Content-Type': 'application/json' },
     body:    JSON.stringify(goals)
-  }).then(r => r.ok ? alert('Goals saved!') : alert('Save failed'));
+  }).then(r => {
+    if (r.ok) {
+      goalsEditorDirty = false;
+      renderGoalsConfig();
+      alert('Goals saved!');
+    } else {
+      alert('Save failed');
+    }
+  });
 };
 
 window.addRedeemConfig = function() {
