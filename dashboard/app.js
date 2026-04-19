@@ -25,7 +25,10 @@ const $oBadge = document.getElementById('obs-badge');
 const $dot    = document.getElementById('live-dot');
 
 function connect() {
-  fetch('/api/assets').then(r => r.json()).then(a => assets = a).catch(() => {});
+  fetch('/api/assets').then(r => r.json()).then(a => {
+    assets = a;
+    populateGallery();
+  }).catch(() => {});
   
   document.getElementById('overlay-url').textContent = `http://localhost:${location.port || 4747}/?live=1`;
 
@@ -86,6 +89,22 @@ function connect() {
     setBadge('disconnected', '○ Server offline');
     $dot?.classList.remove('active');
   });
+}
+
+function populateGallery() {
+  const $s = document.getElementById('gallery-sounds');
+  const $t = document.getElementById('gallery-stickers');
+  if (!$s || !$t) return;
+
+  $s.innerHTML = (assets.sounds || []).map(f => 
+    `<button class="btn btn-ghost btn-sm" onclick="previewSound('${esc(f)}')" style="font-size:0.7rem;">🔊 ${esc(f)}</button>`
+  ).join('');
+
+  $t.innerHTML = (assets.stickers || []).map(f => 
+    `<div title="${esc(f)}" style="width:40px; height:40px; background:var(--surface2); border:1px solid var(--border); border-radius:6px; display:flex; align-items:center; justify-content:center; overflow:hidden; cursor:help;">
+       <img src="/assets/stickers/${esc(f)}" style="max-width:80%; max-height:80%; object-fit:contain;">
+     </div>`
+  ).join('');
 }
 
 function setBadge(cls, label) {
@@ -292,6 +311,25 @@ function renderGoals(goals) {
   renderConfigEditors(); // sync config editor if open
 }
 
+window.previewSound = function(file) {
+  if (!file) return;
+  const audio = new Audio(`/assets/sounds/${file}`);
+  audio.volume = 0.5; // safe default for previews
+  audio.play().catch(err => console.warn('Preview blocked:', err.message));
+};
+
+function buildSoundSelect(cls, current) {
+  const sounds = assets.sounds ?? [];
+  return `
+    <div style="display:flex; gap:6px; flex:1;">
+      <select class="input-field ${cls}" style="flex:1;">
+        <option value="">-- No Sound --</option>
+        ${sounds.map(s => `<option value="${esc(s)}" ${s === current ? 'selected' : ''}>${esc(s)}</option>`).join('')}
+      </select>
+      <button class="btn btn-ghost btn-sm" onclick="previewSound(this.previousElementSibling.value)" title="Play Sample">▶️</button>
+    </div>`;
+}
+
 function renderConfigEditors() {
   const gContainer = document.getElementById('config-goals-container');
   if (gContainer) {
@@ -337,15 +375,6 @@ function buildEffectSelect(cls, current) {
     <select class="input-field ${cls}" style="flex:1;">
       <option value="">-- Select Effect --</option>
       ${effects.map(e => `<option value="${e}" ${e === current ? 'selected' : ''}>Effect: ${e}</option>`).join('')}
-    </select>`;
-}
-
-function buildSoundSelect(cls, current) {
-  const sounds = assets.sounds ?? [];
-  return `
-    <select class="input-field ${cls}" style="flex:1;">
-      <option value="">-- No Sound --</option>
-      ${sounds.map(s => `<option value="${s}" ${s === current ? 'selected' : ''}>Sound: ${s}</option>`).join('')}
     </select>`;
 }
 

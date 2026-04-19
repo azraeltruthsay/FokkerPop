@@ -482,7 +482,17 @@ function renderProps() {
   if (n.action === 'playSound') {
     // assets is global from app.js
     const soundOptions = window.assets?.sounds || [];
-    html += selectField('Sound File', 'file', ['', ...soundOptions], n.data.file || '');
+    html += `
+      <div class="prop-field">
+        <label>Sound File</label>
+        <div style="display:flex; gap:6px;">
+          <select class="input-field" oninput="activeNode.data.file=this.value" style="flex:1;">
+            <option value="">-- No Sound --</option>
+            ${soundOptions.map(o => `<option value="${esc(o)}" ${o === (n.data.file || '') ? 'selected' : ''}>${esc(o)}</option>`).join('')}
+          </select>
+          <button class="btn btn-ghost btn-sm" onclick="window.previewSound(this.previousElementSibling.value)" title="Play Sample">▶️</button>
+        </div>
+      </div>`;
     html += exprField('Volume (0–1)', 'volume', n.data.volume ?? 1);
   }
 
