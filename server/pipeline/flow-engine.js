@@ -1,5 +1,6 @@
 import log from '../logger.js';
 import bus from '../bus.js';
+import state from '../state.js';
 import { makeCtx, resolveDeep, resolve } from '../template.js';
 
 /**
@@ -138,7 +139,7 @@ export class FlowEngine {
             const prob = (data.probability ?? 50) / 100;
             outputPort = Math.random() < prob ? 'true' : 'false';
           } else if (node.action === 'filter') {
-            const val    = data.field;
+            const val    = this.resolveField(data.field, event);
             const target = data.value;
             const op     = data.operator || '==';
 
@@ -153,7 +154,7 @@ export class FlowEngine {
             if (!pass) return;
             outputPort = 'true';
           } else if (node.action === 'match') {
-            const val = data.field;
+            const val = this.resolveField(data.field, event);
             if (val == data.match1) outputPort = 'case1';
             else if (val == data.match2) outputPort = 'case2';
             else if (val == data.match3) outputPort = 'case3';
@@ -178,6 +179,18 @@ export class FlowEngine {
 
   getNested(obj, path) {
     return path?.split('.').reduce((o, k) => o?.[k], obj);
+  }
+
+  // Filter/Match field spec: literal value if already resolved by templates,
+  // otherwise a dotted path into the event (e.g. "payload.viewers").
+  resolveField(spec, event) {
+    if (spec == null) return undefined;
+    if (typeof spec !== 'string') return spec;         // already resolved by resolveDeep (e.g. {{ expr }})
+    if (/^-?\d+(\.\d+)?$/.test(spec)) return Number(spec);
+    if (spec.includes('.') || spec === 'payload' || spec === 'event') {
+      return this.getNested({ payload: event.payload, event }, spec);
+    }
+    return spec; // plain literal string
   }
 }
 
