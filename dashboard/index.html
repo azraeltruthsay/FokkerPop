@@ -698,6 +698,9 @@ html, body {
     <button class="nav-item active" data-page="live">
       <span class="nav-icon">📡</span> Live
     </button>
+    <button class="nav-item" data-page="chat">
+      <span class="nav-icon">💬</span> Chat
+    </button>
     <button class="nav-item" data-page="effects">
       <span class="nav-icon">🎆</span> Test Effects
     </button>
@@ -808,7 +811,20 @@ html, body {
       </div>
     </div>
 
-    <!-- ════════════════════════ EFFECTS PAGE -->
+    <!-- ════════════════════════ CHAT PAGE -->
+    <div class="page" id="page-chat" style="padding:0; height:100vh; flex-direction:column;">
+      <div style="flex:1; overflow-y:auto; padding:20px; display:flex; flex-direction:column; gap:8px;" id="chat-feed">
+        <div class="chat-msg system">Welcome to FokkerPop Chat! Messages and stream alerts will appear here.</div>
+      </div>
+
+      <div style="background:var(--surface2); padding:15px 20px; border-top:1px solid var(--border); display:flex; gap:12px;">
+        <input id="chat-input" class="input-field" placeholder="Send a message..." style="margin:0; flex:1;" onkeydown="if(event.key==='Enter') sendChatMessage()">
+        <button class="btn btn-primary" onclick="sendChatMessage()">Send</button>
+      </div>
+    </div>
+
+    <!-- ════════════════════════ TEST EFFECTS PAGE -->
+
     <div class="page" id="page-effects">
       <div class="page-header"><div class="page-title">Test Effects</div></div>
 
@@ -1027,8 +1043,13 @@ html, body {
         .config-sub-page { display: none; }
         .config-sub-page.active { display: block; }
         .sub-tab.active { background: var(--accent); color: #fff; }
-      </style>
 
+        /* ── Chat ── */
+        .chat-msg { font-size: 0.85rem; line-height: 1.4; word-break: break-word; }
+        .chat-msg.system { color: var(--accent2); font-style: italic; font-size: 0.78rem; opacity: 0.8; margin-top: 4px; }
+        .chat-msg__user { font-weight: 800; margin-right: 6px; }
+        .chat-msg__text { color: var(--text); }
+        </style>
       <div id="config-general" class="config-sub-page active">
         <div class="card">
           <div style="display:flex; justify-content:space-between; align-items:center;">

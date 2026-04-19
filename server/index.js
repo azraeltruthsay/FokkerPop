@@ -8,9 +8,11 @@ import bus                        from './bus.js';
 import state                      from './state.js';
 import { applyPipeline }          from './pipeline/index.js';
 import { TwitchEventSub }         from './twitch/eventsub.js';
-import flowEngine                 from './pipeline/flow-engine.js';
-import obs                        from './obs.js';
-import settings, { ROOT }         from './settings-loader.js';
+import flowEngine            from './pipeline/flow-engine.js';
+import obs                   from './obs.js';
+import * as helix            from './twitch/helix.js';
+import settings, { ROOT }    from './settings-loader.js';
+
 import log                        from './logger.js';
 import { makeCtx, resolveDeep }   from './template.js';
 
@@ -385,6 +387,23 @@ const httpServer = createServer((req, res) => {
         writeFileSync(join(ROOT, 'commands.json'), JSON.stringify(commands, null, 2));
         res.writeHead(200); res.end('{"ok":true}');
       } catch (err) { res.writeHead(400); res.end(err.message); }
+    });
+    return;
+  }
+
+  if (path === '/api/chat' && req.method === 'POST') {
+    let body = '';
+    req.on('data', d => { body += d; });
+    req.on('end', async () => {
+      try {
+        const { message } = JSON.parse(body);
+        if (!message) throw new Error('Missing message');
+        await helix.sendChatMessage(settings.twitch.userId, message);
+        res.writeHead(200); res.end('{"ok":true}');
+      } catch (err) {
+        log.error('Chat send error:', err.message);
+        res.writeHead(400); res.end(err.message);
+      }
     });
     return;
   }

@@ -19,6 +19,31 @@ export async function getUser(login, accessToken) {
   return data.data?.[0] ?? null;
 }
 
+async function helixPost(path, body, accessToken) {
+  const { clientId } = settings.twitch ?? {};
+  const res = await fetch(`${BASE}${path}`, {
+    method:  'POST',
+    headers: { 'Authorization': `Bearer ${accessToken}`, 'Client-Id': clientId, 'Content-Type': 'application/json' },
+    body:    JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const errBody = await res.json().catch(() => ({}));
+    throw new Error(errBody.message || res.statusText);
+  }
+  return res.json();
+}
+
+export async function sendChatMessage(broadcasterId, message) {
+  const { accessToken } = settings.twitch ?? {};
+  if (!accessToken) throw new Error('Not authenticated');
+  
+  return helixPost('/chat/messages', {
+    broadcaster_id: broadcasterId,
+    sender_id:      broadcasterId,
+    message:        message
+  }, accessToken);
+}
+
 export async function refreshAccessToken() {
   const { clientId, clientSecret, refreshToken } = settings.twitch ?? {};
   if (!clientId || !clientSecret || !refreshToken) return null;

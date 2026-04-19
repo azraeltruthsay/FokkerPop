@@ -173,6 +173,7 @@ function handleMessage(msg) {
 
     case 'event-log':
       appendLog(msg.event);
+      appendChatMessage(msg.event);
       break;
 
     case 'flow.node-fired':
@@ -180,6 +181,42 @@ function handleMessage(msg) {
       break;
   }
 }
+
+function appendChatMessage(event) {
+  const $feed = document.getElementById('chat-feed');
+  if (!$feed) return;
+
+  const row = document.createElement('div');
+  if (event.type === 'chat') {
+    const p = event.payload;
+    row.className = 'chat-msg';
+    row.innerHTML = `<span class="chat-msg__user" style="color:${p.color || 'var(--accent)'}">${esc(p.user)}:</span><span class="chat-msg__text">${esc(p.message)}</span>`;
+  } else {
+    // Other events show as system messages
+    const text = buildLogBody(event);
+    row.className = 'chat-msg system';
+    row.textContent = `[Alert] ${text}`;
+  }
+
+  $feed.appendChild(row);
+  $feed.scrollTop = $feed.scrollHeight;
+  while ($feed.children.length > 200) $feed.firstChild.remove();
+}
+
+window.sendChatMessage = function() {
+  const $in = document.getElementById('chat-input');
+  const message = $in.value.trim();
+  if (!message) return;
+
+  fetch('/api/chat', {
+    method:  'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body:    JSON.stringify({ message })
+  }).then(res => {
+    if (res.ok) $in.value = '';
+    else res.text().then(err => alert('Send failed: ' + err));
+  });
+};
 
 function applyStateUpdate(path, value) {
   const parts = path.split('.');
@@ -757,6 +794,8 @@ window.saveCredentialsAndAuth = function () {
       'channel:read:redemptions',
       'moderator:read:followers',
       'channel:read:hype_train',
+      'user:read:chat',
+      'user:write:chat',
     ].join('+');
     const authUrl = `https://id.twitch.tv/oauth2/authorize?response_type=code&client_id=${encodeURIComponent(clientId)}&redirect_uri=${encodeURIComponent(`http://localhost:${location.port || 4747}/auth/callback`)}&scope=${scopes}`;
     status.textContent = 'Opening Twitch authorisation window…';
