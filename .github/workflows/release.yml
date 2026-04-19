@@ -80,40 +80,53 @@ jobs:
           # Create NSIS Auto-Updater
           sudo apt-get update && sudo apt-get install -y nsis
           
-          cat > updater.nsi << EOF
-          Name "FokkerPop Updater ${VERSION}"
-          OutFile "FokkerPop-Updater-${VERSION}.exe"
-          InstallDir "\$EXEDIR"
+          cat > updater.nsi << 'EOF'
+          Name "FokkerPop Updater __VERSION__"
+          OutFile "FokkerPop-Updater-__VERSION__.exe"
           RequestExecutionLevel user
 
-          DirText "Pick the folder to install or update FokkerPop in. If you already have FokkerPop installed, choose that folder to overwrite it in place. Defaults to the folder this updater is running from."
+          ; Remember the install location between updates.
+          ; Priority: previously-remembered dir > the folder the EXE was run from.
+          InstallDirRegKey HKCU "Software\FokkerPop" "InstallDir"
+          InstallDir "$EXEDIR"
+
+          DirText "Pick the folder to install or update FokkerPop in. If you already have FokkerPop installed, choose that folder to overwrite it in place." "Destination folder"
 
           Page directory
           Page instfiles
 
           Section "Update"
-            # Terminate any running FokkerPop instance — Windows holds an exclusive
-            # lock on the bundled node\FokkerPop.exe while it's running, which
-            # would otherwise break the file overwrite below. Run twice with
-            # sleeps in between to cover races with still-initializing processes.
+            ; Confirm so LilFokker can double-check this isn't his Downloads folder.
+            MessageBox MB_OKCANCEL|MB_ICONQUESTION "Install FokkerPop into:$\r$\n$\r$\n$INSTDIR$\r$\n$\r$\nClick OK to proceed, or Cancel to go back and pick a different folder." IDOK +2
+              Abort
+
+            ; Terminate any running FokkerPop instance — Windows holds an exclusive
+            ; lock on the bundled node\FokkerPop.exe while it's running, which
+            ; would otherwise break the file overwrite below. Two passes with
+            ; sleeps in between cover races with still-initializing processes.
             DetailPrint "Closing any running FokkerPop instance…"
             ExecWait 'taskkill /F /IM FokkerPop.exe /T'
             Sleep 1500
             ExecWait 'taskkill /F /IM FokkerPop.exe /T'
             Sleep 500
 
-            SetOutPath "\$INSTDIR"
+            SetOutPath "$INSTDIR"
             SetOverwrite on
             ClearErrors
-            File /r "${PKG}\\*.*"
+            File /r "__PKG__\*.*"
             IfErrors 0 +3
-              MessageBox MB_OK|MB_ICONEXCLAMATION "FokkerPop Updater could not overwrite files. The FokkerPop server is still running.\$\\n\$\\nClose the black FokkerPop terminal window (and any FokkerPop.exe in Task Manager), then run this updater again."
+              MessageBox MB_OK|MB_ICONEXCLAMATION "FokkerPop Updater could not overwrite files. The FokkerPop server is still running.$\r$\n$\r$\nClose the black FokkerPop terminal window (and any FokkerPop.exe in Task Manager), then run this updater again."
               Abort
 
-            # Launch the app automatically after update
-            ExecShell "" "\$INSTDIR\\start.bat"
+            ; Persist the chosen install dir so next update defaults here again.
+            WriteRegStr HKCU "Software\FokkerPop" "InstallDir" "$INSTDIR"
+
+            ; Launch the app automatically after update
+            ExecShell "" "$INSTDIR\start.bat"
           SectionEnd
           EOF
+          # Interpolate bash vars into the NSI without getting hit by $ clashes.
+          sed -i "s|__VERSION__|${VERSION}|g; s|__PKG__|${PKG}|g" updater.nsi
 
           makensis updater.nsi
 

@@ -641,6 +641,7 @@ wss.on('connection', (ws, req) => {
         send(ws, { type: 'state', path: 'version',      value: VERSION });
         send(ws, { type: 'state', path: 'twitch.status', value: twitchEventSub.status });
         send(ws, { type: 'state', path: 'obs.status',    value: obs.status });
+        send(ws, { type: 'state', path: 'obs.streaming', value: obs.streaming });
         send(ws, { type: 'state', path: 'update.available', value: getAvailableUpdate() });
       } else {
         // Overlay: send current state
@@ -648,7 +649,8 @@ wss.on('connection', (ws, req) => {
         send(ws, { type: 'state', path: 'goals',        value: state.get('goals')         });
         send(ws, { type: 'state', path: 'leaderboard',  value: state.get('leaderboard')   });
         send(ws, { type: 'state', path: 'session',      value: state.get('session')        });
-        send(ws, { type: 'state', path: 'overlay.positions', value: state.get('overlay.positions') });
+        send(ws, { type: 'state', path: 'overlay.positions',  value: state.get('overlay.positions') });
+        send(ws, { type: 'state', path: 'overlay.layoutMode', value: layoutMode });
       }
       return;
     }
@@ -760,6 +762,10 @@ twitchEventSub.on('status', (status) => {
 
 obs.on('status', (status) => {
   broadcast(dashboards, { type: 'state', path: 'obs.status', value: status });
+});
+
+obs.on('streaming', (live) => {
+  broadcast(dashboards, { type: 'state', path: 'obs.streaming', value: live });
 });
 
 // ── Port binding with auto-fallback ───────────────────────────────────────────

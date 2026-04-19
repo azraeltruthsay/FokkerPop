@@ -16,6 +16,7 @@ class ObsClient extends EventEmitter {
   #password = '';
   #connected = false;
   #status = 'disconnected';
+  #streaming = false;
 
   constructor() {
     super();
@@ -29,7 +30,15 @@ class ObsClient extends EventEmitter {
     });
   }
 
-  get status() { return this.#status; }
+  get status()    { return this.#status; }
+  get streaming() { return this.#streaming; }
+
+  #setStreaming(v) {
+    v = !!v;
+    if (this.#streaming === v) return;
+    this.#streaming = v;
+    this.emit('streaming', v);
+  }
 
   #setStatus(s) {
     if (this.#status === s) return;
@@ -58,6 +67,11 @@ class ObsClient extends EventEmitter {
           log.info('OBS Handshake successful');
           this.#connected = true;
           this.#setStatus('connected');
+          this.#requestStreamStatus();
+        } else if (msg.op === 5) { // Event
+          this.#handleEvent(msg.d);
+        } else if (msg.op === 7) { // RequestResponse
+          this.#handleRequestResponse(msg.d);
         }
       } catch (err) {
         log.error('OBS Message error:', err.message);
@@ -69,6 +83,7 @@ class ObsClient extends EventEmitter {
       this.#connected = false;
       this.#ws = null;
       this.#setStatus('disconnected');
+      this.#setStreaming(false);
       setTimeout(() => this.connect(), 10000);
     });
 
@@ -86,7 +101,8 @@ class ObsClient extends EventEmitter {
   #identify(helloData) {
     const identify = {
       op: 1,
-      d: { rpcVersion: 1 }
+      // General (1) | Scenes (4) | Outputs (64) — Outputs gives us StreamStateChanged
+      d: { rpcVersion: 1, eventSubscriptions: 1 | 4 | 64 }
     };
 
     // Handle Authentication if required
@@ -120,6 +136,27 @@ class ObsClient extends EventEmitter {
     }
     this.#connected = false;
     this.#setStatus('disconnected');
+  }
+
+  #handleEvent(d) {
+    if (d?.eventType === 'StreamStateChanged') {
+      // outputActive is true while OBS is actively sending a stream.
+      this.#setStreaming(!!d.eventData?.outputActive);
+    }
+  }
+
+  #handleRequestResponse(d) {
+    if (d?.requestType === 'GetStreamStatus' && d.responseData) {
+      this.#setStreaming(!!d.responseData.outputActive);
+    }
+  }
+
+  #requestStreamStatus() {
+    if (!this.#ws || this.#ws.readyState !== 1) return;
+    this.#ws.send(JSON.stringify({
+      op: 6,
+      d: { requestType: 'GetStreamStatus', requestId: 'stream-status-' + Date.now() }
+    }));
   }
 
   setScene(sceneName) {

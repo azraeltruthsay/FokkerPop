@@ -15,7 +15,7 @@ import log from './logger.js';
 
 const REPO          = 'azraeltruthsay/FokkerPop';
 const LATEST_URL    = `https://api.github.com/repos/${REPO}/releases/latest`;
-const CHECK_EVERY   = 6 * 60 * 60 * 1000; // 6h
+const CHECK_EVERY   = 30 * 60 * 1000; // 30 min
 const USER_AGENT    = 'FokkerPop-Updater';
 
 let available = null;       // { version, notes, exeUrl, localPath }

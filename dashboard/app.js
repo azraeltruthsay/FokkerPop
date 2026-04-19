@@ -293,6 +293,18 @@ function applyStateUpdate(path, value) {
     if (l) l.textContent = `${Math.round(value * 100)}%`;
   }
   if (path === 'update.available') renderUpdateBanner(value);
+  if (path === 'obs.streaming') handleStreamingChange(!!value);
+}
+
+let prevStreaming = false;
+function handleStreamingChange(nowStreaming) {
+  if (prevStreaming && !nowStreaming && window.__fokkerUpdateAfterStream) {
+    // Stream just ended and user asked to defer update — fire it now.
+    window.__fokkerUpdateAfterStream = false;
+    console.info('Stream ended — applying deferred FokkerPop update.');
+    dashSend({ type: '_dashboard.update-apply' });
+  }
+  prevStreaming = nowStreaming;
 }
 
 function renderUpdateBanner(info) {
@@ -313,6 +325,23 @@ function renderUpdateBanner(info) {
 }
 
 window.applyUpdate = function () {
+  // Stream-aware gating — installing restarts the overlay, which would blip on stream.
+  if (appState.obs?.streaming) {
+    const choice = prompt(
+      'OBS is streaming right now. Installing will briefly restart the overlay.\n\n' +
+      'Type "now" to install anyway, or "later" to auto-install when your stream ends.\n' +
+      '(Leave blank and press Cancel to do nothing.)',
+      'later'
+    );
+    if (choice == null) return;
+    if (/^later/i.test(choice)) {
+      window.__fokkerUpdateAfterStream = true;
+      const txt = document.getElementById('update-banner-text');
+      if (txt) txt.textContent += ' — will install when stream ends';
+      return;
+    }
+    if (!/^now/i.test(choice)) return; // unrecognized answer = cancel
+  }
   const btn = document.getElementById('update-install-btn');
   if (btn) { btn.disabled = true; btn.textContent = 'Installing…'; btn.style.opacity = '0.55'; btn.style.cursor = 'not-allowed'; }
   dashSend({ type: '_dashboard.update-apply' });
