@@ -455,8 +455,15 @@ window.addWidget = function (type) {
   if (type === 'recent')      base.config = { visible: true, label: 'LATEST CHATTER', fontSize: 24, color: '#6BCB77' };
   if (type === 'hot-button')  base.config = { visible: true, label: '🎆 FIRE', effect: 'firework-salvo', payload: { count: 3 }, fontSize: 28, color: '#FFD700' };
   if (type === 'event-badge') base.config = { visible: true, label: '💜 SUB', eventType: 'sub', fontSize: 22, color: '#9147FF' };
-  if (type === 'physics-pit') base.config = { visible: true, triggerEvent: 'sub', emojis: ['🎈','✨','💜','🎉','🔥'], countPerEvent: 8, size: 18, gravity: 1, width: 320, height: 220, maxAlive: 60 };
+  if (type === 'physics-pit') base.config = {
+    visible: true, size: 18, gravity: 1, width: 320, height: 220, maxAlive: 60,
+    spawns: [
+      { triggerEvent: 'sub',   emojis: ['🎈','✨'], count: 6, layer: 1 },
+      { triggerEvent: 'cheer', emojis: ['💎'],      count: 4, layer: 2 },
+    ],
+  };
   if (type === 'dice')        base.config = { visible: true, sides: 20, triggerEvent: 'redeem', width: 220, height: 220 };
+  if (type === 'model-3d')    base.config = { visible: true, modelUrl: '', rotationSpeed: 0.005, scale: 1, reactiveScale: '', width: 300, height: 300 };
   widgets.push(base);
   saveWidgets().then(renderWidgetList);
 };
@@ -465,6 +472,29 @@ window.deleteWidget = function (id) {
   if (!confirm('Delete this widget?')) return;
   widgets = widgets.filter(w => w.id !== id);
   saveWidgets().then(renderWidgetList);
+};
+
+// Physics-pit spawn-rule editors
+window.addPitSpawn = function (id) {
+  const w = widgets.find(x => x.id === id);
+  if (!w) return;
+  w.config = w.config || {};
+  w.config.spawns = w.config.spawns ?? [];
+  w.config.spawns.push({ triggerEvent: 'follow', emojis: ['🎈'], count: 5, layer: (w.config.spawns.length || 0) + 1 });
+  saveWidgets().then(renderWidgetList);
+};
+window.removePitSpawn = function (id, i) {
+  const w = widgets.find(x => x.id === id);
+  if (!w?.config?.spawns) return;
+  w.config.spawns.splice(i, 1);
+  saveWidgets().then(renderWidgetList);
+};
+window.updatePitSpawn = function (id, i, field, value) {
+  const w = widgets.find(x => x.id === id);
+  if (!w?.config?.spawns?.[i]) return;
+  w.config.spawns[i][field] = value;
+  clearTimeout(updatePitSpawn._t);
+  updatePitSpawn._t = setTimeout(saveWidgets, 300);
 };
 
 window.updateWidgetField = function (id, field, value) {
@@ -510,21 +540,47 @@ function renderWidgetList() {
         <select class="input-field" onchange="updateWidgetField('${w.id}','eventType',this.value)" title="Flashes when an event of this type fires">
           ${EVENT_OPTIONS.map(e => `<option value="${e}" ${e === c.eventType ? 'selected' : ''}>${e}</option>`).join('')}
         </select>`;
-      if (w.type === 'physics-pit') return `
-        <select class="input-field" onchange="updateWidgetField('${w.id}','triggerEvent',this.value)" title="Event type that drops emojis">
-          ${EVENT_OPTIONS.map(e => `<option value="${e}" ${e === c.triggerEvent ? 'selected' : ''}>${e}</option>`).join('')}
-        </select>
-        <input class="input-field" value="${esc((c.emojis ?? []).join(' '))}" placeholder="Emojis (space-separated)" oninput="updateWidgetField('${w.id}','emojis',this.value.split(/\\s+/).filter(Boolean))">
-        <input class="input-field" type="number" value="${c.countPerEvent ?? 8}" oninput="updateWidgetField('${w.id}','countPerEvent',parseInt(this.value)||0)" style="max-width:100px;" title="How many to drop per event">
-        <input class="input-field" type="number" step="0.1" value="${c.gravity ?? 1}" oninput="updateWidgetField('${w.id}','gravity',parseFloat(this.value)||0)" style="max-width:100px;" title="Gravity">`;
+      if (w.type === 'physics-pit') {
+        const spawns = c.spawns ?? (c.triggerEvent ? [{ triggerEvent: c.triggerEvent, emojis: c.emojis ?? [], count: c.countPerEvent ?? 5, layer: 1 }] : []);
+        const rows = spawns.map((s, i) => `
+          <div class="input-row" style="margin-top:6px; padding:8px; background:rgba(255,255,255,0.03); border-radius:6px;">
+            <select class="input-field" onchange="updatePitSpawn('${w.id}',${i},'triggerEvent',this.value)" style="max-width:130px;" title="Event type that drops these emojis">
+              ${EVENT_OPTIONS.map(e => `<option value="${e}" ${e === s.triggerEvent ? 'selected' : ''}>${e}</option>`).join('')}
+            </select>
+            <input class="input-field" value="${esc((s.emojis ?? []).join(' '))}" placeholder="Emojis (space-separated)" oninput="updatePitSpawn('${w.id}',${i},'emojis',this.value.split(/\\s+/).filter(Boolean))">
+            <input class="input-field" type="number" value="${s.count ?? 5}" oninput="updatePitSpawn('${w.id}',${i},'count',parseInt(this.value)||0)" style="max-width:70px;" title="Count per event">
+            <input class="input-field" type="number" min="1" max="15" value="${s.layer ?? 1}" oninput="updatePitSpawn('${w.id}',${i},'layer',parseInt(this.value)||1)" style="max-width:70px;" title="Collision layer (same layer collides, different layers pass through)">
+            <button class="btn btn-ghost btn-sm" onclick="removePitSpawn('${w.id}',${i})" style="color:var(--red);">✕</button>
+          </div>`).join('');
+        return `
+          <div style="display:flex; gap:8px; align-items:center; margin-bottom:6px;">
+            <input class="input-field" type="number" step="0.1" value="${c.gravity ?? 1}" oninput="updateWidgetField('${w.id}','gravity',parseFloat(this.value)||0)" style="max-width:90px;" title="Gravity">
+            <input class="input-field" type="number" value="${c.size ?? 18}" oninput="updateWidgetField('${w.id}','size',parseInt(this.value)||0)" style="max-width:80px;" title="Emoji radius px">
+            <input class="input-field" type="number" value="${c.maxAlive ?? 60}" oninput="updateWidgetField('${w.id}','maxAlive',parseInt(this.value)||0)" style="max-width:90px;" title="Max alive">
+            <button class="btn btn-ghost btn-sm" onclick="addPitSpawn('${w.id}')" style="margin-left:auto;">+ Spawn Rule</button>
+          </div>
+          <p style="font-size:.7rem; color:var(--text-dim); margin:4px 0;">Each spawn rule = trigger event + emojis + count + <strong>layer</strong>. Objects on the same layer collide; different layers pass through each other.</p>
+          ${rows || '<p style="font-size:.75rem; color:var(--text-dim);">No spawn rules yet. Click "+ Spawn Rule".</p>'}`;
+      }
       if (w.type === 'dice') return `
         <select class="input-field" onchange="updateWidgetField('${w.id}','sides',parseInt(this.value))" title="Die type">
-          ${[4,6,8,12,20].map(n => `<option value="${n}" ${n === c.sides ? 'selected' : ''}>D${n}</option>`).join('')}
+          ${[4,6,8,10,12,20].map(n => `<option value="${n}" ${n === c.sides ? 'selected' : ''}>D${n}</option>`).join('')}
         </select>
         <select class="input-field" onchange="updateWidgetField('${w.id}','triggerEvent',this.value)" title="Event type that rolls the die">
           ${EVENT_OPTIONS.map(e => `<option value="${e}" ${e === c.triggerEvent ? 'selected' : ''}>${e}</option>`).join('')}
         </select>
         <span style="font-size:.7rem; color:var(--text-dim);">Result fires bus event <code>dice.rolled</code> {result, sides} — use Studio to branch on it.</span>`;
+      if (w.type === 'model-3d') {
+        const models = (window.assets?.models) || [];
+        return `
+          <select class="input-field" onchange="updateWidgetField('${w.id}','modelUrl',this.value)" title="Uploaded GLB / GLTF model">
+            <option value="">-- No model --</option>
+            ${models.map(m => { const url = '/assets/models/' + m; return `<option value="${esc(url)}" ${url === c.modelUrl ? 'selected' : ''}>${esc(m)}</option>`; }).join('')}
+          </select>
+          <button class="btn btn-ghost btn-sm" onclick="triggerUpload('model')">➕ Upload GLB</button>
+          <input class="input-field" type="number" step="0.001" value="${c.rotationSpeed ?? 0.005}" oninput="updateWidgetField('${w.id}','rotationSpeed',parseFloat(this.value)||0)" style="max-width:110px;" title="Y-axis rotation per frame (rad)">
+          <input class="input-field" value="${esc(c.reactiveScale ?? '')}" placeholder="Reactive metric (e.g. crowd.energy)" oninput="updateWidgetField('${w.id}','reactiveScale',this.value)" style="max-width:200px; font-family:monospace;" title="Optional state path that scales the model">`;
+      }
       return '';
     })();
     return `

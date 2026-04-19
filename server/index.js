@@ -472,7 +472,8 @@ const httpServer = createServer((req, res) => {
     const folders = {
       sound:     'assets/sounds',
       sticker:   'assets/stickers',
-      character: 'characters/lilfokkermascot'
+      character: 'characters/lilfokkermascot',
+      model:     'assets/models',
     };
 
     const targetDir = folders[type];
@@ -559,8 +560,10 @@ const httpServer = createServer((req, res) => {
 
   if (path === '/api/assets' && req.method === 'GET') {
     rebuildSoundSet();
-    const assets = { sounds: [], stickers: [], characters: [] };
+    const assets = { sounds: [], stickers: [], characters: [], models: [] };
     try {
+      const mDir = join(ROOT, 'assets/models');
+      if (existsSync(mDir)) assets.models = readdirSync(mDir).filter(f => !f.startsWith('.') && /\.(gl[bt]f)$/i.test(f));
       const sDir = join(ROOT, 'assets/sounds');
       if (existsSync(sDir)) assets.sounds = readdirSync(sDir).filter(f => !f.startsWith('.'));
       const tDir = join(ROOT, 'assets/stickers');

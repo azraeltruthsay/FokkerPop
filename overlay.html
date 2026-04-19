@@ -1692,6 +1692,13 @@ function renderCustomWidgets() {
       el.style.minWidth = (cfg.width || 220) + 'px';
       el.style.minHeight = (cfg.height || 220) + 'px';
       ensureWidgetModule().then(m => m.mountDice(w, el, (msg) => { try { ws?.send?.(JSON.stringify(msg)); } catch {} }));
+    } else if (w.type === 'model-3d') {
+      el.style.background = 'transparent';
+      el.style.border = 'none';
+      el.style.padding = '0';
+      el.style.minWidth = (cfg.width || 300) + 'px';
+      el.style.minHeight = (cfg.height || 300) + 'px';
+      ensureWidgetModule().then(m => m.mountModel3D(w, el, readMetric));
     }
 
     // Per-widget visibility toggle (default true). Hidden widgets stay hidden

@@ -31,6 +31,26 @@ async function loadMatter() {
 
 const physicsPits = new Map(); // widget id -> { engine, render, runner, spawnQueue, el, dispose }
 
+// Collision category bits: 0x0001 reserved for walls so they collide with
+// everything; bodies on layer N get 1 << N. Layers 1..15 supported.
+const WALL_CATEGORY = 0x0001;
+function layerCategory(layer) { return 1 << Math.max(1, Math.min(15, layer | 0)); }
+
+// Normalize old flat physics-pit config {triggerEvent, emojis, countPerEvent, ...}
+// into the new spawns[] shape so older widgets.json files still work.
+function normalizePitSpawns(cfg) {
+  if (Array.isArray(cfg.spawns) && cfg.spawns.length) return cfg.spawns;
+  if (cfg.triggerEvent || cfg.emojis) {
+    return [{
+      triggerEvent: cfg.triggerEvent || 'sub',
+      emojis:       cfg.emojis?.length ? cfg.emojis : ['🎈','✨','💜','🎉','🔥'],
+      count:        cfg.countPerEvent || 5,
+      layer:        cfg.layer || 1,
+    }];
+  }
+  return [];
+}
+
 export async function mountPhysicsPit(widget, el) {
   const M = await loadMatter();
   const cfg = widget.config || {};
@@ -51,12 +71,13 @@ export async function mountPhysicsPit(widget, el) {
   const engine = M.Engine.create();
   engine.gravity.y = cfg.gravity ?? 1;
 
-  // Walls + floor
+  // Walls + floor. Walls collide with everything (mask = 0xFFFF).
   const thick = 40;
+  const wallFilter = { category: WALL_CATEGORY, mask: 0xFFFF };
   const walls = [
-    M.Bodies.rectangle(w/2, h + thick/2,  w + thick*2, thick, { isStatic: true }),  // floor
-    M.Bodies.rectangle(-thick/2, h/2,     thick,       h*2,   { isStatic: true }),  // left
-    M.Bodies.rectangle(w + thick/2, h/2,  thick,       h*2,   { isStatic: true }),  // right
+    M.Bodies.rectangle(w/2, h + thick/2,  w + thick*2, thick, { isStatic: true, collisionFilter: wallFilter }),  // floor
+    M.Bodies.rectangle(-thick/2, h/2,     thick,       h*2,   { isStatic: true, collisionFilter: wallFilter }),  // left
+    M.Bodies.rectangle(w + thick/2, h/2,  thick,       h*2,   { isStatic: true, collisionFilter: wallFilter }),  // right
   ];
   M.World.add(engine.world, walls);
 
@@ -87,20 +108,23 @@ export async function mountPhysicsPit(widget, el) {
     ctx.restore();
   });
 
-  function spawnEmojis(count) {
-    const emojis = cfg.emojis?.length ? cfg.emojis : ['🎈','✨','💜','🎉','🔥'];
+  function spawnEmojis(emojis, count, layer) {
+    const cat = layerCategory(layer || 1);
+    // Layer N body: own category bit + collides with walls + its own category.
+    const filter = { category: cat, mask: WALL_CATEGORY | cat };
     for (let i = 0; i < count; i++) {
       const e = emojis[Math.floor(Math.random() * emojis.length)];
       const r = cfg.size || 18;
       const b = M.Bodies.circle(w * (0.2 + Math.random() * 0.6), -r, r, {
         restitution: 0.55, friction: 0.05, density: 0.002,
         label: 'emoji:' + e,
+        collisionFilter: filter,
         render: { fillStyle: 'rgba(255,255,255,0.05)', strokeStyle: 'transparent' }
       });
       M.Body.setAngularVelocity(b, (Math.random() - 0.5) * 0.2);
       M.World.add(engine.world, b);
     }
-    // Prune if too many
+    // Prune if too many.
     const emojiBodies = engine.world.bodies.filter(b => b.label?.startsWith('emoji:'));
     const max = cfg.maxAlive || 60;
     if (emojiBodies.length > max) {
@@ -109,8 +133,12 @@ export async function mountPhysicsPit(widget, el) {
     }
   }
 
-  // Initial fill for layout-mode visibility
-  setTimeout(() => spawnEmojis(3), 50);
+  // Initial preview fill so layout-mode shows something.
+  setTimeout(() => {
+    const rules = normalizePitSpawns(cfg);
+    const first = rules[0];
+    if (first) spawnEmojis(first.emojis, 3, first.layer);
+  }, 50);
 
   const entry = {
     engine, render, runner, el,
@@ -134,11 +162,14 @@ export function unmountPhysicsPit(widgetId) {
 export function onPhysicsPitEvent(widgets, event) {
   for (const w of widgets) {
     if (w.type !== 'physics-pit') continue;
-    const cfg = w.config || {};
-    if (cfg.triggerEvent && cfg.triggerEvent !== event.type) continue;
     const entry = physicsPits.get(w.id);
     if (!entry) continue;
-    entry.spawnEmojis(cfg.countPerEvent || 5);
+    const rules = normalizePitSpawns(w.config || {});
+    for (const rule of rules) {
+      if (rule.triggerEvent && rule.triggerEvent !== event.type) continue;
+      const emojis = rule.emojis?.length ? rule.emojis : ['🎈'];
+      entry.spawnEmojis(emojis, rule.count || 5, rule.layer || 1);
+    }
   }
 }
 
@@ -149,12 +180,38 @@ export function onPhysicsPitEvent(widgets, event) {
 
 const diceWidgets = new Map(); // widget id -> { scene, renderer, cleanup }
 
-const DICE_SIDES = [4, 6, 8, 12, 20];
+const DICE_SIDES = [4, 6, 8, 10, 12, 20];
 
-// Map each triangulated face in three's built-in geometries back to the
-// canonical face count for the polyhedron. D12's pentagonal faces get 3
-// triangles each, so dodecahedron actually has 36 triangles; we cluster them.
-const DICE_FACE_TRIS = { 4: 1, 6: 2, 8: 1, 12: 3, 20: 1 };
+// Build a pentagonal bipyramid (10 planar triangle faces). A real D10 is a
+// pentagonal trapezohedron (kite faces), but kite faces aren't coplanar with
+// the winding three.js produces — the face-normal clustering would end up with
+// ~20 detected faces, not 10. The bipyramid is the simpler 10-sided polyhedron:
+// each face is a true triangle, perfectly flat, distinct normal.
+function buildPentagonalBipyramid(T) {
+  const r = 0.95;    // equator radius
+  const apex = 1.0;  // apex y-distance
+  const top = [0,  apex, 0];
+  const bot = [0, -apex, 0];
+  const eq = [];
+  for (let i = 0; i < 5; i++) {
+    const a = (i / 5) * Math.PI * 2;
+    eq.push([r * Math.cos(a), 0, r * Math.sin(a)]);
+  }
+  // Vertex layout: 0=top, 1=bot, 2..6 = equator
+  const verts = [top, bot, ...eq].flat();
+  const idx = [];
+  for (let i = 0; i < 5; i++) {
+    const a = 2 + i, b = 2 + ((i + 1) % 5);
+    idx.push(0, a, b);   // upper triangle (CCW viewed from +Y → outward normal)
+    idx.push(1, b, a);   // lower triangle (CCW viewed from -Y → outward normal)
+  }
+  const indexed = new T.BufferGeometry();
+  indexed.setAttribute('position', new T.Float32BufferAttribute(verts, 3));
+  indexed.setIndex(idx);
+  const g = indexed.toNonIndexed();
+  g.computeVertexNormals();
+  return g;
+}
 
 async function buildDieMesh(sides) {
   const T = await loadThree();
@@ -162,6 +219,7 @@ async function buildDieMesh(sides) {
     4:  new T.TetrahedronGeometry(0.95),
     6:  new T.BoxGeometry(1.2, 1.2, 1.2),
     8:  new T.OctahedronGeometry(1),
+    10: buildPentagonalBipyramid(T),
     12: new T.DodecahedronGeometry(0.95),
     20: new T.IcosahedronGeometry(1),
   }[sides];
@@ -365,7 +423,113 @@ export function triggerDice(widgets, eventType) {
   }
 }
 
+// ─── 3D Model (GLB / GLTF) ────────────────────────────────────────────────
+
+const modelWidgets = new Map();
+
+export async function mountModel3D(widget, el, getStateRef) {
+  const T = await loadThree();
+  const { GLTFLoader } = await import('/vendor/GLTFLoader.js');
+  const cfg = widget.config || {};
+
+  const w = cfg.width || 300;
+  const h = cfg.height || 300;
+  el.style.width  = w + 'px';
+  el.style.height = h + 'px';
+  el.style.position = 'absolute';
+  el.innerHTML = '';
+
+  const scene = new T.Scene();
+  const camera = new T.PerspectiveCamera(35, w / h, 0.1, 100);
+  camera.position.set(0, 1.2, 4);
+  camera.lookAt(0, 0.6, 0);
+
+  scene.add(new T.AmbientLight(0xffffff, 0.65));
+  const key = new T.DirectionalLight(0xffffff, 1.15);
+  key.position.set(3, 4, 2);
+  scene.add(key);
+  const fill = new T.DirectionalLight(0x88aaff, 0.35);
+  fill.position.set(-3, 2, -2);
+  scene.add(fill);
+
+  const renderer = new T.WebGLRenderer({ alpha: true, antialias: true });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.setSize(w, h);
+  renderer.setClearColor(0x000000, 0);
+  renderer.outputColorSpace = T.SRGBColorSpace;
+  renderer.domElement.style.cssText = 'display:block; width:100%; height:100%; border-radius:12px; background:rgba(8,8,16,0.2); border:1px solid rgba(255,255,255,0.08);';
+  el.appendChild(renderer.domElement);
+
+  let pivot = null;
+  const loader = new GLTFLoader();
+  if (cfg.modelUrl) {
+    loader.load(cfg.modelUrl, (gltf) => {
+      const obj = gltf.scene;
+      // Auto-fit model into a 2-unit bounding sphere so arbitrary-scale GLBs render sanely.
+      const box = new T.Box3().setFromObject(obj);
+      const size = box.getSize(new T.Vector3());
+      const maxDim = Math.max(size.x, size.y, size.z) || 1;
+      const s = 1.8 / maxDim;
+      obj.scale.setScalar(s);
+      const center = box.getCenter(new T.Vector3()).multiplyScalar(s);
+      obj.position.sub(center);
+      pivot = new T.Group();
+      pivot.add(obj);
+      scene.add(pivot);
+    }, undefined, (err) => {
+      console.warn('[model-3d] failed to load', cfg.modelUrl, err);
+      // Show a placeholder cube so the widget isn't just a blank box.
+      pivot = new T.Group();
+      const m = new T.Mesh(new T.BoxGeometry(1, 1, 1), new T.MeshStandardMaterial({ color: 0x9147FF }));
+      pivot.add(m);
+      scene.add(pivot);
+    });
+  } else {
+    pivot = new T.Group();
+    const m = new T.Mesh(new T.BoxGeometry(1, 1, 1), new T.MeshStandardMaterial({ color: 0x9147FF }));
+    pivot.add(m);
+    scene.add(pivot);
+  }
+
+  let rafId = null;
+  function loop() {
+    rafId = requestAnimationFrame(loop);
+    if (pivot) {
+      pivot.rotation.y += cfg.rotationSpeed ?? 0.005;
+      // Optional state-reactive scale
+      if (cfg.reactiveScale) {
+        const v = getStateRef?.(cfg.reactiveScale) ?? 0;
+        const base = cfg.scale ?? 1;
+        const k = Math.min(2, Math.max(0.3, base + (Number(v) || 0) * (cfg.reactiveMultiplier ?? 0.01)));
+        pivot.scale.setScalar(k);
+      }
+    }
+    renderer.render(scene, camera);
+  }
+  loop();
+
+  const entry = {
+    dispose: () => {
+      cancelAnimationFrame(rafId);
+      renderer.dispose();
+      renderer.domElement.remove();
+      scene.traverse((o) => {
+        if (o.geometry) o.geometry.dispose?.();
+        if (o.material) (Array.isArray(o.material) ? o.material : [o.material]).forEach(m => { m.map?.dispose?.(); m.dispose?.(); });
+      });
+    }
+  };
+  modelWidgets.set(widget.id, entry);
+  return entry;
+}
+
+export function unmountModel3D(widgetId) {
+  const m = modelWidgets.get(widgetId);
+  if (m) { m.dispose(); modelWidgets.delete(widgetId); }
+}
+
 export function clearAll() {
   for (const id of [...physicsPits.keys()]) unmountPhysicsPit(id);
   for (const id of [...diceWidgets.keys()]) unmountDice(id);
+  for (const id of [...modelWidgets.keys()]) unmountModel3D(id);
 }
