@@ -405,6 +405,12 @@ const httpServer = createServer((req, res) => {
       try {
         const { message } = JSON.parse(body);
         if (!message) throw new Error('Missing message');
+        if (!settings.twitch?.userId) {
+          throw new Error('Twitch is not connected. Add your Twitch credentials in Settings to chat from the dashboard.');
+        }
+        if (twitchEventSub.status !== 'connected') {
+          throw new Error('Twitch is connecting — try again in a moment.');
+        }
         await helix.sendChatMessage(settings.twitch.userId, message);
         res.writeHead(200); res.end('{"ok":true}');
       } catch (err) {

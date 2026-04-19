@@ -184,6 +184,28 @@ body.layout-mode .draggable:hover {
   background: rgba(145, 71, 255, 0.1);
   box-shadow: 0 0 20px rgba(145, 71, 255, 0.3);
 }
+/* In layout mode, every draggable widget must be visible and grabbable — the
+   leaderboard/timer/goals/combo are display:none or opacity:0 by default, which
+   would make them impossible to drag until they had live data. */
+body.layout-mode #widget-timer,
+body.layout-mode #widget-leaderboard,
+body.layout-mode #widget-goals,
+body.layout-mode #widget-combo {
+  display: block !important;
+  opacity: 1 !important;
+  min-width: 160px;
+  min-height: 60px;
+}
+body.layout-mode .draggable[data-placeholder]::before {
+  content: attr(data-placeholder);
+  display: block;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  color: rgba(255,255,255,0.55);
+  text-transform: uppercase;
+  padding: 14px;
+}
 
 /* ═══════════════════════════════════════════════════════ Character */
 #character-wrap {
@@ -709,20 +731,20 @@ body.layout-mode .draggable:hover {
     <div class="crowd-value" id="crowd-value">0 / 100</div>
   </div>
 
-  <div id="widget-combo" class="draggable">
+  <div id="widget-combo" class="draggable" data-placeholder="Combo display">
     <div class="combo-multiplier" id="combo-mult">×3</div>
     <div class="combo-label"      id="combo-label">SUB TRAIN</div>
     <div class="combo-bar-track"><div class="combo-bar-fill" id="combo-bar"></div></div>
   </div>
 
-  <div id="widget-goals" class="draggable"></div>
+  <div id="widget-goals" class="draggable" data-placeholder="Goals"></div>
 
   <div id="widget-leaderboard" class="draggable">
     <div class="lb-title" id="lb-title">Top Supporters</div>
     <div id="lb-list"></div>
   </div>
 
-  <div id="widget-timer" class="draggable">
+  <div id="widget-timer" class="draggable" data-placeholder="Countdown timer">
     <div id="timer-label">COUNTDOWN</div>
     <div id="timer-time">00:00</div>
   </div>
