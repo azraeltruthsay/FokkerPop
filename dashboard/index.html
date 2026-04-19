@@ -719,6 +719,9 @@ html, body {
     <button class="nav-item" data-page="goals">
       <span class="nav-icon">🎯</span> Goals
     </button>
+    <button class="nav-item" data-page="layout">
+      <span class="nav-icon">🪟</span> Layout
+    </button>
     <button class="nav-item" data-page="config">
       <span class="nav-icon">📝</span> Config
     </button>
@@ -1083,6 +1086,34 @@ html, body {
           Create targets like <strong>100 subs</strong> or <strong>50,000 bits</strong>. When a goal is reached, the chosen reward effect fires automatically. Metric examples: <code>session.subCount</code>, <code>session.bitsTotal</code>, <code>session.followCount</code>, <code>session.raidCount</code>.
         </p>
         <div id="config-goals-container"></div>
+      </div>
+    </div>
+
+    <!-- ════════════════════════ LAYOUT PAGE -->
+    <div class="page" id="page-layout">
+      <div class="page-header">
+        <div class="page-title">Overlay Layout</div>
+        <div style="display:flex; gap:10px; align-items:center;">
+          <label class="toggle" style="display:inline-flex; align-items:center; gap:8px;" title="Enable drag to reposition widgets">
+            <span style="font-size:.72rem; font-weight:800; color:var(--text-dim); letter-spacing:.08em; text-transform:uppercase;">Drag Mode</span>
+            <input type="checkbox" id="layout-mode-cb-2" onchange="dashSend({type:'_dashboard.layout-mode',active:this.checked})">
+            <div class="toggle-slider"></div>
+          </label>
+          <button class="btn btn-ghost btn-sm" onclick="resetLayout()" style="color:var(--red);">Reset Positions</button>
+          <button class="btn btn-primary btn-sm" onclick="window.open('/overlay','_blank','width=1280,height=720')">Pop Out ↗</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <p style="font-size:.82rem; color:var(--text-dim); margin:0 0 10px;">
+          Turn <strong>Drag Mode</strong> on, then click-and-drag any widget in the preview below to reposition it. Every widget appears with a dashed purple outline even if it has no data yet (Leaderboard before any bits, Timer before any countdown, Goals if none configured), so you can place them first and let data fill in later. Positions save automatically. Turn Drag Mode off when you're done.
+        </p>
+        <p style="font-size:.74rem; color:var(--text-dim); margin:0 0 12px; opacity:.75;">
+          Tip: dragging here, in the Pop-out Editor, and using OBS → right-click source → Interact all write to the same saved positions.
+        </p>
+        <div style="background:#0f0f1a; border:1px solid var(--border); border-radius:10px; overflow:hidden; background-image: repeating-conic-gradient(#16162a 0% 25%, #0f0f1a 0% 50%); background-size:24px 24px;">
+          <iframe id="layout-preview-frame" src="/?demo=0" title="Layout Editor Preview" style="display:block; width:100%; aspect-ratio:16/9; border:none;"></iframe>
+        </div>
       </div>
     </div>
 

@@ -334,8 +334,10 @@ function applyStateUpdate(path, value) {
     setVersion(value);
   }
   if (path === 'overlay.layoutMode') {
-    const cb = document.getElementById('layout-mode-cb');
-    if (cb) cb.checked = value;
+    for (const id of ['layout-mode-cb', 'layout-mode-cb-2']) {
+      const cb = document.getElementById(id);
+      if (cb) cb.checked = value;
+    }
   }
   if (path === 'overlay.volume') {
     const s = document.getElementById('volume-slider');
