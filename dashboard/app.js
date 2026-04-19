@@ -57,6 +57,7 @@ function connect() {
   // Initial setup check
   try {
     fetch('/api/settings').then(r => r.json()).then(s => {
+      appState.settings = s;
       if (s.twitch) {
         const $id = document.getElementById('setup-client-id');
         const $sec = document.getElementById('setup-client-secret');
@@ -255,19 +256,52 @@ function appendChatMessage(event) {
   while ($feed.children.length > 200) $feed.firstChild.remove();
 }
 
+// Deterministic hash-based color so each fake viewer keeps a stable color.
+function chatColorFor(name) {
+  const palette = ['#9147FF','#FF6B6B','#6BCB77','#4D96FF','#FF9A3C','#C77DFF','#00C9FF','#FFD93D','#FF6FC8','#FF5252'];
+  let h = 0;
+  for (const c of String(name)) h = (h * 31 + c.charCodeAt(0)) | 0;
+  return palette[Math.abs(h) % palette.length];
+}
+
 window.sendChatMessage = function() {
   const $in = document.getElementById('chat-input');
   const message = $in.value.trim();
   if (!message) return;
 
-  fetch('/api/chat', {
-    method:  'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body:    JSON.stringify({ message })
-  }).then(res => {
-    if (res.ok) $in.value = '';
-    else res.text().then(err => alert('Send failed: ' + err));
+  const twitchLive = (appState.twitch?.status === 'connected');
+  if (twitchLive) {
+    fetch('/api/chat', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ message })
+    }).then(res => {
+      if (res.ok) $in.value = '';
+      else res.text().then(err => alert('Send failed: ' + err));
+    });
+  } else {
+    // Twitch not connected — simulate locally so LilFokker can at least preview how it looks.
+    const name = appState.settings?.twitch?.channelName || 'LilFokker';
+    dashSend({
+      type: '_dashboard.test-event',
+      event: { type: 'chat', source: 'dashboard', payload: { user: name, message, color: '#FFD700' } }
+    });
+    $in.value = '';
+  }
+};
+
+window.simulateViewerChat = function() {
+  const $user = document.getElementById('sim-chat-user');
+  const $msg  = document.getElementById('sim-chat-msg');
+  const user    = ($user.value || 'TestViewer').trim();
+  const message = $msg.value.trim();
+  if (!message) return;
+  dashSend({
+    type:  '_dashboard.test-event',
+    event: { type: 'chat', source: 'dashboard', payload: { user, message, color: chatColorFor(user) } }
   });
+  $msg.value = '';
+  $msg.focus();
 };
 
 function applyStateUpdate(path, value) {

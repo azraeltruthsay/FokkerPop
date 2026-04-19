@@ -829,9 +829,16 @@ html, body {
         <div class="chat-msg system">Welcome to FokkerPop Chat! Messages and stream alerts will appear here.</div>
       </div>
 
-      <div style="background:var(--surface2); padding:15px 20px; border-top:1px solid var(--border); display:flex; gap:12px;">
-        <input id="chat-input" class="input-field" placeholder="Send a message..." style="margin:0; flex:1;" onkeydown="if(event.key==='Enter') sendChatMessage()">
-        <button class="btn btn-primary" onclick="sendChatMessage()">Send</button>
+      <div style="background:var(--surface2); padding:15px 20px; border-top:1px solid var(--border); display:flex; gap:12px; align-items:center;">
+        <span style="font-size:.62rem; font-weight:800; color:var(--accent); letter-spacing:.1em; min-width:72px;">🎙️ STREAMER</span>
+        <input id="chat-input" class="input-field" placeholder="Send a chat message as you…" style="margin:0; flex:1;" onkeydown="if(event.key==='Enter') sendChatMessage()">
+        <button class="btn btn-primary" onclick="sendChatMessage()" title="Real Twitch if connected — otherwise simulated locally">Send</button>
+      </div>
+      <div style="background:var(--surface); padding:15px 20px; border-top:1px solid var(--border); display:flex; gap:12px; align-items:center;">
+        <span style="font-size:.62rem; font-weight:800; color:var(--accent2); letter-spacing:.1em; min-width:72px;">👤 VIEWER</span>
+        <input id="sim-chat-user" class="input-field" placeholder="Viewer name" value="TestViewer" style="margin:0; max-width:140px;">
+        <input id="sim-chat-msg"  class="input-field" placeholder="Message (try !pop, !bub, !yay, !hype)" style="margin:0; flex:1;" onkeydown="if(event.key==='Enter') simulateViewerChat()">
+        <button class="btn btn-ghost" onclick="simulateViewerChat()" title="Fires a local chat event — triggers commands and flows just like real Twitch">Simulate</button>
       </div>
     </div>
 
