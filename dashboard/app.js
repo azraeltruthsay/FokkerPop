@@ -291,7 +291,7 @@ function setVersion(v) {
   document.querySelectorAll('.v-badge, .v-string').forEach(el => { el.textContent = cleanV; });
 
   // Safety check: Is he actually on the latest?
-  if (v && v < '0.2.33') {
+  if (v && v < '0.2.49') {
     const el = document.getElementById('error-reporter');
     const msgEl = document.getElementById('error-msg');
     if (el && msgEl) {
