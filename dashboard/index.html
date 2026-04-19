@@ -777,9 +777,9 @@ html, body {
         <div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px;">
           <span style="font-size:.75rem;color:var(--text-dim)" id="db-crowd-val">0 / 100</span>
           <div style="display:flex;gap:6px;">
-            <button class="btn btn-ghost btn-sm" onclick="fireEffect('crowd-boost',{amount:10},this)">+10</button>
-            <button class="btn btn-ghost btn-sm" onclick="fireEffect('crowd-boost',{amount:25},this)">+25</button>
-            <button class="btn btn-gold  btn-sm" onclick="fireEffect('crowd-boost',{amount:100},this)">MAX</button>
+            <button class="btn btn-ghost btn-sm" onclick="dashSend({type:'_dashboard.crowd-boost',amount:10})">+10</button>
+            <button class="btn btn-ghost btn-sm" onclick="dashSend({type:'_dashboard.crowd-boost',amount:25})">+25</button>
+            <button class="btn btn-gold  btn-sm" onclick="dashSend({type:'_dashboard.crowd-boost',amount:100})">MAX</button>
             <button class="btn btn-ghost btn-sm" onclick="dashSend({type:'_dashboard.crowd-reset'})">Reset</button>
           </div>
         </div>
