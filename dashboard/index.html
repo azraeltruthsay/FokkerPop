@@ -840,6 +840,11 @@ html, body {
     <div class="page" id="page-effects">
       <div class="page-header"><div class="page-title">Test Effects</div></div>
 
+      <div style="background:rgba(145,71,255,0.08); border:1px solid rgba(145,71,255,0.25); border-radius:10px; padding:12px 16px; margin-bottom:14px; font-size:.82rem; line-height:1.5; color:var(--text);">
+        <strong style="color:var(--accent);">ℹ️ Watch the preview below.</strong>
+        Test buttons on this page fire with an <em>isTest</em> flag so they don't leak onto your live stream. An OBS browser source pointed at <code>http://localhost:4747/?live=1</code> ignores them on purpose — real Twitch events (follows, subs, cheers) still come through normally. To test effects on your actual OBS source, temporarily change its URL to <code>http://localhost:4747/</code> (no <code>?live=1</code>) and flip it back before going live.
+      </div>
+
       <div id="preview-wrap">
         <div class="preview-label">Live Preview</div>
         <div class="preview-actions">
