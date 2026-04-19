@@ -462,6 +462,14 @@ window.addWidget = function (type) {
       { triggerEvent: 'cheer', emojis: ['💎'],      count: 4, layer: 2 },
     ],
   };
+  if (type === 'physics-pit-3d') base.config = {
+    visible: true, autoHide: true, gravity: 1, width: 360, height: 260, maxAlive: 40,
+    size: 0.25, pitWidth: 3, pitDepth: 2, pitHeight: 4,
+    spawns: [
+      { triggerEvent: 'sub',   emojis: ['🎈','✨'], count: 6, layer: 1 },
+      { triggerEvent: 'cheer', emojis: ['💎'],      count: 4, layer: 2 },
+    ],
+  };
   if (type === 'dice')        base.config = { visible: true, autoHide: true, sides: 20, triggerEvent: 'redeem', width: 220, height: 220 };
   if (type === 'model-3d')    base.config = { visible: true, modelUrl: '', rotationSpeed: 0.005, scale: 1, reactiveScale: '', width: 300, height: 300 };
   widgets.push(base);
@@ -519,7 +527,9 @@ function renderWidgetList() {
     const visible = c.visible !== false;
     const typeLabel = {
       counter: 'Counter', text: 'Text', recent: 'Latest Chatter',
-      'hot-button': 'Hot Button', 'event-badge': 'Event Badge'
+      'hot-button': 'Hot Button', 'event-badge': 'Event Badge',
+      'physics-pit': 'Physics Pit (2D)', 'physics-pit-3d': 'Physics Pit (3D)',
+      dice: 'Dice', 'model-3d': '3D Model',
     }[w.type] || w.type;
     const body = (() => {
       if (w.type === 'counter') return `
@@ -540,7 +550,8 @@ function renderWidgetList() {
         <select class="input-field" onchange="updateWidgetField('${w.id}','eventType',this.value)" title="Flashes when an event of this type fires">
           ${EVENT_OPTIONS.map(e => `<option value="${e}" ${e === c.eventType ? 'selected' : ''}>${e}</option>`).join('')}
         </select>`;
-      if (w.type === 'physics-pit') {
+      if (w.type === 'physics-pit' || w.type === 'physics-pit-3d') {
+        const is3d = w.type === 'physics-pit-3d';
         const spawns = c.spawns ?? (c.triggerEvent ? [{ triggerEvent: c.triggerEvent, emojis: c.emojis ?? [], count: c.countPerEvent ?? 5, layer: 1 }] : []);
         const rows = spawns.map((s, i) => `
           <div class="input-row" style="margin-top:6px; padding:8px; background:rgba(255,255,255,0.03); border-radius:6px;">
@@ -552,14 +563,22 @@ function renderWidgetList() {
             <input class="input-field" type="number" min="1" max="15" value="${s.layer ?? 1}" oninput="updatePitSpawn('${w.id}',${i},'layer',parseInt(this.value)||1)" style="max-width:70px;" title="Collision layer (same layer collides, different layers pass through)">
             <button class="btn btn-ghost btn-sm" onclick="removePitSpawn('${w.id}',${i})" style="color:var(--red);">✕</button>
           </div>`).join('');
+        const sizeStep = is3d ? '0.05' : '1';
+        const sizeVal  = c.size ?? (is3d ? 0.25 : 18);
+        const sizeHint = is3d ? 'Sphere radius (world units)' : 'Emoji radius px';
         return `
-          <div style="display:flex; gap:8px; align-items:center; margin-bottom:6px;">
+          <div style="display:flex; gap:8px; align-items:center; margin-bottom:6px; flex-wrap:wrap;">
             <input class="input-field" type="number" step="0.1" value="${c.gravity ?? 1}" oninput="updateWidgetField('${w.id}','gravity',parseFloat(this.value)||0)" style="max-width:90px;" title="Gravity">
-            <input class="input-field" type="number" value="${c.size ?? 18}" oninput="updateWidgetField('${w.id}','size',parseInt(this.value)||0)" style="max-width:80px;" title="Emoji radius px">
-            <input class="input-field" type="number" value="${c.maxAlive ?? 60}" oninput="updateWidgetField('${w.id}','maxAlive',parseInt(this.value)||0)" style="max-width:90px;" title="Max alive">
+            <input class="input-field" type="number" step="${sizeStep}" value="${sizeVal}" oninput="updateWidgetField('${w.id}','size',parseFloat(this.value)||0)" style="max-width:90px;" title="${sizeHint}">
+            <input class="input-field" type="number" value="${c.maxAlive ?? (is3d ? 40 : 60)}" oninput="updateWidgetField('${w.id}','maxAlive',parseInt(this.value)||0)" style="max-width:90px;" title="Max alive">
+            ${is3d ? `
+              <input class="input-field" type="number" step="0.1" value="${c.pitWidth ?? 3}" oninput="updateWidgetField('${w.id}','pitWidth',parseFloat(this.value)||0)" style="max-width:90px;" title="Pit width (world units, half-extent doubled)">
+              <input class="input-field" type="number" step="0.1" value="${c.pitDepth ?? 2}" oninput="updateWidgetField('${w.id}','pitDepth',parseFloat(this.value)||0)" style="max-width:90px;" title="Pit depth">
+              <input class="input-field" type="number" step="0.1" value="${c.pitHeight ?? 4}" oninput="updateWidgetField('${w.id}','pitHeight',parseFloat(this.value)||0)" style="max-width:90px;" title="Pit height">
+            ` : ''}
             <button class="btn btn-ghost btn-sm" onclick="addPitSpawn('${w.id}')" style="margin-left:auto;">+ Spawn Rule</button>
           </div>
-          <p style="font-size:.7rem; color:var(--text-dim); margin:4px 0;">Each spawn rule = trigger event + emojis + count + <strong>layer</strong>. Objects on the same layer collide; different layers pass through each other.</p>
+          <p style="font-size:.7rem; color:var(--text-dim); margin:4px 0;">Each spawn rule = trigger event + emojis + count + <strong>layer</strong>. Objects on the same layer collide; different layers pass through each other.${is3d ? ' 3D pit uses cannon-es rigid bodies.' : ''}</p>
           ${rows || '<p style="font-size:.75rem; color:var(--text-dim);">No spawn rules yet. Click "+ Spawn Rule".</p>'}`;
       }
       if (w.type === 'dice') return `
@@ -583,7 +602,7 @@ function renderWidgetList() {
       }
       return '';
     })();
-    const autoHideTypes = new Set(['physics-pit', 'dice', 'event-badge']);
+    const autoHideTypes = new Set(['physics-pit', 'physics-pit-3d', 'dice', 'event-badge']);
     const showAutoHide = autoHideTypes.has(w.type);
     return `
       <div class="card" style="margin-bottom:10px; padding:12px; background:var(--surface2); ${visible ? '' : 'opacity:0.55;'}">

@@ -446,6 +446,192 @@ export function triggerDice(widgets, eventType) {
   }
 }
 
+// ─── 3D Physics Pit (three.js + cannon-es) ───────────────────────────────
+// Like the 2D pit but with real 3D rigid bodies. Bodies are textured spheres
+// (emoji rendered onto a canvas texture). Collision layers map directly to
+// cannon-es CollisionFilterGroup / Mask.
+
+let CANNON = null;
+async function loadCannon() {
+  if (!CANNON) CANNON = await import('/vendor/cannon-es.js');
+  return CANNON;
+}
+
+const physicsPits3D = new Map();
+
+export async function mountPhysicsPit3D(widget, el) {
+  const T = await loadThree();
+  const C = await loadCannon();
+  const cfg = widget.config || {};
+
+  const w = cfg.width || 360;
+  const h = cfg.height || 260;
+  el.style.width  = w + 'px';
+  el.style.height = h + 'px';
+  el.style.position = 'absolute';
+  el.innerHTML = '';
+
+  // ── three.js scene ─────────────────────────────────────────
+  const scene = new T.Scene();
+  const camera = new T.PerspectiveCamera(45, w / h, 0.1, 100);
+  camera.position.set(0, 4, 7);
+  camera.lookAt(0, 0.8, 0);
+
+  scene.add(new T.AmbientLight(0xffffff, 0.6));
+  const key = new T.DirectionalLight(0xffffff, 1.2);
+  key.position.set(4, 8, 5);
+  scene.add(key);
+
+  const renderer = new T.WebGLRenderer({ alpha: true, antialias: true });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.setSize(w, h);
+  renderer.setClearColor(0x000000, 0);
+  renderer.domElement.style.cssText = 'display:block; width:100%; height:100%; border-radius:12px; background:rgba(8,8,16,0.3); border:1px solid rgba(255,255,255,0.08);';
+  el.appendChild(renderer.domElement);
+
+  // ── cannon world ───────────────────────────────────────────
+  const world = new C.World({ gravity: new C.Vec3(0, -9.82 * (cfg.gravity ?? 1), 0) });
+  world.broadphase = new C.NaiveBroadphase();
+  world.allowSleep = true;
+
+  const halfX = cfg.pitWidth  ?? 3.0;
+  const halfZ = cfg.pitDepth  ?? 2.0;
+  const pitHeight = cfg.pitHeight ?? 4.0;
+
+  const WALL_GROUP = 1;
+  const wallMat = new C.Material('wall');
+  // Ground
+  world.addBody(new C.Body({
+    type: C.Body.STATIC, shape: new C.Plane(),
+    quaternion: new C.Quaternion().setFromEuler(-Math.PI / 2, 0, 0),
+    position: new C.Vec3(0, 0, 0),
+    collisionFilterGroup: WALL_GROUP, collisionFilterMask: 0xFFFF,
+    material: wallMat,
+  }));
+  // Walls (4 sides)
+  const wallT = 0.05;
+  const wall = (w2, h2, d2, px, py, pz) => {
+    const body = new C.Body({ type: C.Body.STATIC, shape: new C.Box(new C.Vec3(w2, h2, d2)),
+      position: new C.Vec3(px, py, pz), collisionFilterGroup: WALL_GROUP, collisionFilterMask: 0xFFFF, material: wallMat });
+    world.addBody(body);
+  };
+  wall(wallT, pitHeight/2, halfZ + wallT, -halfX - wallT, pitHeight/2, 0); // left
+  wall(wallT, pitHeight/2, halfZ + wallT,  halfX + wallT, pitHeight/2, 0); // right
+  wall(halfX + wallT, pitHeight/2, wallT, 0, pitHeight/2, -halfZ - wallT); // back
+  wall(halfX + wallT, pitHeight/2, wallT, 0, pitHeight/2,  halfZ + wallT); // front
+
+  // Visual floor outline so LilFokker can see where the pit actually is.
+  const floorGeo = new T.PlaneGeometry(halfX * 2, halfZ * 2);
+  const floorMat = new T.MeshStandardMaterial({ color: 0x0f0f1a, side: T.DoubleSide, transparent: true, opacity: 0.55 });
+  const floorMesh = new T.Mesh(floorGeo, floorMat);
+  floorMesh.rotation.x = -Math.PI / 2;
+  scene.add(floorMesh);
+  // Subtle wireframe walls so the volume is visible
+  const wireMat = new T.LineBasicMaterial({ color: 0x9147FF, transparent: true, opacity: 0.35 });
+  const bb = new T.Box3(new T.Vector3(-halfX, 0, -halfZ), new T.Vector3(halfX, pitHeight, halfZ));
+  scene.add(new T.Box3Helper(bb, 0x9147FF));
+
+  // ── bodies + meshes ────────────────────────────────────────
+  const items = [];  // { body, mesh, layer }
+
+  function emojiTexture(emoji) {
+    const s = 128;
+    const c = document.createElement('canvas');
+    c.width = s; c.height = s;
+    const ctx = c.getContext('2d');
+    ctx.font = `${Math.floor(s * 0.8)}px serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(emoji, s / 2, s / 2);
+    const t = new T.CanvasTexture(c);
+    t.colorSpace = T.SRGBColorSpace;
+    return t;
+  }
+
+  function spawnEmojis(emojis, count, layer) {
+    const layerBit = 1 << Math.max(1, Math.min(15, layer | 0));
+    // Layer-N body: own bit set; mask = walls + same-layer bit.
+    const filterGroup = layerBit;
+    const filterMask  = WALL_GROUP | layerBit;
+    for (let i = 0; i < count; i++) {
+      const e = emojis[Math.floor(Math.random() * emojis.length)];
+      const r = (cfg.size ?? 0.25);
+      const body = new C.Body({
+        mass: 0.4, shape: new C.Sphere(r),
+        position: new C.Vec3((Math.random() - 0.5) * halfX * 1.5, pitHeight + Math.random() * 1, (Math.random() - 0.5) * halfZ * 0.6),
+        linearDamping: 0.05, angularDamping: 0.05,
+        collisionFilterGroup: filterGroup, collisionFilterMask: filterMask,
+        material: wallMat,
+      });
+      body.angularVelocity.set((Math.random() - 0.5) * 4, (Math.random() - 0.5) * 4, (Math.random() - 0.5) * 4);
+      world.addBody(body);
+
+      const sprite = new T.Sprite(new T.SpriteMaterial({ map: emojiTexture(e), transparent: true }));
+      sprite.scale.set(r * 2.4, r * 2.4, r * 2.4);
+      scene.add(sprite);
+      items.push({ body, mesh: sprite, layer });
+    }
+    // Prune the oldest bodies if we exceed maxAlive.
+    const max = cfg.maxAlive || 40;
+    while (items.length > max) {
+      const old = items.shift();
+      world.removeBody(old.body);
+      scene.remove(old.mesh);
+      old.mesh.material.map?.dispose();
+      old.mesh.material.dispose();
+    }
+  }
+
+  let last = performance.now();
+  let rafId = null;
+  function loop(now) {
+    const dt = Math.min(1 / 30, (now - last) / 1000);
+    last = now;
+    world.step(1 / 60, dt, 3);
+    for (const it of items) {
+      it.mesh.position.set(it.body.position.x, it.body.position.y, it.body.position.z);
+    }
+    renderer.render(scene, camera);
+    rafId = requestAnimationFrame(loop);
+  }
+  rafId = requestAnimationFrame(loop);
+
+  // Seed a couple of bodies so layout mode shows something.
+  setTimeout(() => spawnEmojis(['🎈'], 2, 1), 50);
+
+  const entry = {
+    spawnEmojis,
+    dispose: () => {
+      cancelAnimationFrame(rafId);
+      for (const it of items) { scene.remove(it.mesh); it.mesh.material.map?.dispose(); it.mesh.material.dispose(); }
+      renderer.dispose();
+      renderer.domElement.remove();
+      floorGeo.dispose(); floorMat.dispose();
+    },
+  };
+  physicsPits3D.set(widget.id, entry);
+  return entry;
+}
+
+export function unmountPhysicsPit3D(widgetId) {
+  const p = physicsPits3D.get(widgetId);
+  if (p) { p.dispose(); physicsPits3D.delete(widgetId); }
+}
+
+export function onPhysicsPit3DEvent(widgets, event) {
+  for (const w of widgets) {
+    if (w.type !== 'physics-pit-3d') continue;
+    const entry = physicsPits3D.get(w.id);
+    if (!entry) continue;
+    const rules = normalizePitSpawns(w.config || {});
+    for (const rule of rules) {
+      if (rule.triggerEvent && rule.triggerEvent !== event.type) continue;
+      const emojis = rule.emojis?.length ? rule.emojis : ['🎈'];
+      entry.spawnEmojis(emojis, rule.count || 5, rule.layer || 1);
+    }
+  }
+}
+
 // ─── 3D Model (GLB / GLTF) ────────────────────────────────────────────────
 
 const modelWidgets = new Map();
@@ -552,7 +738,8 @@ export function unmountModel3D(widgetId) {
 }
 
 export function clearAll() {
-  for (const id of [...physicsPits.keys()]) unmountPhysicsPit(id);
-  for (const id of [...diceWidgets.keys()]) unmountDice(id);
-  for (const id of [...modelWidgets.keys()]) unmountModel3D(id);
+  for (const id of [...physicsPits.keys()])   unmountPhysicsPit(id);
+  for (const id of [...physicsPits3D.keys()]) unmountPhysicsPit3D(id);
+  for (const id of [...diceWidgets.keys()])   unmountDice(id);
+  for (const id of [...modelWidgets.keys()])  unmountModel3D(id);
 }

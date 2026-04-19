@@ -1438,7 +1438,7 @@ function widgetMatchesEvent(w, event) {
   if (w.type === 'event-badge' || w.type === 'dice') {
     return !w.config?.eventType || w.config.eventType === event.type;
   }
-  if (w.type === 'physics-pit') {
+  if (w.type === 'physics-pit' || w.type === 'physics-pit-3d') {
     const spawns = w.config?.spawns ?? [];
     return spawns.some(s => !s.triggerEvent || s.triggerEvent === event.type)
         || (w.config?.triggerEvent && w.config.triggerEvent === event.type);
@@ -1457,9 +1457,10 @@ function flashEventBadges(event) {
     el.classList.remove('fire'); void el.offsetWidth; el.classList.add('fire');
     setTimeout(() => el.classList.remove('fire'), 900);
   }
-  // Physics-pit + dice widgets also react to matching event types.
+  // Physics pits (2D and 3D) + dice widgets also react to matching event types.
   if (widgetModule) {
     widgetModule.onPhysicsPitEvent?.(state.widgets, event);
+    widgetModule.onPhysicsPit3DEvent?.(state.widgets, event);
     widgetModule.triggerDice?.(state.widgets, event.type);
   }
 }
@@ -1732,6 +1733,13 @@ function renderCustomWidgets() {
       el.style.minWidth = (cfg.width || 300) + 'px';
       el.style.minHeight = (cfg.height || 300) + 'px';
       ensureWidgetModule().then(m => m.mountModel3D(w, el, readMetric));
+    } else if (w.type === 'physics-pit-3d') {
+      el.style.background = 'transparent';
+      el.style.border = 'none';
+      el.style.padding = '0';
+      el.style.minWidth = (cfg.width || 360) + 'px';
+      el.style.minHeight = (cfg.height || 260) + 'px';
+      ensureWidgetModule().then(m => m.mountPhysicsPit3D(w, el));
     }
 
     // Per-widget visibility toggle (default true). Hidden widgets stay hidden
