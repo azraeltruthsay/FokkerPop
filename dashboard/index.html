@@ -1005,14 +1005,33 @@ html, body {
         
         <div style="display:flex; flex-direction:column; gap:20px;">
           <div>
-            <div style="font-size:0.65rem; color:var(--text-dim); text-transform:uppercase; letter-spacing:0.05em; font-weight:800; margin-bottom:10px;">Sound Effects</div>
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+              <div style="font-size:0.65rem; color:var(--text-dim); text-transform:uppercase; letter-spacing:0.05em; font-weight:800;">Sound Effects</div>
+              <button class="btn btn-ghost btn-sm" onclick="triggerUpload('sound')">➕ Upload Sound</button>
+            </div>
             <div id="gallery-sounds" style="display:flex; flex-wrap:wrap; gap:8px;"></div>
           </div>
           <div>
-            <div style="font-size:0.65rem; color:var(--text-dim); text-transform:uppercase; letter-spacing:0.05em; font-weight:800; margin-bottom:10px;">Stickers</div>
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+              <div style="font-size:0.65rem; color:var(--text-dim); text-transform:uppercase; letter-spacing:0.05em; font-weight:800;">Stickers</div>
+              <button class="btn btn-ghost btn-sm" onclick="triggerUpload('sticker')">➕ Upload Sticker</button>
+            </div>
             <div id="gallery-stickers" style="display:flex; flex-wrap:wrap; gap:10px;"></div>
           </div>
+          <div>
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+              <div style="font-size:0.65rem; color:var(--text-dim); text-transform:uppercase; letter-spacing:0.05em; font-weight:800;">Mascot Animations</div>
+              <button class="btn btn-ghost btn-sm" onclick="triggerUpload('character')">➕ Upload Mascot</button>
+            </div>
+            <p style="font-size:.65rem; color:var(--text-dim); margin-bottom:8px;">Filename must be: <strong>idle.gif, active.gif, hype.gif, or explosion.gif</strong></p>
+            <div id="gallery-characters" style="display:flex; flex-wrap:wrap; gap:10px;"></div>
+          </div>
         </div>
+
+        <!-- Hidden Upload Inputs -->
+        <input type="file" id="upload-sound"     style="display:none" onchange="handleFileUpload('sound', this.files[0])" accept="audio/*">
+        <input type="file" id="upload-sticker"   style="display:none" onchange="handleFileUpload('sticker', this.files[0])" accept="image/*">
+        <input type="file" id="upload-character" style="display:none" onchange="handleFileUpload('character', this.files[0])" accept="image/gif">
       </div>
     </div>
 

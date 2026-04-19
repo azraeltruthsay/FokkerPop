@@ -1,5 +1,5 @@
 import { createServer }                                  from 'node:http';
-import { readFileSync, writeFileSync, existsSync, readdirSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync, readdirSync, createWriteStream } from 'node:fs';
 import { extname, join, normalize, resolve, sep, relative, isAbsolute } from 'node:path';
 import { exec }                                from 'node:child_process';
 import { WebSocketServer, WebSocket }          from 'ws';
@@ -408,6 +408,36 @@ const httpServer = createServer((req, res) => {
     return;
   }
 
+  if (path === '/api/upload' && req.method === 'POST') {
+    const name = req.headers['x-filename'];
+    const type = req.headers['x-type']; // 'sound', 'sticker', 'character'
+    
+    if (!name || !type) { res.writeHead(400); res.end('Missing metadata'); return; }
+
+    const folders = {
+      sound:     'assets/sounds',
+      sticker:   'assets/stickers',
+      character: 'characters/lilfokkermascot'
+    };
+
+    const targetDir = folders[type];
+    if (!targetDir) { res.writeHead(400); res.end('Invalid type'); return; }
+
+    const savePath = join(ROOT, targetDir, name);
+    const stream   = createWriteStream(savePath);
+    
+    req.pipe(stream);
+    req.on('end', () => {
+      log.info(`Uploaded file: ${name} to ${targetDir}`);
+      res.writeHead(200); res.end('{"ok":true}');
+    });
+    req.on('error', (err) => {
+      log.error('Upload error:', err.message);
+      res.writeHead(500); res.end(err.message);
+    });
+    return;
+  }
+
   if (path === '/api/flows' && req.method === 'GET') {
     res.writeHead(200, { 'Content-Type': 'application/json' });
     return res.end(JSON.stringify(flows));
@@ -437,12 +467,14 @@ const httpServer = createServer((req, res) => {
   }
 
   if (path === '/api/assets' && req.method === 'GET') {
-    const assets = { sounds: [], stickers: [] };
+    const assets = { sounds: [], stickers: [], characters: [] };
     try {
       const sDir = join(ROOT, 'assets/sounds');
       if (existsSync(sDir)) assets.sounds = readdirSync(sDir).filter(f => !f.startsWith('.'));
       const tDir = join(ROOT, 'assets/stickers');
       if (existsSync(tDir)) assets.stickers = readdirSync(tDir).filter(f => !f.startsWith('.'));
+      const cDir = join(ROOT, 'characters/lilfokkermascot');
+      if (existsSync(cDir)) assets.characters = readdirSync(cDir).filter(f => !f.startsWith('.'));
     } catch (err) { log.error('Asset scan error:', err.message); }
     res.writeHead(200, { 'Content-Type': 'application/json' });
     return res.end(JSON.stringify(assets));

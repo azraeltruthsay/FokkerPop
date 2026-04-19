@@ -116,7 +116,8 @@ function connect() {
 function populateGallery() {
   const $s = document.getElementById('gallery-sounds');
   const $t = document.getElementById('gallery-stickers');
-  if (!$s || !$t) return;
+  const $c = document.getElementById('gallery-characters');
+  if (!$s || !$t || !$c) return;
 
   $s.innerHTML = (assets.sounds || []).map(f => 
     `<button class="btn btn-ghost btn-sm" onclick="previewSound('${esc(f)}')" style="font-size:0.7rem;">🔊 ${esc(f)}</button>`
@@ -127,7 +128,45 @@ function populateGallery() {
        <img src="/assets/stickers/${esc(f)}" style="max-width:80%; max-height:80%; object-fit:contain;">
      </div>`
   ).join('');
+
+  $c.innerHTML = (assets.characters || []).map(f => 
+    `<div title="${esc(f)}" style="width:60px; height:60px; background:var(--surface2); border:1px solid var(--border); border-radius:8px; display:flex; flex-direction:column; align-items:center; justify-content:center; overflow:hidden; gap:4px;">
+       <img src="/characters/lilfokkermascot/${esc(f)}" style="max-width:70%; max-height:70%; object-fit:contain;">
+       <span style="font-size:0.5rem; color:var(--text-dim)">${esc(f)}</span>
+     </div>`
+  ).join('');
 }
+
+window.triggerUpload = (type) => { document.getElementById('upload-' + type).click(); };
+
+window.handleFileUpload = async function(type, file) {
+  if (!file) return;
+  
+  const status = document.getElementById('error-reporter');
+  const msgEl = document.getElementById('error-msg');
+
+  try {
+    const res = await fetch('/api/upload', {
+      method:  'POST',
+      headers: { 'x-filename': file.name, 'x-type': type },
+      body:    file
+    });
+    if (res.ok) {
+      alert('Upload successful!');
+      fetch('/api/assets').then(r => r.json()).then(a => {
+        window.assets = a;
+        populateGallery();
+      });
+    } else {
+      throw new Error(await res.text());
+    }
+  } catch (err) {
+    if (status && msgEl) {
+      msgEl.textContent = `Upload Failed: ${err.message}`;
+      status.style.display = 'block';
+    }
+  }
+};
 
 function setBadge(cls, label) {
   $badge.className = `connection-badge ${cls}`;
