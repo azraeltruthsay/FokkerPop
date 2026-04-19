@@ -119,9 +119,13 @@ function populateGallery() {
   const $c = document.getElementById('gallery-characters');
   if (!$s || !$t || !$c) return;
 
-  $s.innerHTML = (assets.sounds || []).map(f => 
-    `<button class="btn btn-ghost btn-sm" onclick="previewSound('${esc(f)}')" style="font-size:0.7rem;">🔊 ${esc(f)}</button>`
+  $s.innerHTML = (assets.sounds || []).map(f =>
+    `<button class="btn btn-ghost btn-sm gallery-sound-btn" data-sound="${esc(f)}" style="font-size:0.7rem;">🔊 ${esc(f)}</button>`
   ).join('');
+  $s.onclick = (e) => {
+    const btn = e.target.closest('.gallery-sound-btn');
+    if (btn) previewSound(btn.dataset.sound);
+  };
 
   $t.innerHTML = (assets.stickers || []).map(f => 
     `<div title="${esc(f)}" style="width:40px; height:40px; background:var(--surface2); border:1px solid var(--border); border-radius:6px; display:flex; align-items:center; justify-content:center; overflow:hidden; cursor:help;">
@@ -473,10 +477,21 @@ function renderGoals(goals) {
 }
 
 window.previewSound = function(file) {
-  if (!file) return;
-  const audio = new Audio(`/assets/sounds/${file}`);
+  if (!file) {
+    alert('Pick a sound from the dropdown first.');
+    return;
+  }
+  const src = `/assets/sounds/${encodeURIComponent(file)}`;
+  const audio = new Audio(src);
   audio.volume = 0.5; // safe default for previews
-  audio.play().catch(err => console.warn('Preview blocked:', err.message));
+  audio.addEventListener('error', () => {
+    console.warn(`Preview failed: could not load ${src}`, audio.error);
+    alert(`Could not load "${file}". Is the file still in assets/sounds/?`);
+  });
+  audio.play().catch(err => {
+    console.warn('Preview blocked:', err.message);
+    alert(`Could not play "${file}": ${err.message}`);
+  });
 };
 
 function buildSoundSelect(cls, current, vol = 1.0) {
