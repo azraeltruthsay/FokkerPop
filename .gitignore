@@ -3,6 +3,8 @@ settings.json
 state.json
 goals.json
 redeems.json
+commands.json
+flows.json
 .env
 *.log
 logs/

@@ -417,15 +417,23 @@ window.previewSound = function(file) {
   audio.play().catch(err => console.warn('Preview blocked:', err.message));
 };
 
-function buildSoundSelect(cls, current) {
+function buildSoundSelect(cls, current, vol = 1.0) {
   const sounds = assets.sounds ?? [];
   return `
-    <div style="display:flex; gap:6px; flex:1;">
-      <select class="input-field ${cls}" style="flex:1;">
-        <option value="">-- No Sound --</option>
-        ${sounds.map(s => `<option value="${esc(s)}" ${s === current ? 'selected' : ''}>${esc(s)}</option>`).join('')}
-      </select>
-      <button class="btn btn-ghost btn-sm" onclick="previewSound(this.previousElementSibling.value)" title="Play Sample">▶️</button>
+    <div style="display:flex; flex-direction:column; gap:6px; flex:1;">
+      <div style="display:flex; gap:6px;">
+        <select class="input-field ${cls}" style="flex:1;">
+          <option value="">-- No Sound --</option>
+          ${sounds.map(s => `<option value="${esc(s)}" ${s === current ? 'selected' : ''}>${esc(s)}</option>`).join('')}
+        </select>
+        <button class="btn btn-ghost btn-sm" onclick="previewSound(this.previousElementSibling.value)" title="Play Sample">▶️</button>
+      </div>
+      <div style="display:flex; align-items:center; gap:8px;">
+        <span style="font-size:0.6rem; color:var(--text-dim); min-width:40px;">Vol: ${Math.round(vol * 100)}%</span>
+        <input type="range" class="v-slider ${cls}-vol" min="0" max="1" step="0.05" value="${vol}" 
+          oninput="this.previousElementSibling.textContent = 'Vol: ' + Math.round(this.value * 100) + '%'"
+          style="flex:1; height:4px; accent-color:var(--accent);">
+      </div>
     </div>`;
 }
 
@@ -446,9 +454,12 @@ function renderGoalsConfig() {
           <input class="input-field g-target" type="number" placeholder="Target" value="${g.target}" style="max-width:100px;">
           <button class="btn btn-ghost btn-sm" onclick="this.closest('.card').remove()" style="color:var(--red);">Delete</button>
         </div>
-        <div class="input-row" style="margin-top:8px;">
-          <input class="input-field g-metric" placeholder="Metric (e.g. session.subCount)" value="${esc(g.metric)}">
+        <div class="input-row" style="margin-top:10px;">
+          <input class="input-field g-metric" placeholder="Metric (e.g. session.subCount)" value="${esc(g.metric)}" style="flex:1;">
           ${buildEffectSelect('g-effect', g.reward?.effect)}
+        </div>
+        <div class="input-row" style="margin-top:10px; align-items:flex-start;">
+          ${buildSoundSelect('g-sound', g.reward?.sound, g.reward?.vol ?? 1.0)}
         </div>
       </div>
     `).join('');
@@ -465,10 +476,10 @@ function renderRedeemsConfig() {
             <input class="input-field r-title" placeholder="Reward Title" value="${esc(title)}">
             ${buildEffectSelect('r-effect', def.effect)}
           </div>
-          <div class="input-row" style="margin-top:8px;">
+          <div class="input-row" style="margin-top:10px; align-items:flex-start;">
             <input class="input-field r-count" type="number" placeholder="Count" value="${def.count ?? ''}" style="max-width:80px;">
-            ${buildSoundSelect('r-sound', def.sound)}
-            <button class="btn btn-ghost btn-sm" onclick="this.closest('.card').remove()" style="color:var(--red);">Delete</button>
+            ${buildSoundSelect('r-sound', def.sound, def.vol ?? 1.0)}
+            <button class="btn btn-ghost btn-sm" onclick="this.closest('.card').remove()" style="color:var(--red); margin-top:5px;">Delete</button>
           </div>
         </div>
       `).join('');
@@ -486,10 +497,10 @@ window.renderCommandsConfig = function() {
             <input class="input-field c-trigger" placeholder="!command" value="${esc(trigger)}" style="max-width:140px;">
             ${buildEffectSelect('c-effect', def.effect)}
           </div>
-          <div class="input-row" style="margin-top:8px;">
+          <div class="input-row" style="margin-top:10px; align-items:flex-start;">
             <input class="input-field c-cooldown" type="number" placeholder="Cooldown (s)" value="${def.cooldown ?? 5}" style="max-width:100px;">
-            ${buildSoundSelect('c-sound', def.sound)}
-            <button class="btn btn-ghost btn-sm" onclick="this.closest('.card').remove()" style="color:var(--red);">Delete</button>
+            ${buildSoundSelect('c-sound', def.sound, def.vol ?? 1.0)}
+            <button class="btn btn-ghost btn-sm" onclick="this.closest('.card').remove()" style="color:var(--red); margin-top:5px;">Delete</button>
           </div>
         </div>
       `).join('');
@@ -516,10 +527,10 @@ window.addCommandConfig = function() {
       <input class="input-field c-trigger" placeholder="!command" value="!new" style="max-width:140px;">
       ${buildEffectSelect('c-effect', 'firework')}
     </div>
-    <div class="input-row" style="margin-top:8px;">
+    <div class="input-row" style="margin-top:10px; align-items:flex-start;">
       <input class="input-field c-cooldown" type="number" placeholder="Cooldown (s)" value="10" style="max-width:100px;">
-      ${buildSoundSelect('c-sound', '')}
-      <button class="btn btn-ghost btn-sm" onclick="this.closest('.card').remove()" style="color:var(--red);">Delete</button>
+      ${buildSoundSelect('c-sound', '', 1.0)}
+      <button class="btn btn-ghost btn-sm" onclick="this.closest('.card').remove()" style="color:var(--red); margin-top:5px;">Delete</button>
     </div>`;
   container.appendChild(div);
 };
@@ -531,9 +542,13 @@ window.saveCommandsConfig = function() {
     const effect  = card.querySelector('.c-effect').value;
     const cooldown = parseInt(card.querySelector('.c-cooldown').value);
     const sound   = card.querySelector('.c-sound').value;
+    const vol     = parseFloat(card.querySelector('.c-sound-vol').value);
     if (trigger) {
       cmds[trigger] = { effect, cooldown: isNaN(cooldown) ? 10 : cooldown };
-      if (sound) cmds[trigger].sound = sound;
+      if (sound) {
+        cmds[trigger].sound = sound;
+        cmds[trigger].vol   = vol;
+      }
     }
   });
 
@@ -556,23 +571,35 @@ window.addGoalConfig = function() {
       <input class="input-field g-target" type="number" placeholder="Target" value="100" style="max-width:100px;">
       <button class="btn btn-ghost btn-sm" onclick="this.closest('.card').remove()" style="color:var(--red);">Delete</button>
     </div>
-    <div class="input-row" style="margin-top:8px;">
-      <input class="input-field g-metric" placeholder="Metric" value="session.subCount">
+    <div class="input-row" style="margin-top:10px;">
+      <input class="input-field g-metric" placeholder="Metric" value="session.subCount" style="flex:1;">
       ${buildEffectSelect('g-effect', 'firework-salvo')}
+    </div>
+    <div class="input-row" style="margin-top:10px; align-items:flex-start;">
+      ${buildSoundSelect('g-sound', '', 1.0)}
     </div>`;
   container.appendChild(div);
 };
 
 window.saveGoalsConfig = function() {
-  const goals = Array.from(document.querySelectorAll('#config-goals-container .card')).map(card => ({
-    id:        card.querySelector('.g-id').value,
-    label:     card.querySelector('.g-label').value,
-    target:    parseInt(card.querySelector('.g-target').value),
-    metric:    card.querySelector('.g-metric').value,
-    reward:    { type: 'effect', effect: card.querySelector('.g-effect').value },
-    active:    true,
-    completed: false
-  }));
+  const goals = Array.from(document.querySelectorAll('#config-goals-container .card')).map(card => {
+    const sound = card.querySelector('.g-sound').value;
+    const vol   = parseFloat(card.querySelector('.g-sound-vol').value);
+    const reward = { type: 'effect', effect: card.querySelector('.g-effect').value };
+    if (sound) {
+      reward.sound = sound;
+      reward.vol   = vol;
+    }
+    return {
+      id:        card.querySelector('.g-id').value,
+      label:     card.querySelector('.g-label').value,
+      target:    parseInt(card.querySelector('.g-target').value),
+      metric:    card.querySelector('.g-metric').value,
+      reward,
+      active:    true,
+      completed: false
+    };
+  });
 
   fetch('/api/goals', {
     method:  'POST',
@@ -591,10 +618,10 @@ window.addRedeemConfig = function() {
       <input class="input-field r-title" placeholder="Reward Title" value="">
       ${buildEffectSelect('r-effect', 'balloon')}
     </div>
-    <div class="input-row" style="margin-top:8px;">
+    <div class="input-row" style="margin-top:10px; align-items:flex-start;">
       <input class="input-field r-count" type="number" placeholder="Count" value="10" style="max-width:80px;">
-      ${buildSoundSelect('r-sound', '')}
-      <button class="btn btn-ghost btn-sm" onclick="this.closest('.card').remove()" style="color:var(--red);">Delete</button>
+      ${buildSoundSelect('r-sound', '', 1.0)}
+      <button class="btn btn-ghost btn-sm" onclick="this.closest('.card').remove()" style="color:var(--red); margin-top:5px;">Delete</button>
     </div>`;
   container.appendChild(div);
 };
@@ -606,10 +633,14 @@ window.saveRedeemsConfig = function() {
     const effect = card.querySelector('.r-effect').value;
     const count  = parseInt(card.querySelector('.r-count').value);
     const sound  = card.querySelector('.r-sound').value;
+    const vol    = parseFloat(card.querySelector('.r-sound-vol').value);
     if (title) {
       redeems[title] = { effect };
       if (!isNaN(count)) redeems[title].count = count;
-      if (sound)         redeems[title].sound = sound;
+      if (sound) {
+        redeems[title].sound = sound;
+        redeems[title].vol   = vol;
+      }
     }
   });
 

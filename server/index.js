@@ -213,7 +213,10 @@ function checkGoals() {
     if ((state.get(g.metric) ?? 0) >= g.target) {
       g.completed = true;
       dirty = true;
-      if (g.reward?.type === 'effect') broadcastEffect(g.reward.effect, {});
+      if (g.reward?.type === 'effect') {
+        const { type, effect, ...rest } = g.reward;
+        broadcastEffect(effect, rest);
+      }
       broadcastEffect('alert-banner', { tier: 'S', icon: '🎯', text: `Goal Reached: ${g.label}!` });
     }
   }

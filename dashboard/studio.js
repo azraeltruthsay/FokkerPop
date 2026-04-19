@@ -330,11 +330,31 @@ function onContextMenu(e) {
     const node   = activeFlow?.nodes?.[nodeId];
     if (node) {
       selectNode(node);
+      const isTrigger = node.type === 'trigger';
+      const changeTypeHtml = isTrigger ? '' : `
+        <div class="ctx-divider"></div>
+        <div class="ctx-header">Change Type</div>
+        <div class="ctx-item" onclick="changeNodeAction('spawnEffect')">🎇 Effect</div>
+        <div class="ctx-item" onclick="changeNodeAction('showBanner')">📢 Banner</div>
+        <div class="ctx-item" onclick="changeNodeAction('playSound')">🔊 Sound</div>
+        <div class="ctx-item" onclick="changeNodeAction('fireEvent')">🚀 Fire Event</div>
+        <div class="ctx-item" onclick="changeNodeAction('rollDice')">🎲 Roll Dice</div>
+        <div class="ctx-item" onclick="changeNodeAction('kaprekar')">🔢 Kaprekar</div>
+        <div class="ctx-item" onclick="changeNodeAction('startTimer')">⏲️ Timer</div>
+        <div class="ctx-item" onclick="changeNodeAction('delay')">⏳ Delay</div>
+        <div class="ctx-item" onclick="changeNodeAction('chance')">🎰 Chance</div>
+        <div class="ctx-item" onclick="changeNodeAction('match')">🚦 Match</div>
+        <div class="ctx-item" onclick="changeNodeAction('filter')">🧪 Filter</div>
+        <div class="ctx-item" onclick="changeNodeAction('adjustEnergy')">🔋 Adjust Energy</div>
+        <div class="ctx-item" onclick="changeNodeAction('updateStat')">📊 Update Stat</div>
+        <div class="ctx-item" onclick="changeNodeAction('obsScene')">🎬 OBS Scene</div>
+      `;
       html = `
         <div class="ctx-header">${esc(node.label || node.action || node.type)}</div>
         <div class="ctx-item" onclick="copyNode('${nodeId}')">📄 Copy Node (Ctrl+C)</div>
         <div class="ctx-item" onclick="cloneNode('${nodeId}')">👯 Clone Node</div>
         <div class="ctx-item" onclick="disconnectNode('${nodeId}')">🔌 Disconnect All</div>
+        ${changeTypeHtml}
         <div class="ctx-divider"></div>
         <div class="ctx-item" onclick="deleteActiveNode()" style="color:var(--red)">🗑️ Delete Node (Del)</div>
       `;
@@ -373,11 +393,10 @@ function showContextMenu(x, y, html) {
   if (x + mRect.width > window.innerWidth) $ctxMenu.style.left = `${x - mRect.width}px`;
   if (y + mRect.height > window.innerHeight) $ctxMenu.style.top = `${y - mRect.height}px`;
 }
-activeFlow.nodes[id] = newNode;
-hideContextMenu();
-selectNode(newNode);
-window.queueStudioSave();
-};
+
+function hideContextMenu() {
+  if ($ctxMenu) $ctxMenu.style.display = 'none';
+}
 
 window.cloneNode = function(id) {
 const node = activeFlow?.nodes?.[id];
@@ -487,6 +506,22 @@ window.addNode = function(type, action, startX, startY) {
   selectNode(node);
   window.queueStudioSave();
   renderCanvas();
+};
+
+const LOGIC_ACTIONS = new Set(['delay', 'chance', 'match', 'filter']);
+
+window.changeNodeAction = function(newAction) {
+  if (!activeNode || !activeFlow) return;
+  if (activeNode.type === 'trigger') return;
+  activeNode.action = newAction;
+  activeNode.type   = LOGIC_ACTIONS.has(newAction) ? 'logic' : 'action';
+  activeNode.data   = {};
+  delete activeNode.label;
+  activeFlow.edges = (activeFlow.edges || []).filter(e => e.src !== activeNode.id);
+  hideContextMenu();
+  window.queueStudioSave();
+  renderCanvas();
+  renderProps();
 };
 
 function selectNode(node) {
