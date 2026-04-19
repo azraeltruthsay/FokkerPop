@@ -17,6 +17,7 @@ class ObsClient extends EventEmitter {
   #connected = false;
   #status = 'disconnected';
   #streaming = false;
+  #lastError = '';
 
   constructor() {
     super();
@@ -32,6 +33,7 @@ class ObsClient extends EventEmitter {
 
   get status()    { return this.#status; }
   get streaming() { return this.#streaming; }
+  get lastError() { return this.#lastError; }
 
   #setStreaming(v) {
     v = !!v;
@@ -40,10 +42,12 @@ class ObsClient extends EventEmitter {
     this.emit('streaming', v);
   }
 
-  #setStatus(s) {
-    if (this.#status === s) return;
+  #setStatus(s, reason = '') {
+    const reasonChanged = reason !== this.#lastError;
+    this.#lastError = reason;
+    if (this.#status === s && !reasonChanged) return;
     this.#status = s;
-    this.emit('status', s);
+    this.emit('status', s, this.#lastError);
   }
 
   connect() {
@@ -66,7 +70,7 @@ class ObsClient extends EventEmitter {
         } else if (msg.op === 2) { // Identified
           log.info('OBS Handshake successful');
           this.#connected = true;
-          this.#setStatus('connected');
+          this.#setStatus('connected', '');  // clears any prior error reason
           this.#requestStreamStatus();
         } else if (msg.op === 5) { // Event
           this.#handleEvent(msg.d);
@@ -82,19 +86,23 @@ class ObsClient extends EventEmitter {
       if (this.#connected) log.warn(`OBS connection closed (code ${code}), retrying in 10s...`);
       this.#connected = false;
       this.#ws = null;
-      this.#setStatus('disconnected');
+      // v5 close codes: 4009 = auth failure (wrong password).
+      let reason = this.#lastError;
+      if (code === 4009) {
+        reason = 'OBS rejected the password. Copy the value from OBS → Tools → WebSocket Server Settings → Show Connect Info into the Setup tab.';
+      }
+      this.#setStatus('disconnected', reason);
       this.#setStreaming(false);
       setTimeout(() => this.connect(), 10000);
     });
 
     this.#ws.on('error', (err) => {
       if (err.code === 'ECONNREFUSED') {
-        // Quietly wait for OBS to be opened
-        this.#setStatus('disconnected');
+        this.#setStatus('disconnected', 'OBS is not running (or its WebSocket Server is disabled). Open OBS → Tools → WebSocket Server Settings and enable it.');
         return;
       }
       log.debug('OBS WebSocket error:', err.message);
-      this.#setStatus('error');
+      this.#setStatus('error', `OBS WebSocket error: ${err.message}`);
     });
   }
 
@@ -108,8 +116,9 @@ class ObsClient extends EventEmitter {
     // Handle Authentication if required
     if (helloData.authentication) {
       if (!this.#password) {
-        log.warn('OBS requires a password, but none is set in FokkerPop settings. Please go to OBS -> Tools -> WebSocket Server Settings.');
-        this.#setStatus('error');
+        const msg = 'OBS requires a password, but none is set in FokkerPop. Open the Setup tab → OBS, paste the password from OBS → Tools → WebSocket Server Settings, and click Save & Connect.';
+        log.warn(msg);
+        this.#setStatus('error', msg);
         return;
       }
       const { salt, challenge } = helloData.authentication;

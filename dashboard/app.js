@@ -58,16 +58,15 @@ function connect() {
   try {
     fetch('/api/settings').then(r => r.json()).then(s => {
       appState.settings = s;
+      // First-run banner: either no Twitch client creds OR no OBS password (against a local OBS that likely requires one).
+      const noTwitch = !s.twitch?.clientId || !s.twitch?.clientSecret;
+      const noObs    = !s.obs?.password && !s.obs?.address?.startsWith('ws://127.0.0.1');
+      showFirstRunBanner(noTwitch);
       if (s.twitch) {
         const $id = document.getElementById('setup-client-id');
         const $sec = document.getElementById('setup-client-secret');
         if ($id) $id.value = s.twitch.clientId || '';
         if ($sec) $sec.value = s.twitch.clientSecret || '';
-        
-        // Auto-switch to setup if credentials missing
-        if (!s.twitch.clientId || !s.twitch.clientSecret) {
-          document.querySelector('.nav-item[data-page="setup"]')?.click();
-        }
       }
       if (s.obs) {
         const $url = document.getElementById('setup-obs-url');
@@ -204,6 +203,25 @@ function setTwitchBadge(status) {
   $tBadge.textContent = label;
 }
 
+function showFirstRunBanner(show) {
+  let b = document.getElementById('first-run-banner');
+  if (!show) { if (b) b.style.display = 'none'; return; }
+  if (!b) {
+    b = document.createElement('div');
+    b.id = 'first-run-banner';
+    b.style.cssText = 'background:linear-gradient(90deg,#4D96FF,#9147FF); color:#fff; padding:10px 20px; font-size:.88rem; font-weight:700; display:flex; gap:12px; align-items:center; box-shadow:0 4px 16px rgba(0,0,0,0.35);';
+    b.innerHTML = `
+      <span style="font-size:1.2rem;">⚙️</span>
+      <span>First time? Finish setup so Twitch + OBS hook up — <strong>Setup</strong> tab has Twitch OAuth and OBS WebSocket password fields.</span>
+      <span style="margin-left:auto; display:inline-flex; gap:8px;">
+        <button onclick="document.querySelector('.nav-item[data-page=&quot;setup&quot;]')?.click(); document.getElementById('first-run-banner').style.display='none';" style="background:#1a0f00; color:#FFD700; border:0; padding:6px 14px; border-radius:4px; cursor:pointer; font-weight:800; font-size:.82rem;">Open Setup</button>
+        <button onclick="document.getElementById('first-run-banner').style.display='none'" style="background:rgba(0,0,0,0.2); border:0; color:#fff; padding:6px 10px; border-radius:4px; cursor:pointer;">Later</button>
+      </span>`;
+    document.body.insertBefore(b, document.body.firstChild);
+  }
+  b.style.display = 'flex';
+}
+
 function setObsBadge(status) {
   if (!$oBadge) return;
   const map = {
@@ -215,6 +233,29 @@ function setObsBadge(status) {
   const { cls, label } = map[status] ?? map.disconnected;
   $oBadge.className   = `connection-badge ${cls}`;
   $oBadge.textContent = label;
+  applyObsHint();
+}
+
+let obsLastError = '';
+function setObsLastError(msg) { obsLastError = msg || ''; applyObsHint(); }
+function applyObsHint() {
+  if (!$oBadge) return;
+  const bad = $oBadge.classList.contains('disconnected');
+  $oBadge.title = bad && obsLastError ? obsLastError : '';
+  $oBadge.style.cursor = (bad && obsLastError) ? 'help' : '';
+  let hint = document.getElementById('obs-badge-hint');
+  if (bad && obsLastError) {
+    if (!hint) {
+      hint = document.createElement('div');
+      hint.id = 'obs-badge-hint';
+      hint.style.cssText = 'font-size:.62rem; color:var(--text-dim); margin:4px 0 10px; line-height:1.35; max-width:220px;';
+      $oBadge.insertAdjacentElement('afterend', hint);
+    }
+    hint.textContent = obsLastError;
+    hint.style.display = 'block';
+  } else if (hint) {
+    hint.style.display = 'none';
+  }
 }
 
 function handleMessage(msg) {
@@ -323,6 +364,7 @@ function applyStateUpdate(path, value) {
   if (path === 'session')        renderSession(value);
   if (path === 'twitch.status')  setTwitchBadge(value);
   if (path === 'obs.status')     setObsBadge(value);
+  if (path === 'obs.lastError')  setObsLastError(value);
   if (path === 'version') {
     if (window.__fokkerBakedVersion == null) {
       window.__fokkerBakedVersion = value;

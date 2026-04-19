@@ -724,6 +724,7 @@ wss.on('connection', (ws, req) => {
         send(ws, { type: 'state', path: 'version',      value: VERSION });
         send(ws, { type: 'state', path: 'twitch.status', value: twitchEventSub.status });
         send(ws, { type: 'state', path: 'obs.status',    value: obs.status });
+        send(ws, { type: 'state', path: 'obs.lastError', value: obs.lastError });
         send(ws, { type: 'state', path: 'obs.streaming', value: obs.streaming });
         send(ws, { type: 'state', path: 'update.available', value: getAvailableUpdate() });
       } else {
@@ -861,8 +862,9 @@ twitchEventSub.on('status', (status) => {
   broadcast(dashboards, { type: 'state', path: 'twitch.status', value: status });
 });
 
-obs.on('status', (status) => {
-  broadcast(dashboards, { type: 'state', path: 'obs.status', value: status });
+obs.on('status', (status, reason) => {
+  broadcast(dashboards, { type: 'state', path: 'obs.status',    value: status });
+  broadcast(dashboards, { type: 'state', path: 'obs.lastError', value: reason || '' });
 });
 
 obs.on('streaming', (live) => {
