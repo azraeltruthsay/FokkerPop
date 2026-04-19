@@ -924,16 +924,22 @@ function shutdown(signal) {
   if (isShuttingDown) return;
   isShuttingDown = true;
   log.info(`Received ${signal}, shutting down…`);
-  
-  // Clear overlays immediately
+
+  // Send shutdown, then forcibly terminate each socket so any still-queued
+  // effect frames get dropped instead of flushing to the overlay as a final
+  // burst of alerts/fireworks right before the server dies.
   broadcast(overlays, { type: '_system.shutdown' });
-  
+  broadcast(dashboards, { type: '_system.shutdown' });
+  for (const ws of [...overlays, ...dashboards]) {
+    try { ws.terminate(); } catch {}
+  }
+
   twitchEventSub.disconnect();
   obs.disconnect();
   state.flush();
-  
+
   httpServer.close(() => process.exit(0));
-  setTimeout(() => process.exit(1), 5000).unref();
+  setTimeout(() => process.exit(1), 3000).unref();
 }
 
 process.on('SIGINT',  () => shutdown('SIGINT'));

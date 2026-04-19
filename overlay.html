@@ -1310,6 +1310,10 @@ function connect() {
   ws.addEventListener('close', () => {
     wsRetries++;
     $wsDot.classList.add('disconnected');
+    // Clear any in-flight alerts / stickers / balloons so a dying server doesn't
+    // leave a burst of effects still animating on stream.
+    const burstContainers = ['alert-container', 'dice-container', 'layer-fx-mid'];
+    burstContainers.forEach(id => { const el = document.getElementById(id); if (el) el.innerHTML = ''; });
     if (wsRetries === 3 && !demoFired) demoTimeout = setTimeout(runDemo, 2000);
     // Tight backoff so OBS browser sources reconnect fast after a server restart
     // or an auto-update (matches the dashboard-side 1s/2s/3s pattern).
