@@ -1174,6 +1174,8 @@ html, body {
         <button class="btn btn-ghost btn-sm" onclick="importExampleFlows()" title="Get latest pre-built flows">📦 Import Templates</button>
         <select id="studio-flow-select" class="input-field" style="width:200px; margin:0;" onchange="loadSelectedFlow()"></select>
         <button class="btn btn-ghost btn-sm" onclick="createNewFlow()">+ New Flow</button>
+        <button class="btn btn-ghost btn-sm" onclick="duplicateActiveFlow()" title="Duplicate current flow">👯 Duplicate</button>
+        <button class="btn btn-ghost btn-sm" onclick="deleteActiveFlow()" title="Delete current flow" style="color:var(--red);">🗑️ Delete</button>
         <div style="display:flex; align-items:center; gap:8px;">
           <span id="studio-save-status" style="font-size:.65rem; color:var(--accent); font-weight:800; opacity:0; transition:opacity 0.3s;">✅ SAVED</span>
           <button class="btn btn-primary btn-sm" onclick="saveStudioFlows()">Save All</button>

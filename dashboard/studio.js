@@ -429,6 +429,7 @@ window.deleteActiveFlow = function() {
   renderFlowList();
   if (activeFlow) loadFlow(activeFlow.id);
   else renderCanvas();
+  window.queueStudioSave();
 };
 
 window.duplicateActiveFlow = function() {

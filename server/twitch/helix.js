@@ -35,8 +35,10 @@ async function helixPost(path, body, accessToken) {
 
 export async function sendChatMessage(broadcasterId, message) {
   const { accessToken } = settings.twitch ?? {};
-  if (!accessToken) throw new Error('Not authenticated');
-  
+  if (!accessToken) {
+    throw new Error('Twitch OAuth is not complete. Click "Connect Twitch" in Settings.');
+  }
+
   return helixPost('/chat/messages', {
     broadcaster_id: broadcasterId,
     sender_id:      broadcasterId,

@@ -408,8 +408,11 @@ const httpServer = createServer((req, res) => {
         if (!settings.twitch?.userId) {
           throw new Error('Twitch is not connected. Add your Twitch credentials in Settings to chat from the dashboard.');
         }
+        if (!settings.twitch?.accessToken) {
+          throw new Error('Twitch OAuth is not complete. Open Settings → click "Connect Twitch" to authorize chat sending.');
+        }
         if (twitchEventSub.status !== 'connected') {
-          throw new Error('Twitch is connecting — try again in a moment.');
+          throw new Error('Twitch is still connecting — try again in a moment.');
         }
         await helix.sendChatMessage(settings.twitch.userId, message);
         res.writeHead(200); res.end('{"ok":true}');
