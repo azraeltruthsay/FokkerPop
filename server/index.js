@@ -82,7 +82,27 @@ function send(ws, obj) {
 function broadcast(clients, obj) {
   for (const ws of clients) send(ws, obj);
 }
+// Cached set of sound files actually on disk. Rebuilt at startup and after
+// any upload / asset-refresh so we can substitute a fallback when a config
+// references a file that was never shipped (e.g. legacy explosion.wav).
+let availableSounds = new Set();
+function rebuildSoundSet() {
+  try {
+    const dir = join(ROOT, 'assets/sounds');
+    availableSounds = new Set(
+      existsSync(dir) ? readdirSync(dir).filter(f => !f.startsWith('.')) : []
+    );
+  } catch { availableSounds = new Set(); }
+}
+rebuildSoundSet();
+
+const FALLBACK_SOUND = 'alert.wav';
+
 function broadcastEffect(effect, payload = {}, isTest = false) {
+  if (payload?.sound && !availableSounds.has(payload.sound)) {
+    log.debug(`Sound "${payload.sound}" not found on disk — substituting ${FALLBACK_SOUND}.`);
+    payload = { ...payload, sound: availableSounds.has(FALLBACK_SOUND) ? FALLBACK_SOUND : undefined };
+  }
   broadcast(overlays, { type: 'effect', effect, payload, isTest });
 }
 function broadcastState(path, value) {
@@ -456,6 +476,7 @@ const httpServer = createServer((req, res) => {
     req.pipe(stream);
     stream.on('finish', () => {
       log.info(`Uploaded file: ${name} to ${targetDir}`);
+      if (targetDir.endsWith('sounds')) rebuildSoundSet();
       res.writeHead(200); res.end('{"ok":true}');
     });
     stream.on('error', (err) => {
@@ -494,6 +515,7 @@ const httpServer = createServer((req, res) => {
   }
 
   if (path === '/api/assets' && req.method === 'GET') {
+    rebuildSoundSet();
     const assets = { sounds: [], stickers: [], characters: [] };
     try {
       const sDir = join(ROOT, 'assets/sounds');

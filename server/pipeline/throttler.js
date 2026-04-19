@@ -1,5 +1,7 @@
-// Per-type minimum gap between events reaching the overlay.
+// Per-type minimum gap between VISUAL effects reaching the overlay.
 // Only applies to high-frequency low-value events to prevent flooding.
+// The event itself still passes through so state/stats/goals keep counting —
+// we only clear event.effects to suppress the alert-banner/balloon visuals.
 const THROTTLE_MS = {
   follow: 1500,   // follows can burst; merge visually by throttling
 };
@@ -19,7 +21,9 @@ export function throttler(ctx) {
   const now  = Date.now();
   const last = lastFired.get(ctx.event.type) ?? 0;
   if (now - last < limit) {
-    ctx.cancelled = true;
+    // Too soon — drop the visual payload but let the event continue so that
+    // session counters, goal progress, and leaderboards still tick.
+    ctx.event.effects = [];
     return;
   }
   lastFired.set(ctx.event.type, now);

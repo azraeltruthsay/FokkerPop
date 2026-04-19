@@ -66,7 +66,12 @@ class StateStore extends EventEmitter {
   }
 
   resetSession() {
+    // Session reset clears live-stream counters (subCount, bits, leaderboard,
+    // crowd energy, chatters) but preserves user configuration — goals stay
+    // defined; their completed flags reset so they can fire again next stream.
+    const preservedGoals = (this.#data.goals ?? []).map(g => ({ ...g, completed: false }));
     this.#data = structuredClone(DEFAULTS);
+    this.#data.goals = preservedGoals;
   }
 }
 

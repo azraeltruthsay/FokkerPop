@@ -4,7 +4,7 @@
     "label":     "100 Subs",
     "metric":    "session.subCount",
     "target":    100,
-    "reward":    { "type": "effect", "effect": "crowd-explosion", "sound": "explosion.wav" },
+    "reward":    { "type": "effect", "effect": "crowd-explosion", "sound": "boom.wav" },
     "style":     "bar",
     "active":    true,
     "completed": false
