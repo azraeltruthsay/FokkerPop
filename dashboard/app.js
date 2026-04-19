@@ -455,6 +455,8 @@ window.addWidget = function (type) {
   if (type === 'recent')      base.config = { visible: true, label: 'LATEST CHATTER', fontSize: 24, color: '#6BCB77' };
   if (type === 'hot-button')  base.config = { visible: true, label: '🎆 FIRE', effect: 'firework-salvo', payload: { count: 3 }, fontSize: 28, color: '#FFD700' };
   if (type === 'event-badge') base.config = { visible: true, label: '💜 SUB', eventType: 'sub', fontSize: 22, color: '#9147FF' };
+  if (type === 'progress-bar') base.config = { visible: true, label: 'SUB GOAL', metric: 'session.subCount', target: 50, color: '#9147FF', fontSize: 16, barWidth: 240, barHeight: 14 };
+  if (type === 'leaderboard-top') base.config = { visible: true, label: 'TOP BITS', category: 'bits', topN: 3, fontSize: 16, color: '#FFFFFF' };
   if (type === 'physics-pit') base.config = {
     visible: true, autoHide: true, size: 18, gravity: 1, width: 320, height: 220, maxAlive: 60,
     spawns: [
@@ -528,6 +530,7 @@ function renderWidgetList() {
     const typeLabel = {
       counter: 'Counter', text: 'Text', recent: 'Latest Chatter',
       'hot-button': 'Hot Button', 'event-badge': 'Event Badge',
+      'progress-bar': 'Progress Bar', 'leaderboard-top': 'Leaderboard Top-N',
       'physics-pit': 'Physics Pit (2D)', 'physics-pit-3d': 'Physics Pit (3D)',
       dice: 'Dice', 'model-3d': '3D Model',
     }[w.type] || w.type;
@@ -550,6 +553,16 @@ function renderWidgetList() {
         <select class="input-field" onchange="updateWidgetField('${w.id}','eventType',this.value)" title="Flashes when an event of this type fires">
           ${EVENT_OPTIONS.map(e => `<option value="${e}" ${e === c.eventType ? 'selected' : ''}>${e}</option>`).join('')}
         </select>`;
+      if (w.type === 'progress-bar') return `
+        <input class="input-field" value="${esc(c.label ?? '')}" placeholder="Label" oninput="updateWidgetField('${w.id}','label',this.value)" style="max-width:180px;">
+        <input class="input-field" value="${esc(c.metric ?? '')}" placeholder="Metric (e.g. session.subCount)" oninput="updateWidgetField('${w.id}','metric',this.value)" style="font-family:monospace;">
+        <input class="input-field" type="number" value="${c.target ?? 100}" oninput="updateWidgetField('${w.id}','target',parseFloat(this.value)||0)" style="max-width:100px;" title="Target value">`;
+      if (w.type === 'leaderboard-top') return `
+        <input class="input-field" value="${esc(c.label ?? '')}" placeholder="Label" oninput="updateWidgetField('${w.id}','label',this.value)" style="max-width:180px;">
+        <select class="input-field" onchange="updateWidgetField('${w.id}','category',this.value)" title="Leaderboard category">
+          ${['bits','subs','gifts'].map(e => `<option value="${e}" ${e === c.category ? 'selected' : ''}>${e}</option>`).join('')}
+        </select>
+        <input class="input-field" type="number" min="1" max="10" value="${c.topN ?? 3}" oninput="updateWidgetField('${w.id}','topN',parseInt(this.value)||1)" style="max-width:80px;" title="Top N">`;
       if (w.type === 'physics-pit' || w.type === 'physics-pit-3d') {
         const is3d = w.type === 'physics-pit-3d';
         const spawns = c.spawns ?? (c.triggerEvent ? [{ triggerEvent: c.triggerEvent, emojis: c.emojis ?? [], count: c.countPerEvent ?? 5, layer: 1 }] : []);
@@ -576,6 +589,7 @@ function renderWidgetList() {
               <input class="input-field" type="number" step="0.1" value="${c.pitDepth ?? 2}" oninput="updateWidgetField('${w.id}','pitDepth',parseFloat(this.value)||0)" style="max-width:90px;" title="Pit depth">
               <input class="input-field" type="number" step="0.1" value="${c.pitHeight ?? 4}" oninput="updateWidgetField('${w.id}','pitHeight',parseFloat(this.value)||0)" style="max-width:90px;" title="Pit height">
             ` : ''}
+            <input class="input-field" value="${esc(c.reactiveGravity ?? '')}" placeholder="Reactive gravity metric (e.g. crowd.energy)" oninput="updateWidgetField('${w.id}','reactiveGravity',this.value)" style="max-width:240px; font-family:monospace;" title="Scales gravity 0.3×–2.0× based on a 0–100 state metric">
             <button class="btn btn-ghost btn-sm" onclick="addPitSpawn('${w.id}')" style="margin-left:auto;">+ Spawn Rule</button>
           </div>
           <p style="font-size:.7rem; color:var(--text-dim); margin:4px 0;">Each spawn rule = trigger event + emojis + count + <strong>layer</strong>. Objects on the same layer collide; different layers pass through each other.${is3d ? ' 3D pit uses cannon-es rigid bodies.' : ''}</p>

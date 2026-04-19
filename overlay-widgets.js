@@ -51,7 +51,14 @@ function normalizePitSpawns(cfg) {
   return [];
 }
 
-export async function mountPhysicsPit(widget, el) {
+// Maps a 0..100 metric value to a 0.3..2.0 gravity multiplier so the pit
+// reacts to crowd energy / sub count etc. without letting bodies freeze or fly.
+function reactiveMult(metricVal) {
+  const v = Math.max(0, Math.min(100, Number(metricVal) || 0));
+  return 0.3 + (v / 100) * 1.7;
+}
+
+export async function mountPhysicsPit(widget, el, getMetric) {
   const M = await loadMatter();
   const cfg = widget.config || {};
   const w = cfg.width  || 320;
@@ -69,7 +76,17 @@ export async function mountPhysicsPit(widget, el) {
   el.appendChild(canvas);
 
   const engine = M.Engine.create();
-  engine.gravity.y = cfg.gravity ?? 1;
+  const baseGravity = cfg.gravity ?? 1;
+  engine.gravity.y = baseGravity;
+
+  // Optional reactive gravity: update engine.gravity.y each frame based on a
+  // state metric (e.g. crowd.energy) so the pit gets hypier as hype rises.
+  if (cfg.reactiveGravity) {
+    M.Events.on(engine, 'beforeUpdate', () => {
+      const v = getMetric?.(cfg.reactiveGravity);
+      engine.gravity.y = baseGravity * reactiveMult(v);
+    });
+  }
 
   // Walls + floor. Walls collide with everything (mask = 0xFFFF).
   const thick = 40;
@@ -459,7 +476,7 @@ async function loadCannon() {
 
 const physicsPits3D = new Map();
 
-export async function mountPhysicsPit3D(widget, el) {
+export async function mountPhysicsPit3D(widget, el, getMetric) {
   const T = await loadThree();
   const C = await loadCannon();
   const cfg = widget.config || {};
@@ -490,7 +507,8 @@ export async function mountPhysicsPit3D(widget, el) {
   el.appendChild(renderer.domElement);
 
   // ── cannon world ───────────────────────────────────────────
-  const world = new C.World({ gravity: new C.Vec3(0, -9.82 * (cfg.gravity ?? 1), 0) });
+  const baseG3 = 9.82 * (cfg.gravity ?? 1);
+  const world = new C.World({ gravity: new C.Vec3(0, -baseG3, 0) });
   world.broadphase = new C.NaiveBroadphase();
   world.allowSleep = true;
 
@@ -587,6 +605,9 @@ export async function mountPhysicsPit3D(widget, el) {
   function loop(now) {
     const dt = Math.min(1 / 30, (now - last) / 1000);
     last = now;
+    if (cfg.reactiveGravity) {
+      world.gravity.y = -baseG3 * reactiveMult(getMetric?.(cfg.reactiveGravity));
+    }
     world.step(1 / 60, dt, 3);
     for (const it of items) {
       it.mesh.position.set(it.body.position.x, it.body.position.y, it.body.position.z);

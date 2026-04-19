@@ -1612,6 +1612,7 @@ function handleState(path, value) {
       state.crowdEnergy = value;
       setCrowdEnergy(value);
       refreshCounterWidgets();
+      refreshProgressBarWidgets();
       break;
     case 'crowd.combo':
       if (value) showCombo(value);
@@ -1621,11 +1622,13 @@ function handleState(path, value) {
       renderGoals(value);
       updateGoalProgress(value, state.session);
       refreshCounterWidgets();
+      refreshProgressBarWidgets();
       break;
     case 'leaderboard':
       state.leaderboard = value;
       renderLeaderboard(value);
       refreshCounterWidgets();
+      refreshLeaderboardWidgets();
       break;
     case 'chatters':
       state.chatters = value;
@@ -1635,6 +1638,7 @@ function handleState(path, value) {
       state.session = value;
       updateGoalProgress(state.goals, value);
       refreshCounterWidgets();
+      refreshProgressBarWidgets();
       break;
     case 'overlay.widgets':
       state.widgets = value || [];
@@ -1712,13 +1716,36 @@ function renderCustomWidgets() {
       label.style.textTransform = 'none';
       label.style.fontWeight = '900';
       el.appendChild(label);
+    } else if (w.type === 'leaderboard-top') {
+      const label = document.createElement('div');
+      label.className = 'cw-label';
+      label.textContent = cfg.label || 'TOP SUPPORTERS';
+      const list = document.createElement('div');
+      list.id = 'cw-lb-' + w.id;
+      list.style.cssText = `font-size:${cfg.fontSize || 16}px; font-weight:700; display:flex; flex-direction:column; gap:4px; margin-top:6px; min-width:180px; color:${cfg.color || '#FFFFFF'};`;
+      el.append(label, list);
+    } else if (w.type === 'progress-bar') {
+      const label = document.createElement('div');
+      label.className = 'cw-label';
+      label.textContent = cfg.label || 'PROGRESS';
+      const barWrap = document.createElement('div');
+      barWrap.style.cssText = `width:${(cfg.barWidth || 220)}px; height:${cfg.barHeight || 16}px; background:rgba(255,255,255,0.08); border-radius:${(cfg.barHeight || 16) / 2}px; overflow:hidden; margin:6px 0;`;
+      const fill = document.createElement('div');
+      fill.id = 'cw-bar-' + w.id;
+      fill.style.cssText = `height:100%; width:0%; background:${cfg.color || '#9147FF'}; transition:width 0.5s cubic-bezier(0.34,1.1,0.64,1);`;
+      barWrap.appendChild(fill);
+      const val = document.createElement('div');
+      val.className = 'cw-value';
+      val.id = 'cw-val-' + w.id;
+      val.style.fontSize = (cfg.fontSize || 18) + 'px';
+      el.append(label, barWrap, val);
     } else if (w.type === 'physics-pit') {
       el.style.background = 'transparent';
       el.style.border = 'none';
       el.style.padding = '0';
       el.style.minWidth = (cfg.width || 320) + 'px';
       el.style.minHeight = (cfg.height || 220) + 'px';
-      ensureWidgetModule().then(m => m.mountPhysicsPit(w, el));
+      ensureWidgetModule().then(m => m.mountPhysicsPit(w, el, readMetric));
     } else if (w.type === 'dice') {
       el.style.background = 'transparent';
       el.style.border = 'none';
@@ -1739,7 +1766,7 @@ function renderCustomWidgets() {
       el.style.padding = '0';
       el.style.minWidth = (cfg.width || 360) + 'px';
       el.style.minHeight = (cfg.height || 260) + 'px';
-      ensureWidgetModule().then(m => m.mountPhysicsPit3D(w, el));
+      ensureWidgetModule().then(m => m.mountPhysicsPit3D(w, el, readMetric));
     }
 
     // Per-widget visibility toggle (default true). Hidden widgets stay hidden
@@ -1775,6 +1802,42 @@ function refreshRecentWidgets() {
     if (!el) continue;
     const user = (state.chatters || [])[0];
     el.textContent = user ?? '—';
+  }
+}
+
+function refreshLeaderboardWidgets() {
+  for (const w of state.widgets) {
+    if (w.type !== 'leaderboard-top') continue;
+    const host = document.getElementById('cw-lb-' + w.id);
+    if (!host) continue;
+    const cat = w.config?.category || 'bits';
+    const data = state.leaderboard?.[cat] ?? {};
+    const n = Math.max(1, Math.min(10, w.config?.topN || 3));
+    const top = Object.entries(data).sort((a, b) => b[1] - a[1]).slice(0, n);
+    if (!top.length) {
+      host.innerHTML = '<div style="opacity:0.5;">—</div>';
+      continue;
+    }
+    host.innerHTML = top.map(([name, val], i) => {
+      const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `${i + 1}.`;
+      return `<div style="display:flex; justify-content:space-between; gap:12px; padding:2px 4px; border-radius:4px; ${i === 0 ? 'background:rgba(255,215,0,0.08);' : ''}">
+        <span>${medal} ${escHtml(name)}</span><span style="opacity:0.85;">${Number(val).toLocaleString()}</span>
+      </div>`;
+    }).join('');
+  }
+}
+
+function refreshProgressBarWidgets() {
+  for (const w of state.widgets) {
+    if (w.type !== 'progress-bar') continue;
+    const fill = document.getElementById('cw-bar-' + w.id);
+    const text = document.getElementById('cw-val-' + w.id);
+    if (!fill || !text) continue;
+    const cur    = Number(readMetric(w.config?.metric || '')) || 0;
+    const target = Number(w.config?.target) || 100;
+    const pct    = Math.min(100, Math.max(0, (cur / target) * 100));
+    fill.style.width = pct + '%';
+    text.textContent = `${cur.toLocaleString()} / ${target.toLocaleString()} (${pct.toFixed(0)}%)`;
   }
 }
 
