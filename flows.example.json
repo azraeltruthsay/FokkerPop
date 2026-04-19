@@ -74,5 +74,28 @@
       { "src": "crit", "outPort": "true", "dst": "a1" },
       { "src": "fail", "outPort": "true", "dst": "a2" }
     ]
+  },
+  {
+    "id": "kaprekar-curse",
+    "name": "Kaprekar's Curse",
+    "active": true,
+    "trigger": "redeem",
+    "nodes": {
+      "t1": { "id": "t1", "type": "trigger", "x": 100, "y": 1050 },
+      "f1": { "id": "f1", "type": "logic", "action": "filter", "data": { "field": "payload.rewardTitle", "operator": "==", "value": "Kaprekar's Curse" }, "x": 300, "y": 1050 },
+      "k1": { "id": "k1", "type": "action", "action": "kaprekar", "x": 500, "y": 1050 },
+      "m1": { "id": "m1", "type": "logic", "action": "match", "data": { "field": "kaprekar.iterations", "match1": "7", "match2": "1" }, "x": 700, "y": 1050 },
+      "a1": { "id": "a1", "type": "action", "action": "spawnEffect", "data": { "effect": "crowd-explosion" }, "x": 900, "y": 950 },
+      "a2": { "id": "a2", "type": "action", "action": "spawnEffect", "data": { "effect": "firework-salvo", "payload": { "count": 5 } }, "x": 900, "y": 1050 },
+      "a3": { "id": "a3", "type": "action", "action": "adjustEnergy", "data": { "mode": "add", "amount": "10" }, "x": 900, "y": 1150 }
+    },
+    "edges": [
+      { "src": "t1", "outPort": "next", "dst": "f1" },
+      { "src": "f1", "outPort": "true", "dst": "k1" },
+      { "src": "k1", "outPort": "next", "dst": "m1" },
+      { "src": "m1", "outPort": "case1", "dst": "a1" },
+      { "src": "m1", "outPort": "case2", "dst": "a2" },
+      { "src": "m1", "outPort": "default", "dst": "a3" }
+    ]
   }
 ]

@@ -121,6 +121,52 @@ html, body {
   75% { transform: translate(4px, 4px) rotate(3deg); }
 }
 
+/* ═══════════════════════════════════════════════════════ Kaprekar */
+#kaprekar-container {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 160;
+  pointer-events: none;
+}
+.kaprekar-box {
+  background: rgba(8, 8, 16, 0.92);
+  border: 2px solid #00FF41;
+  border-radius: 12px;
+  padding: 24px 32px;
+  min-width: 360px;
+  font-family: 'Courier New', Courier, monospace;
+  box-shadow: 0 0 40px rgba(0, 255, 65, 0.25);
+  animation: dice-pop 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.kaprekar-title {
+  color: #00FF41;
+  font-size: 0.75rem;
+  font-weight: 800;
+  margin-bottom: 16px;
+  text-transform: uppercase;
+  letter-spacing: 0.15em;
+  border-bottom: 1px solid rgba(0,255,65,0.2);
+  padding-bottom: 8px;
+}
+.kaprekar-step {
+  color: #fff;
+  font-size: 1.15rem;
+  margin: 8px 0;
+  opacity: 0;
+  animation: dice-pop 0.3s forwards;
+}
+.kaprekar-footer {
+  margin-top: 20px;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #00FF41;
+  text-align: center;
+  border-top: 1px solid rgba(0,255,65,0.2);
+  padding-top: 12px;
+}
+
 /* ═══════════════════════════════════════════════════════ Layout Mode */
 .draggable {
   cursor: default;
@@ -632,6 +678,7 @@ body.layout-mode .draggable:hover {
 <div id="edge-glow"></div>
 <div id="ws-dot"></div>
 <div id="dice-container"></div>
+<div id="kaprekar-container"></div>
 
 <div id="character-wrap" class="draggable">
   <img id="character-sprite" src="/characters/lilfokkermascot/idle.gif" onerror="this.style.display='none'">
@@ -1280,38 +1327,44 @@ function startTimer(seconds, label = 'COUNTDOWN') {
   timerInterval = setInterval(update, 1000);
 }
 
-function spawnDiceRoll(result, sides, user) {
-  const container = document.getElementById('dice-container');
+function spawnKaprekar(p) {
+  const container = document.getElementById('kaprekar-container');
   if (!container) return;
 
-  const wrap = document.createElement('div');
-  wrap.className = 'dice-roll-wrap';
-  wrap.innerHTML = `
-    <div class="dice-box rolling">?</div>
-    <div class="dice-user">${escHtml(user || 'STREAM')} ROLLED D${sides}</div>
+  const box = document.createElement('div');
+  box.className = 'kaprekar-box';
+  box.innerHTML = `
+    <div class="kaprekar-title">Kaprekar's Routine: ${p.start}</div>
+    <div id="kaprekar-steps-list"></div>
+    <div class="kaprekar-footer" id="kaprekar-foot">...</div>
   `;
-  container.appendChild(wrap);
+  container.appendChild(box);
 
-  const box = wrap.querySelector('.dice-box');
-  let duration = 1200;
-  let interval = setInterval(() => {
-    box.textContent = Math.floor(Math.random() * sides) + 1;
-  }, 80);
-
-  setTimeout(() => {
-    clearInterval(interval);
-    box.classList.remove('rolling');
-    box.textContent = result;
-    playSound('yay.wav');
-    
-    // Cleanup
-    setTimeout(() => {
-      wrap.style.transition = 'opacity 1s, transform 1s';
-      wrap.style.opacity = '0';
-      wrap.style.transform = 'translateY(-100px) scale(0.8)';
-      setTimeout(() => wrap.remove(), 1000);
-    }, 4000);
-  }, duration);
+  const list = box.querySelector('#kaprekar-steps-list');
+  const foot = box.querySelector('#kaprekar-foot');
+  
+  let i = 0;
+  const timer = setInterval(() => {
+    if (i < p.steps.length) {
+      const step = document.createElement('div');
+      step.className = 'kaprekar-step';
+      step.textContent = p.steps[i];
+      list.appendChild(step);
+      playSound('pop.wav', 0.5);
+      i++;
+    } else {
+      clearInterval(timer);
+      foot.textContent = `FIXED POINT 6174 REACHED IN ${p.iterations} STEPS!`;
+      playSound('yay.wav');
+      
+      setTimeout(() => {
+        box.style.transition = 'opacity 1s, transform 1s';
+        box.style.opacity = '0';
+        box.style.transform = 'translateY(-100px) scale(0.8)';
+        setTimeout(() => box.remove(), 1000);
+      }, 6000);
+    }
+  }, 800);
 }
 
 function dispatchEffect(effect, p) {
@@ -1321,6 +1374,7 @@ function dispatchEffect(effect, p) {
   if (heavyEffects.includes(effect)) triggerCharacterReaction();
 
   switch (effect) {
+    case 'kaprekar-routine': spawnKaprekar(p); break;
     case 'dice-roll':       spawnDiceRoll(p.result, p.sides ?? 20, p.user); break;
     case 'start-timer':     startTimer(p.seconds ?? 60, p.label); break;
     case 'balloon':         spawnBalloon(p.count ?? 1);         break;

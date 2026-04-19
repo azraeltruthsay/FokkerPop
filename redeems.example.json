@@ -8,6 +8,7 @@
   "Roll 6s!":              { "effect": "firework",       "count": 1,  "sound": "yay.wav" },
   "Roll 1s!":              { "effect": "confetti",       "sound": "pop.wav" },
   "Roll for Luck":         { "comment": "Handled by the 'D20 Roll of Fate' Studio Flow" },
+  "Kaprekar's Curse":      { "comment": "Handled by the 'Kaprekar's Curse' Studio Flow" },
   "Mascot Hype":           { "effect": "alert-banner",   "payload": { "tier": "S", "icon": "🔥", "text": "LIL FOKKER IS HYPED!" }, "sound": "alert.wav" },
 
   "_comment": "Add more redeems here. Key = exact Channel Point reward title in Twitch."

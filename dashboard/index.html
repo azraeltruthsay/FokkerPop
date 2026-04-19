@@ -836,8 +836,13 @@ html, body {
               onclick="fireEvent('redeem', { user: 'Gambler', rewardTitle: 'Mystery Box' }, this)">
               <div class="icon-bg">🎁</div>Mystery Box
             </button>
-          </div>
-        </div>
+            <button class="effect-btn" style="--c:#00FF41"
+              onclick="fireEvent('redeem', { user: 'MathWhiz', rewardTitle: 'Kaprekar\'s Curse' }, this)">
+              <div class="icon-bg">🔢</div>Kaprekar's Curse
+            </button>
+            </div>
+            </div>
+
       </div>
       <div class="card">
         <div class="effects-section">
@@ -1120,6 +1125,7 @@ html, body {
           <button class="btn btn-ghost btn-sm" onclick="addNode('action', 'updateStat')">📈 Update Stat</button>
           <button class="btn btn-ghost btn-sm" onclick="addNode('action', 'startTimer')">⏲️ Timer</button>
           <button class="btn btn-ghost btn-sm" onclick="addNode('action', 'obsScene')">🎥 OBS Scene</button>
+          <button class="btn btn-ghost btn-sm" onclick="addNode('action', 'kaprekar')">🔢 Kaprekar</button>
           <button class="btn btn-ghost btn-sm" onclick="addNode('logic', 'delay')">⏳ Delay</button>
           <button class="btn btn-ghost btn-sm" onclick="addNode('logic', 'chance')">🎲 Chance</button>
           <button class="btn btn-ghost btn-sm" onclick="addNode('logic', 'filter')">🔍 Filter</button>

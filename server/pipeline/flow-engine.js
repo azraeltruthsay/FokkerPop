@@ -103,6 +103,31 @@ export class FlowEngine {
             }
             // Re-inject a new event into the bus
             bus.publish({ source: 'flow-engine', type: data.eventType, payload, isTest: event.isTest });
+          } else if (node.action === 'kaprekar') {
+            // Pick a valid 4-digit number (at least two distinct digits)
+            let startNum;
+            while (true) {
+              startNum = Math.floor(Math.random() * 10000);
+              const digits = startNum.toString().padStart(4, '0').split('');
+              if (new Set(digits).size >= 2 && startNum !== 6174) break;
+            }
+
+            const steps = [];
+            let current = startNum;
+            let iterations = 0;
+
+            while (current !== 6174 && iterations < 10) {
+              const digits = current.toString().padStart(4, '0').split('');
+              const desc = parseInt([...digits].sort((a,b) => b-a).join(''));
+              const asc  = parseInt([...digits].sort((a,b) => a-b).join(''));
+              const diff = desc - asc;
+              steps.push(`${desc.toString().padStart(4, '0')} - ${asc.toString().padStart(4, '0')} = ${diff.toString().padStart(4, '0')}`);
+              current = diff;
+              iterations++;
+            }
+            
+            ctx.exprCtx.kaprekar = { start: startNum.toString().padStart(4, '0'), iterations, steps };
+            broadcastEffect('kaprekar-routine', { start: startNum, steps, iterations, user: event.payload?.user }, event.isTest);
           }
           break;
 

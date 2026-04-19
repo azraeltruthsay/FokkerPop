@@ -320,6 +320,9 @@ function onContextMenu(e) {
       <div class="ctx-item" onclick="addNode('action', 'spawnEffect', ${x}, ${y})">🎇 Effect</div>
       <div class="ctx-item" onclick="addNode('action', 'showBanner', ${x}, ${y})">📢 Banner</div>
       <div class="ctx-item" onclick="addNode('action', 'playSound', ${x}, ${y})">🔊 Sound</div>
+      <div class="ctx-item" onclick="addNode('action', 'fireEvent', ${x}, ${y})">🚀 Fire Event</div>
+      <div class="ctx-item" onclick="addNode('action', 'rollDice', ${x}, ${y})">🎲 Roll Dice</div>
+      <div class="ctx-item" onclick="addNode('action', 'kaprekar', ${x}, ${y})">🔢 Kaprekar</div>
       <div class="ctx-item" onclick="addNode('action', 'startTimer', ${x}, ${y})">⏲️ Timer</div>
       <div class="ctx-divider"></div>
       <div class="ctx-header">Flow</div>
@@ -469,6 +472,7 @@ const EXPR_REF = `
     <div style="font-size:0.65rem;color:var(--text-dim);line-height:2;margin-top:6px;font-family:monospace;">
       <div><span style="color:var(--accent2)">payload.user</span> · .bits · .count · .viewers</div>
       <div><span style="color:var(--accent2)">roll</span> — result of the last 🎲 Dice Roll</div>
+      <div><span style="color:var(--accent2)">kaprekar</span>.iterations · .start</div>
       <div><span style="color:var(--accent2)">chatters</span> — recent chatter list</div>
       <div><span style="color:var(--accent2)">pick(chatters)</span> — random chatter</div>
       <div><span style="color:var(--accent2)">session</span>.subCount · .bitsTotal</div>
@@ -576,6 +580,11 @@ function renderProps() {
 
   if (n.action === 'obsScene') {
     html += exprField('Scene Name', 'scene', n.data.scene || '');
+  }
+
+  if (n.action === 'kaprekar') {
+    html += `<div style="font-size:0.65rem; color:var(--text-dim); line-height:1.5;">This node runs <strong>Kaprekar's Routine</strong> on a random 4-digit number until it hits <strong>6174</strong>.</div>`;
+    html += `<div style="font-size:0.6rem; color:var(--text-dim); margin-top:8px;">Result available as {{ kaprekar.iterations }} (1-7)</div>`;
   }
 
   if (n.action === 'fireEvent') {
