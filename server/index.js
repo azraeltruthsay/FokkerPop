@@ -15,6 +15,7 @@ import settings, { ROOT }    from './settings-loader.js';
 
 import log                        from './logger.js';
 import { makeCtx, resolveDeep }   from './template.js';
+import { scheduleChecks, applyUpdate, getAvailable as getAvailableUpdate } from './update-checker.js';
 
 process.title = 'FokkerPop';
 
@@ -640,6 +641,7 @@ wss.on('connection', (ws, req) => {
         send(ws, { type: 'state', path: 'version',      value: VERSION });
         send(ws, { type: 'state', path: 'twitch.status', value: twitchEventSub.status });
         send(ws, { type: 'state', path: 'obs.status',    value: obs.status });
+        send(ws, { type: 'state', path: 'update.available', value: getAvailableUpdate() });
       } else {
         // Overlay: send current state
         send(ws, { type: 'state', path: 'crowd.energy', value: state.get('crowd.energy') });
@@ -710,6 +712,17 @@ wss.on('connection', (ws, req) => {
         broadcastState('leaderboard', state.get('leaderboard'));
         broadcastState('crowd.energy', 0);
         broadcastState('goals', state.get('goals'));
+        break;
+      case '_dashboard.update-apply':
+        try {
+          applyUpdate({
+            root: ROOT,
+            onBeforeExit: () => broadcast(overlays, { type: '_system.shutdown' }),
+          });
+        } catch (err) {
+          log.error('Update apply failed:', err.message);
+          broadcast(dashboards, { type: 'update.apply-error', message: err.message });
+        }
         break;
     }
   });
@@ -788,6 +801,12 @@ httpServer.listen(PORT, BIND, () => {
 
   twitchEventSub.connect();
   obs.connect();
+
+  scheduleChecks({
+    currentVersion:          VERSION,
+    root:                    ROOT,
+    broadcastToDashboards:   (msg) => broadcast(dashboards, msg),
+  });
 
   const url = `http://localhost:${activePort}/dashboard/`;
 

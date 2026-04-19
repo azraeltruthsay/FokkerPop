@@ -92,6 +92,13 @@ jobs:
           Page instfiles
 
           Section "Update"
+            # Terminate any running FokkerPop instance — Windows holds an exclusive
+            # lock on the bundled node\FokkerPop.exe while it's running, which
+            # would otherwise break the file overwrite below.
+            DetailPrint "Closing any running FokkerPop instance…"
+            ExecWait 'taskkill /F /IM FokkerPop.exe /T'
+            Sleep 500
+
             SetOutPath "\$INSTDIR"
             SetOverwrite on
             File /r "${PKG}\\*.*"

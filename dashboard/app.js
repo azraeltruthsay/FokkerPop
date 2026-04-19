@@ -292,7 +292,31 @@ function applyStateUpdate(path, value) {
     if (s) s.value = value;
     if (l) l.textContent = `${Math.round(value * 100)}%`;
   }
+  if (path === 'update.available') renderUpdateBanner(value);
 }
+
+function renderUpdateBanner(info) {
+  const el  = document.getElementById('update-banner');
+  const txt = document.getElementById('update-banner-text');
+  const btn = document.getElementById('update-install-btn');
+  if (!el) return;
+  if (!info?.version) { el.style.display = 'none'; return; }
+  const label = `v${info.version} available` + (info.ready ? '' : ' — downloading…');
+  if (txt) txt.textContent = label;
+  if (btn) {
+    btn.disabled   = !info.ready;
+    btn.style.opacity = info.ready ? '1' : '0.55';
+    btn.style.cursor  = info.ready ? 'pointer' : 'not-allowed';
+    btn.textContent   = info.ready ? 'Install Now' : 'Preparing…';
+  }
+  el.style.display = 'block';
+}
+
+window.applyUpdate = function () {
+  const btn = document.getElementById('update-install-btn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Installing…'; btn.style.opacity = '0.55'; btn.style.cursor = 'not-allowed'; }
+  dashSend({ type: '_dashboard.update-apply' });
+};
 
 function setVersion(v) {
   if (!v) return;

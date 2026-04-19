@@ -647,6 +647,15 @@ html, body {
     <button onclick="this.parentElement.style.display='none'" style="float:right; background:rgba(0,0,0,0.2); border:none; color:#fff; padding:4px 10px; border-radius:4px; cursor:pointer;">Dismiss</button>
   </div>
 
+  <div id="update-banner" style="display:none; position:fixed; top:0; left:0; right:0; background:linear-gradient(90deg, #FFD700, #FF9A3C); color:#1a0f00; padding:10px 20px; z-index:9998; font-weight:700; font-size:0.88rem; box-shadow:0 4px 20px rgba(0,0,0,0.4);">
+    <span style="font-size:1.1rem; margin-right:10px;">🚀</span>
+    <span id="update-banner-text">Update available</span>
+    <span style="margin-left:auto; display:inline-flex; gap:8px; float:right;">
+      <button id="update-install-btn" onclick="window.applyUpdate()" style="background:#1a0f00; color:#FFD700; border:none; padding:6px 14px; border-radius:4px; cursor:pointer; font-weight:800; font-size:0.85rem;">Install Now</button>
+      <button onclick="document.getElementById('update-banner').style.display='none'" style="background:rgba(0,0,0,0.15); border:none; color:#1a0f00; padding:6px 10px; border-radius:4px; cursor:pointer;">Later</button>
+    </span>
+  </div>
+
   <div id="studio-ctx-menu"></div>
 
   <div id="loading-overlay" style="position:fixed; inset:0; background:var(--bg); z-index:9000; display:flex; flex-direction:column; align-items:center; justify-content:center;">
