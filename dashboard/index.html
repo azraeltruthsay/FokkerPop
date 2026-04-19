@@ -816,6 +816,25 @@ html, body {
 
       <div class="card">
         <div class="effects-section">
+          <div class="effects-section-label">Fokker's Fun Pack (Quick Sim)</div>
+          <div class="effect-grid">
+            <button class="effect-btn" style="--c:var(--gold)"
+              onclick="fireEvent('redeem', { user: 'Roller', rewardTitle: 'Roll for Luck' }, this)">
+              <div class="icon-bg">🎲</div>D20 Roll of Fate
+            </button>
+            <button class="effect-btn" style="--c:var(--accent)"
+              onclick="fireEvent('chat', { user: 'SecretFriend', message: '!hype' }, this)">
+              <div class="icon-bg">💬</div>Secret !hype Cmd
+            </button>
+            <button class="effect-btn" style="--c:var(--orange)"
+              onclick="fireEvent('redeem', { user: 'Gambler', rewardTitle: 'Mystery Box' }, this)">
+              <div class="icon-bg">🎁</div>Mystery Box
+            </button>
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="effects-section">
           <div class="effects-section-label">Visual Effects</div>
           <div class="effect-grid">
             <button class="effect-btn" style="--c:#4D96FF"
@@ -1075,6 +1094,7 @@ html, body {
     <div class="page" id="page-studio" style="padding:0; height:100vh; flex-direction:column;">
       <div style="background:var(--surface2); padding:10px 20px; border-bottom:1px solid var(--border); display:flex; gap:15px; align-items:center; z-index:100;">
         <div class="page-title" style="font-size:1rem; margin-right:auto;">Fokker Studio (Beta)</div>
+        <button class="btn btn-ghost btn-sm" onclick="importExampleFlows()" title="Get latest pre-built flows">📦 Import Templates</button>
         <select id="studio-flow-select" class="input-field" style="width:200px; margin:0;" onchange="loadSelectedFlow()"></select>
         <button class="btn btn-ghost btn-sm" onclick="createNewFlow()">+ New Flow</button>
         <button class="btn btn-primary btn-sm" onclick="saveStudioFlows()">Save All</button>

@@ -365,6 +365,27 @@ window.duplicateActiveFlow = function() {
   loadFlow(newFlow.id);
 };
 
+window.importExampleFlows = async function() {
+  try {
+    const res = await fetch('/api/flows/example');
+    const examples = await res.json();
+    let count = 0;
+    for (const ex of examples) {
+      if (!flows.find(f => f.id === ex.id)) {
+        flows.push(ex);
+        count++;
+      }
+    }
+    if (count > 0) {
+      alert(`Imported ${count} new templates!`);
+      renderFlowList();
+      saveStudioFlows();
+    } else {
+      alert('You already have all the latest templates.');
+    }
+  } catch (err) { alert('Import failed'); }
+};
+
 // ─── Node Management ────────────────────────────────────────────────────────
 
 window.addNode = function(type, action, startX, startY) {

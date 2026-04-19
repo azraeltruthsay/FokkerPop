@@ -355,6 +355,13 @@ const httpServer = createServer((req, res) => {
     return res.end(JSON.stringify(flows));
   }
 
+  if (path === '/api/flows/example' && req.method === 'GET') {
+    const p = join(ROOT, 'flows.example.json');
+    const data = existsSync(p) ? readFileSync(p, 'utf8') : '[]';
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    return res.end(data);
+  }
+
   if (path === '/api/flows' && req.method === 'POST') {
     let body = '';
     req.on('data', d => { body += d; });
