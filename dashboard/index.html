@@ -1019,6 +1019,7 @@ html, body {
           <button class="btn btn-ghost btn-sm active sub-tab" onclick="switchSubTab(this, 'config-general')">General</button>
           <button class="btn btn-ghost btn-sm sub-tab" onclick="switchSubTab(this, 'config-goals')">Goals</button>
           <button class="btn btn-ghost btn-sm sub-tab" onclick="switchSubTab(this, 'config-redeems')">Redeems</button>
+          <button class="btn btn-ghost btn-sm sub-tab" onclick="switchSubTab(this, 'config-commands')">Commands</button>
         </div>
       </div>
       
@@ -1097,6 +1098,16 @@ html, body {
           <div id="config-redeems-container"></div>
           <button class="btn btn-primary btn-sm" onclick="addRedeemConfig()" style="margin-top:10px;">+ Add New Redeem</button>
           <button class="btn btn-primary btn-sm" onclick="saveRedeemsConfig()" style="margin-top:10px;float:right;">Save Redeems</button>
+        </div>
+      </div>
+
+      <div id="config-commands" class="config-sub-page">
+        <div class="card" style="margin:0;">
+          <div class="card-title">Chat Commands (!shortcuts)</div>
+          <p style="font-size:.8rem; color:var(--text-dim); margin-bottom:14px;">Map simple chat words directly to effects with built-in cooldowns.</p>
+          <div id="config-commands-container"></div>
+          <button class="btn btn-primary btn-sm" onclick="addCommandConfig()" style="margin-top:10px;">+ Add New Command</button>
+          <button class="btn btn-primary btn-sm" onclick="saveCommandsConfig()" style="margin-top:10px;float:right;">Save Commands</button>
         </div>
       </div>
     </div>

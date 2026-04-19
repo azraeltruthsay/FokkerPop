@@ -1,0 +1,8 @@
+{
+  "!pop": { "effect": "firework-salvo", "count": 2, "sound": "boom.wav", "cooldown": 10 },
+  "!bub": { "effect": "balloon",        "count": 5, "sound": "pop.wav",  "cooldown": 10 },
+  "!coin": { "effect": "balloon",       "count": 1, "sound": "coin.wav", "emoji": "🪙", "cooldown": 5 },
+  "!yay":  { "effect": "confetti",      "sound": "yay.wav", "cooldown": 15 },
+  
+  "_comment": "Add more chat commands here. Key = the exact command starting with !."
+}

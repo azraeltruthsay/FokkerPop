@@ -21,11 +21,27 @@ const PORT    = settings.server?.port ?? 4747;
 const BIND    = '127.0.0.1';   // local only — never expose to LAN
 const VERSION = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8')).version;
 
-const goals   = loadAndEnsureJson('goals.json',   []);
-const redeems = loadAndEnsureJson('redeems.json', {});
-const flows   = loadAndEnsureJson('flows.json',   []);
+const goals    = loadAndEnsureJson('goals.json',   []);
+const redeems  = loadAndEnsureJson('redeems.json', {});
+const commands = loadAndEnsureJson('commands.json', {});
+const flows    = loadAndEnsureJson('flows.json',   []);
 state.set('goals', goals);
 flowEngine.setFlows(flows);
+
+const commandCooldowns = new Map();
+
+function fireCommand(text, event) {
+  if (!text.startsWith('!')) return;
+  const cmd = commands[text.toLowerCase().trim()];
+  if (!cmd) return;
+
+  const now = Date.now();
+  const last = commandCooldowns.get(text) ?? 0;
+  if (now - last < (cmd.cooldown || 5) * 1000) return;
+
+  commandCooldowns.set(text, now);
+  broadcastEffect(cmd.effect, { ...cmd }, event.isTest);
+}
 
 function loadAndEnsureJson(name, defaultData) {
   const p  = join(ROOT, name);
@@ -113,6 +129,9 @@ bus.on('*', async (event) => {
     updateSessionStats(event);
     checkGoals();
     flowEngine.processEvent(event, broadcastEffect);
+    if (event.type === 'chat') {
+      fireCommand(event.payload.message, event);
+    }
   } catch (err) {
     log.error('Event handler error:', err.message, err.stack);
   }
@@ -344,6 +363,26 @@ const httpServer = createServer((req, res) => {
         Object.keys(redeems).forEach(k => delete redeems[k]);
         Object.assign(redeems, patch);
         writeFileSync(join(ROOT, 'redeems.json'), JSON.stringify(redeems, null, 2));
+        res.writeHead(200); res.end('{"ok":true}');
+      } catch (err) { res.writeHead(400); res.end(err.message); }
+    });
+    return;
+  }
+
+  if (path === '/api/commands' && req.method === 'GET') {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    return res.end(JSON.stringify(commands));
+  }
+
+  if (path === '/api/commands' && req.method === 'POST') {
+    let body = '';
+    req.on('data', d => { body += d; });
+    req.on('end', () => {
+      try {
+        const patch = JSON.parse(body);
+        Object.keys(commands).forEach(k => delete commands[k]);
+        Object.assign(commands, patch);
+        writeFileSync(join(ROOT, 'commands.json'), JSON.stringify(commands, null, 2));
         res.writeHead(200); res.end('{"ok":true}');
       } catch (err) { res.writeHead(400); res.end(err.message); }
     });

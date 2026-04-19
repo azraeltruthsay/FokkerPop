@@ -297,6 +297,7 @@ window.switchSubTab = function(btn, pageId) {
   document.querySelectorAll('.config-sub-page').forEach(p => p.classList.remove('active'));
   btn.classList.add('active');
   document.getElementById(pageId)?.classList.add('active');
+  if (pageId === 'config-commands') renderCommandsConfig();
 };
 
 function renderGoals(goals) {
@@ -353,6 +354,12 @@ function buildSoundSelect(cls, current) {
 }
 
 function renderConfigEditors() {
+  renderGoalsConfig();
+  renderRedeemsConfig();
+  renderCommandsConfig();
+}
+
+function renderGoalsConfig() {
   const gContainer = document.getElementById('config-goals-container');
   if (gContainer) {
     gContainer.innerHTML = appState.goals.map((g, i) => `
@@ -370,7 +377,9 @@ function renderConfigEditors() {
       </div>
     `).join('');
   }
+}
 
+function renderRedeemsConfig() {
   const rContainer = document.getElementById('config-redeems-container');
   if (rContainer) {
     fetch('/api/redeems').then(r => r.json()).then(redeems => {
@@ -391,6 +400,27 @@ function renderConfigEditors() {
   }
 }
 
+window.renderCommandsConfig = function() {
+  const cContainer = document.getElementById('config-commands-container');
+  if (cContainer) {
+    fetch('/api/commands').then(r => r.json()).then(commands => {
+      cContainer.innerHTML = Object.entries(commands).filter(([k]) => k !== '_comment').map(([trigger, def]) => `
+        <div class="card" style="margin-bottom:10px;padding:12px;background:var(--surface2);">
+          <div class="input-row">
+            <input class="input-field c-trigger" placeholder="!command" value="${esc(trigger)}" style="max-width:140px;">
+            ${buildEffectSelect('c-effect', def.effect)}
+          </div>
+          <div class="input-row" style="margin-top:8px;">
+            <input class="input-field c-cooldown" type="number" placeholder="Cooldown (s)" value="${def.cooldown ?? 5}" style="max-width:100px;">
+            ${buildSoundSelect('c-sound', def.sound)}
+            <button class="btn btn-ghost btn-sm" onclick="this.closest('.card').remove()" style="color:var(--red);">Delete</button>
+          </div>
+        </div>
+      `).join('');
+    });
+  }
+};
+
 function buildEffectSelect(cls, current) {
   const effects = ['balloon', 'firework', 'firework-salvo', 'confetti', 'sticker-rain', 'crowd-explosion', 'alert-banner'];
   return `
@@ -399,6 +429,44 @@ function buildEffectSelect(cls, current) {
       ${effects.map(e => `<option value="${e}" ${e === current ? 'selected' : ''}>Effect: ${e}</option>`).join('')}
     </select>`;
 }
+
+window.addCommandConfig = function() {
+  const container = document.getElementById('config-commands-container');
+  const div = document.createElement('div');
+  div.className = 'card';
+  div.style.cssText = 'margin-bottom:10px;padding:12px;background:var(--surface2);';
+  div.innerHTML = `
+    <div class="input-row">
+      <input class="input-field c-trigger" placeholder="!command" value="!new" style="max-width:140px;">
+      ${buildEffectSelect('c-effect', 'firework')}
+    </div>
+    <div class="input-row" style="margin-top:8px;">
+      <input class="input-field c-cooldown" type="number" placeholder="Cooldown (s)" value="10" style="max-width:100px;">
+      ${buildSoundSelect('c-sound', '')}
+      <button class="btn btn-ghost btn-sm" onclick="this.closest('.card').remove()" style="color:var(--red);">Delete</button>
+    </div>`;
+  container.appendChild(div);
+};
+
+window.saveCommandsConfig = function() {
+  const cmds = {};
+  document.querySelectorAll('#config-commands-container .card').forEach(card => {
+    const trigger = card.querySelector('.c-trigger').value.toLowerCase().trim();
+    const effect  = card.querySelector('.c-effect').value;
+    const cooldown = parseInt(card.querySelector('.c-cooldown').value);
+    const sound   = card.querySelector('.c-sound').value;
+    if (trigger) {
+      cmds[trigger] = { effect, cooldown: isNaN(cooldown) ? 10 : cooldown };
+      if (sound) cmds[trigger].sound = sound;
+    }
+  });
+
+  fetch('/api/commands', {
+    method:  'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body:    JSON.stringify(cmds)
+  }).then(r => r.ok ? alert('Commands saved!') : alert('Save failed'));
+};
 
 window.addGoalConfig = function() {
   const container = document.getElementById('config-goals-container');
