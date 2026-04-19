@@ -120,16 +120,19 @@ bus.on('*', async (event) => {
   lastEventTs = Date.now();
   log.info(`event type=${event.type} source=${event.source ?? 'unknown'}`);
 
-  // Track chatters from any event that carries a user
-  if (event.payload?.user) {
+  // Track chatters from any event that carries a user (skip test events — they're not real viewers)
+  if (event.payload?.user && !event.isTest) {
     state.addChatter(event.payload.user);
     broadcastState('chatters', state.get('chatters'));
   }
 
   try {
-    applyBoost(event);
-    updateSessionStats(event);
-    checkGoals();
+    // Test events fire visuals but don't mutate persistent session state / leaderboard / crowd energy / goals
+    if (!event.isTest) {
+      applyBoost(event);
+      updateSessionStats(event);
+      checkGoals();
+    }
     flowEngine.processEvent(event, broadcastEffect);
     if (event.type === 'chat') {
       fireCommand(event.payload.message, event);
