@@ -764,7 +764,7 @@ wss.on('connection', (ws, req) => {
     if (!dashboards.has(ws)) {
       if (msg.type === '_overlay.widget-trigger' && typeof msg.id === 'string') {
         const w = widgets.find(w => w.id === msg.id);
-        if (w?.type === 'hot-button' && w.config?.effect) {
+        if ((w?.type === 'hot-button' || w?.type === 'hot-button-3d') && w.config?.effect) {
           broadcastEffect(w.config.effect, w.config.payload ?? {}, true);
         }
       }

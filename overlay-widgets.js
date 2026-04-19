@@ -679,6 +679,109 @@ export function triggerDiceTray(widgets, eventType) {
   }
 }
 
+// ─── Hot Button 3D (clickable 3D mesh that fires a configured effect) ─────
+
+const hotButtons3D = new Map();
+
+export async function mountHotButton3D(widget, el, sendToServer, isLayoutMode) {
+  const T = await loadThree();
+  const cfg = widget.config || {};
+
+  const w = cfg.width || 200;
+  const h = cfg.height || 200;
+  el.style.width  = w + 'px';
+  el.style.height = h + 'px';
+  el.style.position = 'absolute';
+  el.innerHTML = '';
+  el.style.cursor = 'pointer';
+
+  const scene = new T.Scene();
+  const camera = new T.PerspectiveCamera(40, w / h, 0.1, 100);
+  camera.position.set(0, 0, 3.2);
+
+  scene.add(new T.AmbientLight(0xffffff, 0.7));
+  const key = new T.DirectionalLight(0xffffff, 1.2);
+  key.position.set(2, 4, 3);
+  scene.add(key);
+
+  const renderer = new T.WebGLRenderer({ alpha: true, antialias: true });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.setSize(w, h);
+  renderer.setClearColor(0x000000, 0);
+  renderer.domElement.style.cssText = 'display:block; width:100%; height:100%; border-radius:50%; background:radial-gradient(circle, rgba(145,71,255,0.15), rgba(8,8,16,0.6));';
+  el.appendChild(renderer.domElement);
+
+  // Emoji-on-sphere
+  const emoji = cfg.emoji || cfg.label || '🎆';
+  const texSize = 256;
+  const canvas = document.createElement('canvas');
+  canvas.width = texSize; canvas.height = texSize;
+  const ctx = canvas.getContext('2d');
+  ctx.font = `${Math.floor(texSize * 0.78)}px serif`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(emoji, texSize / 2, texSize / 2 + 4);
+  const tex = new T.CanvasTexture(canvas);
+  tex.colorSpace = T.SRGBColorSpace;
+
+  const sphereGeo = new T.SphereGeometry(0.85, 40, 30);
+  const sphereMat = new T.MeshStandardMaterial({ color: cfg.color || 0xFFD700, roughness: 0.3, metalness: 0.25 });
+  const sphere = new T.Mesh(sphereGeo, sphereMat);
+  scene.add(sphere);
+
+  const sprite = new T.Sprite(new T.SpriteMaterial({ map: tex, transparent: true }));
+  sprite.scale.set(1.6, 1.6, 1.6);
+  sprite.position.set(0, 0, 0.1);
+  scene.add(sprite);
+
+  let hovered = false;
+  let pulse = 0;
+  let rafId = null;
+  function loop(now) {
+    sphere.rotation.y += 0.006;
+    const target = 1 + (hovered ? 0.08 : 0) + Math.max(0, pulse);
+    sphere.scale.lerp(new T.Vector3(target, target, target), 0.25);
+    sprite.scale.lerp(new T.Vector3(1.6 * target, 1.6 * target, 1.6 * target), 0.25);
+    pulse = Math.max(0, pulse - 0.04);
+    renderer.render(scene, camera);
+    rafId = requestAnimationFrame(loop);
+  }
+  rafId = requestAnimationFrame(loop);
+
+  const onEnter = () => { hovered = true; };
+  const onLeave = () => { hovered = false; };
+  const onClick = (e) => {
+    if (isLayoutMode?.()) return;
+    e.stopPropagation();
+    pulse = 0.35;
+    sendToServer?.({ type: '_overlay.widget-trigger', id: widget.id });
+  };
+  renderer.domElement.addEventListener('mouseenter', onEnter);
+  renderer.domElement.addEventListener('mouseleave', onLeave);
+  renderer.domElement.addEventListener('click', onClick);
+
+  const entry = {
+    pulse: () => { pulse = 0.35; },
+    dispose: () => {
+      cancelAnimationFrame(rafId);
+      renderer.domElement.removeEventListener('mouseenter', onEnter);
+      renderer.domElement.removeEventListener('mouseleave', onLeave);
+      renderer.domElement.removeEventListener('click', onClick);
+      renderer.dispose();
+      renderer.domElement.remove();
+      sphereGeo.dispose(); sphereMat.dispose();
+      tex.dispose();
+    },
+  };
+  hotButtons3D.set(widget.id, entry);
+  return entry;
+}
+
+export function unmountHotButton3D(widgetId) {
+  const h = hotButtons3D.get(widgetId);
+  if (h) { h.dispose(); hotButtons3D.delete(widgetId); }
+}
+
 // ─── 3D Physics Pit (three.js + cannon-es) ───────────────────────────────
 // Like the 2D pit but with real 3D rigid bodies. Bodies are textured spheres
 // (emoji rendered onto a canvas texture). Collision layers map directly to
@@ -980,4 +1083,5 @@ export function clearAll() {
   for (const id of [...diceWidgets.keys()])   unmountDice(id);
   for (const id of [...diceTrays.keys()])     unmountDiceTray(id);
   for (const id of [...modelWidgets.keys()])  unmountModel3D(id);
+  for (const id of [...hotButtons3D.keys()])  unmountHotButton3D(id);
 }

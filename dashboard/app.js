@@ -453,7 +453,8 @@ window.addWidget = function (type) {
   if (type === 'counter')     base.config = { visible: true, label: 'SUBS TODAY', metric: 'session.subCount', fontSize: 36, color: '#9147FF' };
   if (type === 'text')        base.config = { visible: true, text: 'STARTING SOON', fontSize: 48, color: '#FFD700' };
   if (type === 'recent')      base.config = { visible: true, label: 'LATEST CHATTER', fontSize: 24, color: '#6BCB77' };
-  if (type === 'hot-button')  base.config = { visible: true, label: '🎆 FIRE', effect: 'firework-salvo', payload: { count: 3 }, fontSize: 28, color: '#FFD700' };
+  if (type === 'hot-button')     base.config = { visible: true, label: '🎆 FIRE', effect: 'firework-salvo', payload: { count: 3 }, fontSize: 28, color: '#FFD700' };
+  if (type === 'hot-button-3d')  base.config = { visible: true, emoji: '🎆', effect: 'firework-salvo', payload: { count: 3 }, color: 0xFFD700, width: 200, height: 200 };
   if (type === 'event-badge') base.config = { visible: true, label: '💜 SUB', eventType: 'sub', fontSize: 22, color: '#9147FF' };
   if (type === 'progress-bar') base.config = { visible: true, label: 'SUB GOAL', metric: 'session.subCount', target: 50, color: '#9147FF', fontSize: 16, barWidth: 240, barHeight: 14 };
   if (type === 'leaderboard-top') base.config = { visible: true, label: 'TOP BITS', category: 'bits', topN: 3, fontSize: 16, color: '#FFFFFF' };
@@ -534,6 +535,7 @@ function renderWidgetList() {
       'progress-bar': 'Progress Bar', 'leaderboard-top': 'Leaderboard Top-N',
       'physics-pit': 'Physics Pit (2D)', 'physics-pit-3d': 'Physics Pit (3D)',
       dice: 'Dice', 'dice-tray': 'Dice Tray', 'model-3d': '3D Model',
+      'hot-button-3d': 'Hot Button 3D',
     }[w.type] || w.type;
     const body = (() => {
       if (w.type === 'counter') return `
@@ -549,6 +551,13 @@ function renderWidgetList() {
           ${EFFECT_OPTIONS.map(e => `<option value="${e}" ${e === c.effect ? 'selected' : ''}>${e}</option>`).join('')}
         </select>
         <input class="input-field" value='${esc(JSON.stringify(c.payload ?? {}))}' placeholder='{"count":3}' oninput="updateWidgetField('${w.id}','payload',this.value)" style="font-family:monospace;">`;
+      if (w.type === 'hot-button-3d') return `
+        <input class="input-field" value="${esc(c.emoji ?? '')}" placeholder="Emoji on the orb" oninput="updateWidgetField('${w.id}','emoji',this.value)" style="max-width:120px;">
+        <select class="input-field" onchange="updateWidgetField('${w.id}','effect',this.value)">
+          ${EFFECT_OPTIONS.map(e => `<option value="${e}" ${e === c.effect ? 'selected' : ''}>${e}</option>`).join('')}
+        </select>
+        <input class="input-field" value='${esc(JSON.stringify(c.payload ?? {}))}' placeholder='{"count":3}' oninput="updateWidgetField('${w.id}','payload',this.value)" style="font-family:monospace;">
+        <span style="font-size:.7rem; color:var(--text-dim);">Click the orb in OBS Interact or in the preview to fire the effect. Hovers scale up; click animates a pulse.</span>`;
       if (w.type === 'event-badge') return `
         <input class="input-field" value="${esc(c.label ?? '')}" placeholder="Badge text (e.g. 💜 SUB)" oninput="updateWidgetField('${w.id}','label',this.value)" style="max-width:180px;">
         <select class="input-field" onchange="updateWidgetField('${w.id}','eventType',this.value)" title="Flashes when an event of this type fires">

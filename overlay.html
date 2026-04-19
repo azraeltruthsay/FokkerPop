@@ -1775,6 +1775,17 @@ function renderCustomWidgets() {
       el.style.minWidth = (cfg.width || 420) + 'px';
       el.style.minHeight = (cfg.height || 280) + 'px';
       ensureWidgetModule().then(m => m.mountDiceTray(w, el, (msg) => { try { ws?.send?.(JSON.stringify(msg)); } catch {} }));
+    } else if (w.type === 'hot-button-3d') {
+      el.style.background = 'transparent';
+      el.style.border = 'none';
+      el.style.padding = '0';
+      el.style.minWidth = (cfg.width || 200) + 'px';
+      el.style.minHeight = (cfg.height || 200) + 'px';
+      ensureWidgetModule().then(m => m.mountHotButton3D(
+        w, el,
+        (msg) => { try { ws?.send?.(JSON.stringify(msg)); } catch {} },
+        () => layoutMode
+      ));
     }
 
     // Per-widget visibility toggle (default true). Hidden widgets stay hidden
