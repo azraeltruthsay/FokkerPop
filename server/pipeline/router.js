@@ -4,7 +4,10 @@ const rnd = () => Math.random();
 
 export function router(ctx) {
   const { event } = ctx;
-  event.effects = EFFECT_MAP[event.type]?.(event) ?? [];
+  // Ensure payload and user exist so banner templates never render "undefined"
+  event.payload      = event.payload ?? {};
+  event.payload.user = event.payload.user ?? 'Someone';
+  event.effects      = EFFECT_MAP[event.type]?.(event) ?? [];
 }
 
 const EFFECT_MAP = {

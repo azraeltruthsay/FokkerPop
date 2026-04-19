@@ -272,7 +272,16 @@ function applyStateUpdate(path, value) {
   if (path === 'session')        renderSession(value);
   if (path === 'twitch.status')  setTwitchBadge(value);
   if (path === 'obs.status')     setObsBadge(value);
-  if (path === 'version')        setVersion(value);
+  if (path === 'version') {
+    if (window.__fokkerBakedVersion == null) {
+      window.__fokkerBakedVersion = value;
+    } else if (window.__fokkerBakedVersion !== value) {
+      console.info('FokkerPop updated', window.__fokkerBakedVersion, '→', value, '— reloading dashboard');
+      location.reload();
+      return;
+    }
+    setVersion(value);
+  }
   if (path === 'overlay.layoutMode') {
     const cb = document.getElementById('layout-mode-cb');
     if (cb) cb.checked = value;

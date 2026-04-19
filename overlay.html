@@ -1354,6 +1354,39 @@ function startTimer(seconds, label = 'COUNTDOWN') {
   timerInterval = setInterval(update, 1000);
 }
 
+function spawnDiceRoll(result, sides, user) {
+  const container = document.getElementById('dice-container');
+  if (!container) return;
+
+  const wrap = document.createElement('div');
+  wrap.className = 'dice-roll-wrap';
+  wrap.innerHTML = `
+    <div class="dice-box rolling">?</div>
+    <div class="dice-user">${escHtml(user || 'STREAM')} ROLLED D${sides}</div>
+  `;
+  container.appendChild(wrap);
+
+  const box = wrap.querySelector('.dice-box');
+  const duration = 1200;
+  const interval = setInterval(() => {
+    box.textContent = Math.floor(Math.random() * sides) + 1;
+  }, 80);
+
+  setTimeout(() => {
+    clearInterval(interval);
+    box.classList.remove('rolling');
+    box.textContent = result;
+    playSound('yay.wav');
+
+    setTimeout(() => {
+      wrap.style.transition = 'opacity 1s, transform 1s';
+      wrap.style.opacity = '0';
+      wrap.style.transform = 'translateY(-100px) scale(0.8)';
+      setTimeout(() => wrap.remove(), 1000);
+    }, 4000);
+  }, duration);
+}
+
 function spawnKaprekar(p) {
   const container = document.getElementById('kaprekar-container');
   if (!container) return;

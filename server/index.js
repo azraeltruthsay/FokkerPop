@@ -1,6 +1,6 @@
 import { createServer }                                  from 'node:http';
 import { readFileSync, writeFileSync, existsSync, readdirSync, createWriteStream } from 'node:fs';
-import { extname, join, normalize, resolve, sep, relative, isAbsolute } from 'node:path';
+import { extname, join, normalize, resolve, sep, relative, isAbsolute, basename } from 'node:path';
 import { exec }                                from 'node:child_process';
 import { WebSocketServer, WebSocket }          from 'ws';
 
@@ -415,10 +415,10 @@ const httpServer = createServer((req, res) => {
   }
 
   if (path === '/api/upload' && req.method === 'POST') {
-    const name = req.headers['x-filename'];
-    const type = req.headers['x-type']; // 'sound', 'sticker', 'character'
-    
-    if (!name || !type) { res.writeHead(400); res.end('Missing metadata'); return; }
+    const rawName = req.headers['x-filename'];
+    const type    = req.headers['x-type']; // 'sound', 'sticker', 'character'
+
+    if (!rawName || !type) { res.writeHead(400); res.end('Missing metadata'); return; }
 
     const folders = {
       sound:     'assets/sounds',
@@ -429,15 +429,26 @@ const httpServer = createServer((req, res) => {
     const targetDir = folders[type];
     if (!targetDir) { res.writeHead(400); res.end('Invalid type'); return; }
 
-    const savePath = join(ROOT, targetDir, name);
-    const stream   = createWriteStream(savePath);
-    
+    // Reject any filename that carries path separators — legitimate uploads never do.
+    const nameStr = String(rawName);
+    if (/[/\\]/.test(nameStr) || nameStr === '.' || nameStr === '..' || nameStr.startsWith('.')) {
+      res.writeHead(400); res.end('Invalid filename'); return;
+    }
+    const name = basename(nameStr); // defense in depth
+
+    const targetRoot = resolve(ROOT, targetDir);
+    const savePath   = resolve(targetRoot, name);
+    if (!savePath.startsWith(targetRoot + sep)) {
+      res.writeHead(400); res.end('Invalid filename'); return;
+    }
+
+    const stream = createWriteStream(savePath);
     req.pipe(stream);
-    req.on('end', () => {
+    stream.on('finish', () => {
       log.info(`Uploaded file: ${name} to ${targetDir}`);
       res.writeHead(200); res.end('{"ok":true}');
     });
-    req.on('error', (err) => {
+    stream.on('error', (err) => {
       log.error('Upload error:', err.message);
       res.writeHead(500); res.end(err.message);
     });
@@ -787,8 +798,17 @@ httpServer.listen(PORT, BIND, () => {
   } else {
     cmd = `xdg-open "${url}" 2>/dev/null || open "${url}"`;
   }
-  exec(cmd, () => {});
-  
+
+  // Give any existing dashboard window 2s to reconnect and reload itself.
+  // If one does, skip opening a duplicate window.
+  setTimeout(() => {
+    if (dashboards.size > 0) {
+      log.info('Existing dashboard reconnected — skipping new browser window.');
+    } else {
+      exec(cmd, () => {});
+    }
+  }, 2000);
+
   log.info('FokkerPop is ready! Use the dashboard to test your overlay.');
 });
 
