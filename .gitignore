@@ -11,3 +11,4 @@ logs/
 memory/
 conductor/
 FokkerPop-Updater-*.exe
+.fokker-browser-launched

@@ -85,6 +85,8 @@ function connect() {
         if ($follow) $follow.value = s.crowd.followBoost || 1;
         if ($raid)   $raid.value   = s.crowd.raidBoost || 20;
       }
+      const $auto = document.getElementById('auto-update-cb');
+      if ($auto) $auto.checked = !!s.autoUpdate?.enabled;
     }).catch(err => console.warn('Settings fetch failed:', err));
   } catch (err) {
     console.error('Setup initialization error:', err);
@@ -106,7 +108,9 @@ function connect() {
     retries++;
     setBadge('disconnected', '○ Disconnected');
     $dot?.classList.remove('active');
-    setTimeout(connect, Math.min(2000 * retries, 15000));
+    // Tight backoff so an auto-update restart reconnects before the server's
+    // skip-new-browser window expires: 1s, 2s, 3s, 3s, 3s, …
+    setTimeout(connect, Math.min(1000 * retries, 3000));
   });
   ws.addEventListener('error', () => {
     setBadge('disconnected', '○ Server offline');
@@ -370,6 +374,16 @@ function renderUpdateBanner(info) {
   }
   el.style.display = 'block';
 }
+
+window.saveAutoUpdate = function (enabled) {
+  fetch('/api/settings', {
+    method:  'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body:    JSON.stringify({ autoUpdate: { enabled: !!enabled } })
+  }).then(r => {
+    if (!r.ok) alert('Could not save Auto-Install preference.');
+  });
+};
 
 window.applyUpdate = function () {
   // Stream-aware gating — installing restarts the overlay, which would blip on stream.

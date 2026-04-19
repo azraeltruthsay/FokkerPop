@@ -84,6 +84,29 @@ function broadcastAvailable() {
   });
 }
 
+let autoInstallEnabled = false;
+let obsStreamingRef    = () => false;
+let onAutoInstallRequest = null;
+
+export function setAutoInstall(enabled) { autoInstallEnabled = !!enabled; }
+export function setStreamingProbe(fn)   { obsStreamingRef = typeof fn === 'function' ? fn : (() => false); }
+export function setAutoInstallHandler(fn) { onAutoInstallRequest = fn; }
+
+function maybeTriggerAutoInstall(reason) {
+  if (!autoInstallEnabled || !available?.localPath) return;
+  if (obsStreamingRef()) {
+    log.info(`Auto-install queued (${reason}) but OBS is streaming — will apply after stream ends.`);
+    return;
+  }
+  log.info(`Auto-install triggering (${reason}) for v${available.version}.`);
+  try { onAutoInstallRequest?.(); } catch (err) { log.error('Auto-install invocation failed:', err.message); }
+}
+
+// Called when OBS flips streaming false — re-check deferred auto-install.
+export function onStreamingStateChange(nowStreaming) {
+  if (!nowStreaming) maybeTriggerAutoInstall('stream ended');
+}
+
 export async function checkForUpdate({ currentVersion, root, broadcastToDashboards }) {
   broadcast = broadcastToDashboards;
   if (process.platform !== 'win32') {
@@ -129,6 +152,7 @@ export async function checkForUpdate({ currentVersion, root, broadcastToDashboar
     log.info(`Updater v${tag} ready (${Math.round(size / 1024)} KB) at ${dest}`);
     available.localPath = dest;
     broadcastAvailable();
+    maybeTriggerAutoInstall('new version downloaded');
   } catch (err) {
     log.warn(`Update check failed: ${err.message}`);
   } finally {

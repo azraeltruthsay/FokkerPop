@@ -1,5 +1,5 @@
 import { createServer }                                  from 'node:http';
-import { readFileSync, writeFileSync, existsSync, readdirSync, createWriteStream } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync, readdirSync, createWriteStream, statSync } from 'node:fs';
 import { extname, join, normalize, resolve, sep, relative, isAbsolute, basename } from 'node:path';
 import { exec }                                from 'node:child_process';
 import { WebSocketServer, WebSocket }          from 'ws';
@@ -15,7 +15,7 @@ import settings, { ROOT }    from './settings-loader.js';
 
 import log                        from './logger.js';
 import { makeCtx, resolveDeep }   from './template.js';
-import { scheduleChecks, applyUpdate, getAvailable as getAvailableUpdate } from './update-checker.js';
+import { scheduleChecks, applyUpdate, getAvailable as getAvailableUpdate, setAutoInstall, setStreamingProbe, setAutoInstallHandler, onStreamingStateChange } from './update-checker.js';
 
 process.title = 'FokkerPop';
 
@@ -581,6 +581,15 @@ const httpServer = createServer((req, res) => {
           Object.assign(settings.crowd, patch.crowd);
         }
 
+        if (patch.autoUpdate) {
+          settings.autoUpdate ??= {};
+          if (typeof patch.autoUpdate.enabled === 'boolean') {
+            settings.autoUpdate.enabled = patch.autoUpdate.enabled;
+            setAutoInstall(patch.autoUpdate.enabled);
+            log.info(`Auto-install mode ${patch.autoUpdate.enabled ? 'ENABLED' : 'disabled'}.`);
+          }
+        }
+
         writeFileSync(join(ROOT, 'settings.json'), JSON.stringify(settings, null, 2));
         
         if (obsChanged) {
@@ -812,6 +821,7 @@ obs.on('status', (status) => {
 
 obs.on('streaming', (live) => {
   broadcast(dashboards, { type: 'state', path: 'obs.streaming', value: live });
+  onStreamingStateChange(live);
 });
 
 // ── Port binding with auto-fallback ───────────────────────────────────────────
@@ -859,6 +869,13 @@ httpServer.listen(PORT, BIND, () => {
   twitchEventSub.connect();
   obs.connect();
 
+  setAutoInstall(!!settings.autoUpdate?.enabled);
+  setStreamingProbe(() => obs.streaming);
+  setAutoInstallHandler(() => applyUpdate({
+    root: ROOT,
+    onBeforeExit: () => broadcast(overlays, { type: '_system.shutdown' }),
+  }));
+
   scheduleChecks({
     currentVersion:          VERSION,
     root:                    ROOT,
@@ -875,16 +892,30 @@ httpServer.listen(PORT, BIND, () => {
     cmd = `xdg-open "${url}" 2>/dev/null || open "${url}"`;
   }
 
-  // Give any existing dashboard window 5s to reconnect and reload itself.
-  // If one does, skip opening a duplicate window. 5s is padded for auto-update
-  // restarts where the browser may take a moment to retry.
+  // Track when we last opened a browser. If a previous instance launched one
+  // within the last 10 min, assume the user still has a window around and
+  // skip launching a duplicate even if no client has reconnected yet.
+  const launchMarker = join(ROOT, '.fokker-browser-launched');
+  const markerAgeMs = existsSync(launchMarker)
+    ? Date.now() - statSync(launchMarker).mtimeMs
+    : Infinity;
+  const RECENT_LAUNCH_MS = 10 * 60 * 1000;
+
+  // Give any existing dashboard window up to 15s to reconnect and reload itself.
+  // 15s covers a slow NSIS extract + the dashboard's client-side reconnect
+  // backoff (1s/2s/3s/3s…).
   setTimeout(() => {
     if (dashboards.size > 0 || overlays.size > 0) {
-      log.info('Existing client reconnected — skipping new browser window.');
+      log.info(`Existing client reconnected (${dashboards.size} dashboard, ${overlays.size} overlay) — skipping new browser window.`);
+      try { writeFileSync(launchMarker, String(Date.now())); } catch {}
+    } else if (markerAgeMs < RECENT_LAUNCH_MS) {
+      log.info(`A browser window was launched ${Math.round(markerAgeMs / 1000)}s ago — skipping duplicate. Open http://localhost:${activePort}/dashboard/ manually if needed.`);
     } else {
+      log.info('No existing client reconnected within 15s — opening new browser window.');
       exec(cmd, () => {});
+      try { writeFileSync(launchMarker, String(Date.now())); } catch {}
     }
-  }, 5000);
+  }, 15000);
 
   log.info('FokkerPop is ready! Use the dashboard to test your overlay.');
 });

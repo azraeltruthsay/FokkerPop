@@ -1111,6 +1111,22 @@ html, body {
       <div id="config-general" class="config-sub-page active">
         <div class="card">
           <div style="display:flex; justify-content:space-between; align-items:center;">
+            <div class="card-title" style="margin:0;">Auto-Install Updates</div>
+            <label class="toggle" title="Automatically download and install new FokkerPop releases">
+              <input type="checkbox" id="auto-update-cb" onchange="saveAutoUpdate(this.checked)">
+              <div class="toggle-slider"></div>
+            </label>
+          </div>
+          <p style="font-size:.82rem; color:var(--text-dim); margin-top:8px;">
+            When on, FokkerPop will check GitHub every 30 minutes and automatically apply new releases. Your settings, goals, redeems, commands, flows, and uploaded assets are preserved — only the app code and default samples are overwritten. If you're actively streaming, install waits until the stream ends.
+          </p>
+          <p style="font-size:.74rem; color:var(--text-dim); margin-top:6px; opacity:0.8;">
+            You can always trigger a one-time install from the gold banner when an update is detected, even with this off.
+          </p>
+        </div>
+
+        <div class="card">
+          <div style="display:flex; justify-content:space-between; align-items:center;">
             <div class="card-title" style="margin:0;">Layout Mode</div>
             <label class="toggle" title="Enable to drag widgets in OBS">
               <input type="checkbox" id="layout-mode-cb" onchange="dashSend({type:'_dashboard.layout-mode',active:this.checked})">
