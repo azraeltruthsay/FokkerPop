@@ -767,13 +767,18 @@ let activePort = PORT;
 const MAX_PORT_TRIES = 5;
 
 httpServer.on('error', (err) => {
-  if ((err.code === 'EADDRINUSE' || err.code === 'EACCES') && activePort < PORT + MAX_PORT_TRIES) {
-    log.warn(`Port ${activePort} unavailable (${err.code}), trying ${activePort + 1}…`);
+  if (err.code === 'EADDRINUSE') {
+    // Almost always this means another FokkerPop is already running.
+    // Falling back to port 4748 would split the dashboard/overlay between
+    // two servers — confusing and the cause of "two instances" reports.
+    log.error(`Port ${activePort} is already in use. FokkerPop appears to be already running.`);
+    log.error(`Close the existing FokkerPop window (or kill FokkerPop.exe in Task Manager) and try again.`);
+    process.exit(1);
+  } else if (err.code === 'EACCES' && activePort < PORT + MAX_PORT_TRIES) {
+    // Hyper-V / WSL / Docker can reserve ports on Windows — fall back to the next one.
+    log.warn(`Port ${activePort} reserved by the OS (${err.code}), trying ${activePort + 1}…`);
     activePort++;
     httpServer.listen(activePort, BIND);
-  } else if (err.code === 'EADDRINUSE') {
-    log.error(`Ports ${PORT}–${activePort} are all in use. Is FokkerPop already running?`);
-    process.exit(1);
   } else if (err.code === 'EACCES') {
     log.error(`Ports ${PORT}–${activePort} are all reserved by Windows (Hyper-V/WSL/Docker).`);
     log.error(`Run in an admin Command Prompt to release them, then restart:`);
@@ -818,15 +823,16 @@ httpServer.listen(PORT, BIND, () => {
     cmd = `xdg-open "${url}" 2>/dev/null || open "${url}"`;
   }
 
-  // Give any existing dashboard window 2s to reconnect and reload itself.
-  // If one does, skip opening a duplicate window.
+  // Give any existing dashboard window 5s to reconnect and reload itself.
+  // If one does, skip opening a duplicate window. 5s is padded for auto-update
+  // restarts where the browser may take a moment to retry.
   setTimeout(() => {
-    if (dashboards.size > 0) {
-      log.info('Existing dashboard reconnected — skipping new browser window.');
+    if (dashboards.size > 0 || overlays.size > 0) {
+      log.info('Existing client reconnected — skipping new browser window.');
     } else {
       exec(cmd, () => {});
     }
-  }, 2000);
+  }, 5000);
 
   log.info('FokkerPop is ready! Use the dashboard to test your overlay.');
 });

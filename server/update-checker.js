@@ -140,6 +140,8 @@ export function applyUpdate({ root, onBeforeExit }) {
   if (!available?.localPath || !existsSync(available.localPath)) {
     throw new Error('No updater downloaded yet.');
   }
+  if (onBeforeExit) try { onBeforeExit(); } catch {}
+
   // NSIS: /S = silent, /D=<path> must be the LAST arg and unquoted.
   // detached + unref + stdio:ignore so the child survives after we exit.
   const child = spawn(available.localPath, ['/S', `/D=${root}`], {
@@ -149,10 +151,10 @@ export function applyUpdate({ root, onBeforeExit }) {
     windowsHide: true,
   });
   child.unref();
-  log.info(`Spawned updater v${available.version} (pid=${child.pid}). Exiting current server.`);
-  if (onBeforeExit) try { onBeforeExit(); } catch {}
-  // Give the child a moment to actually start before we die.
-  setTimeout(() => process.exit(0), 500);
+  log.info(`Spawned updater v${available.version} (pid=${child.pid}). Exiting server so FokkerPop.exe releases its locks and port.`);
+  // Exit fast so port 4747 and node\FokkerPop.exe are released BEFORE the
+  // updater tries to overwrite them. The child is detached — it survives us.
+  setTimeout(() => process.exit(0), 150);
 }
 
 export function getAvailable() {

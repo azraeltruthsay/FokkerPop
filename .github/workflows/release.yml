@@ -94,14 +94,21 @@ jobs:
           Section "Update"
             # Terminate any running FokkerPop instance — Windows holds an exclusive
             # lock on the bundled node\FokkerPop.exe while it's running, which
-            # would otherwise break the file overwrite below.
+            # would otherwise break the file overwrite below. Run twice with
+            # sleeps in between to cover races with still-initializing processes.
             DetailPrint "Closing any running FokkerPop instance…"
+            ExecWait 'taskkill /F /IM FokkerPop.exe /T'
+            Sleep 1500
             ExecWait 'taskkill /F /IM FokkerPop.exe /T'
             Sleep 500
 
             SetOutPath "\$INSTDIR"
             SetOverwrite on
+            ClearErrors
             File /r "${PKG}\\*.*"
+            IfErrors 0 +3
+              MessageBox MB_OK|MB_ICONEXCLAMATION "FokkerPop Updater could not overwrite files. The FokkerPop server is still running.\$\\n\$\\nClose the black FokkerPop terminal window (and any FokkerPop.exe in Task Manager), then run this updater again."
+              Abort
 
             # Launch the app automatically after update
             ExecShell "" "\$INSTDIR\\start.bat"

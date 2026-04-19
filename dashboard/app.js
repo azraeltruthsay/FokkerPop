@@ -481,13 +481,24 @@ function renderConfigEditors() {
 let goalsEditorDirty = false;
 let goalsEditorWired = false;
 
+function setGoalsDirty(v) {
+  goalsEditorDirty = v;
+  const dot = document.getElementById('goals-dirty-dot');
+  const btn = document.getElementById('goals-save-btn');
+  if (dot) dot.style.display = v ? 'inline' : 'none';
+  if (btn) {
+    btn.textContent = v ? 'Save ●' : 'Save';
+    btn.classList.toggle('btn-gold', v);
+  }
+}
+
 function wireGoalsEditor(el) {
   if (goalsEditorWired) return;
   goalsEditorWired = true;
-  el.addEventListener('input', () => { goalsEditorDirty = true; });
+  el.addEventListener('input',  () => setGoalsDirty(true));
   el.addEventListener('click', (e) => {
     // Any click inside a card (Delete button, etc.) counts as dirty.
-    if (e.target.closest('.card')) goalsEditorDirty = true;
+    if (e.target.closest('.card')) setGoalsDirty(true);
   });
 }
 
@@ -611,7 +622,7 @@ window.saveCommandsConfig = function() {
 };
 
 window.addGoalConfig = function() {
-  goalsEditorDirty = true;
+  setGoalsDirty(true);
   const container = document.getElementById('config-goals-container');
   const div = document.createElement('div');
   div.className = 'card';
@@ -659,7 +670,7 @@ window.saveGoalsConfig = function() {
     body:    JSON.stringify(goals)
   }).then(r => {
     if (r.ok) {
-      goalsEditorDirty = false;
+      setGoalsDirty(false);
       renderGoalsConfig();
       alert('Goals saved!');
     } else {

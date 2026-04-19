@@ -1055,10 +1055,10 @@ html, body {
       </div>
       <div class="card">
         <div style="display:flex; justify-content:space-between; align-items:center;">
-          <div class="card-title" style="margin:0;">Configure Goals</div>
+          <div class="card-title" style="margin:0;">Configure Goals<span id="goals-dirty-dot" style="display:none; color:var(--gold); margin-left:8px; font-size:1.2rem; vertical-align:middle;" title="Unsaved changes">●</span></div>
           <div style="display:flex; gap:8px;">
             <button class="btn btn-primary btn-sm" onclick="addGoalConfig()">+ Add Goal</button>
-            <button class="btn btn-primary btn-sm" onclick="saveGoalsConfig()">Save</button>
+            <button id="goals-save-btn" class="btn btn-primary btn-sm" onclick="saveGoalsConfig()">Save</button>
           </div>
         </div>
         <p style="font-size:.78rem; color:var(--text-dim); margin:8px 0 12px;">
