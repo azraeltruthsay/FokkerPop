@@ -5,6 +5,7 @@ goals.json
 redeems.json
 commands.json
 flows.json
+widgets.json
 .env
 *.log
 logs/

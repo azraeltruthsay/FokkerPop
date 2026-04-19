@@ -207,6 +207,59 @@ body.layout-mode .draggable[data-placeholder]::before {
   padding: 14px;
 }
 
+/* ═══════════════════════════════════════════════════════ Custom widgets */
+.custom-widget {
+  position: absolute;
+  user-select: none;
+  background: rgba(8, 8, 16, 0.82);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 12px;
+  padding: 10px 16px;
+  color: #fff;
+  font-family: inherit;
+  text-align: center;
+  min-width: 120px;
+}
+.custom-widget .cw-label {
+  font-size: 0.65rem;
+  color: rgba(255,255,255,0.55);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+.custom-widget .cw-value {
+  font-weight: 900;
+  line-height: 1;
+}
+.custom-widget[data-type="text"] .cw-value {
+  font-size: 2.2rem;
+}
+.custom-widget[data-type="hot-button"] {
+  cursor: pointer;
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+body:not(.layout-mode) .custom-widget[data-type="hot-button"]:hover {
+  transform: scale(1.05);
+  box-shadow: 0 0 30px rgba(145,71,255,0.35);
+}
+.custom-widget[data-type="hot-button"].pulse {
+  animation: hotbutton-pulse 0.35s ease-out;
+}
+@keyframes hotbutton-pulse {
+  0%   { transform: scale(1);     box-shadow: 0 0 0 0 rgba(255,255,255,0.5); }
+  60%  { transform: scale(1.18);  box-shadow: 0 0 40px 12px rgba(255,215,0,0.35); }
+  100% { transform: scale(1);     box-shadow: 0 0 0 0 rgba(255,255,255,0); }
+}
+.custom-widget[data-type="event-badge"].fire {
+  animation: badge-fire 0.8s ease-out;
+}
+@keyframes badge-fire {
+  0%   { transform: scale(1);    filter: brightness(1);   }
+  30%  { transform: scale(1.35); filter: brightness(1.6); }
+  100% { transform: scale(1);    filter: brightness(1);   }
+}
+
 /* ═══════════════════════════════════════════════════════ Character */
 #character-wrap {
   position: fixed;
@@ -748,6 +801,9 @@ body.layout-mode .draggable[data-placeholder]::before {
     <div id="timer-label">COUNTDOWN</div>
     <div id="timer-time">00:00</div>
   </div>
+
+  <!-- User-configured custom widgets go here -->
+  <div id="custom-widgets"></div>
 </div>
 
 <!-- z-40: balloons, stickers, confetti -->
@@ -1501,6 +1557,7 @@ function handleState(path, value) {
     case 'crowd.energy':
       state.crowdEnergy = value;
       setCrowdEnergy(value);
+      refreshCounterWidgets();
       break;
     case 'crowd.combo':
       if (value) showCombo(value);
@@ -1509,14 +1566,133 @@ function handleState(path, value) {
       state.goals = value;
       renderGoals(value);
       updateGoalProgress(value, state.session);
+      refreshCounterWidgets();
       break;
     case 'leaderboard':
+      state.leaderboard = value;
       renderLeaderboard(value);
+      refreshCounterWidgets();
+      break;
+    case 'chatters':
+      state.chatters = value;
+      refreshRecentWidgets();
       break;
     case 'session':
       state.session = value;
       updateGoalProgress(state.goals, value);
+      refreshCounterWidgets();
       break;
+    case 'overlay.widgets':
+      state.widgets = value || [];
+      renderCustomWidgets();
+      applyPositions(state.positions);
+      break;
+  }
+}
+
+// ═══════════════════════════════════════════════════════ Custom widgets
+state.widgets   = [];
+state.positions = {};
+state.recents   = { follow: null, sub: null, cheer: null, raid: null };
+
+function renderCustomWidgets() {
+  const host = document.getElementById('custom-widgets');
+  if (!host) return;
+  host.innerHTML = '';
+  for (const w of state.widgets) {
+    const el = document.createElement('div');
+    el.className = 'custom-widget draggable';
+    el.id = w.id;
+    el.dataset.type = w.type;
+    el.dataset.placeholder = (w.type || 'Widget').toUpperCase();
+    const cfg = w.config || {};
+    if (cfg.color)     el.style.color       = cfg.color;
+    if (cfg.bgColor)   el.style.background  = cfg.bgColor;
+    if (cfg.fontSize)  el.style.setProperty('--cw-font', cfg.fontSize + 'px');
+
+    if (w.type === 'counter' || w.type === 'recent') {
+      const label = document.createElement('div');
+      label.className = 'cw-label';
+      label.textContent = cfg.label || (w.type === 'recent' ? 'LATEST' : 'COUNT');
+      const val = document.createElement('div');
+      val.className = 'cw-value';
+      val.style.fontSize = (cfg.fontSize || 32) + 'px';
+      val.id = 'cw-val-' + w.id;
+      val.textContent = w.type === 'counter' ? '0' : '—';
+      el.append(label, val);
+    } else if (w.type === 'text') {
+      const val = document.createElement('div');
+      val.className = 'cw-value';
+      val.style.fontSize = (cfg.fontSize || 36) + 'px';
+      val.textContent = cfg.text || 'TEXT';
+      el.appendChild(val);
+    } else if (w.type === 'hot-button') {
+      const label = document.createElement('div');
+      label.className = 'cw-label';
+      label.textContent = cfg.label || '▶';
+      label.style.fontSize = (cfg.fontSize || 28) + 'px';
+      label.style.color    = cfg.color || '#FFD700';
+      label.style.letterSpacing = '0.05em';
+      label.style.textTransform = 'none';
+      el.appendChild(label);
+      el.addEventListener('click', (e) => {
+        if (layoutMode) return; // in layout mode, click is for drag selection
+        e.stopPropagation();
+        ws?.send?.(JSON.stringify({ type: '_overlay.widget-trigger', id: w.id }));
+        el.classList.remove('pulse'); void el.offsetWidth; el.classList.add('pulse');
+      });
+    } else if (w.type === 'event-badge') {
+      const label = document.createElement('div');
+      label.className = 'cw-label';
+      label.textContent = cfg.label || (cfg.eventType || 'EVENT');
+      el.appendChild(label);
+    }
+
+    host.appendChild(el);
+  }
+  refreshCounterWidgets();
+}
+
+function refreshCounterWidgets() {
+  for (const w of state.widgets) {
+    if (w.type !== 'counter') continue;
+    const el = document.getElementById('cw-val-' + w.id);
+    if (!el) continue;
+    const metric = w.config?.metric || '';
+    const v = readMetric(metric);
+    el.textContent = (v ?? 0).toLocaleString ? v.toLocaleString() : String(v ?? 0);
+  }
+}
+
+function refreshRecentWidgets() {
+  for (const w of state.widgets) {
+    if (w.type !== 'recent') continue;
+    const el = document.getElementById('cw-val-' + w.id);
+    if (!el) continue;
+    const user = (state.chatters || [])[0];
+    el.textContent = user ?? '—';
+  }
+}
+
+function readMetric(path) {
+  if (!path) return 0;
+  const parts = path.split('.');
+  let obj = { session: state.session, crowd: { energy: state.crowdEnergy }, leaderboard: state.leaderboard ?? {}, goals: state.goals };
+  for (const k of parts) obj = obj?.[k];
+  return obj ?? 0;
+}
+
+function applyPositions(positions) {
+  state.positions = positions || {};
+  if (!positions) return;
+  for (const [id, pos] of Object.entries(positions)) {
+    const el = document.getElementById(id);
+    if (!el) continue;
+    el.style.left   = `${pos.x}%`;
+    el.style.top    = `${pos.y}%`;
+    el.style.bottom = 'auto';
+    el.style.right  = 'auto';
+    el.style.transform = 'none'; // clear any default centering
   }
 }
 
@@ -1570,18 +1746,7 @@ window.addEventListener('mouseup', () => {
   dragTarget = null;
 });
 
-function applyPositions(positions) {
-  if (!positions) return;
-  Object.entries(positions).forEach(([id, pos]) => {
-    const el = document.getElementById(id);
-    if (!el) return;
-    el.style.left = `${pos.x}%`;
-    el.style.top  = `${pos.y}%`;
-    el.style.bottom = 'auto';
-    el.style.right  = 'auto';
-    el.style.transform = 'none'; // Clear any default centering transforms
-  });
-}
+// (applyPositions defined earlier in the custom-widgets block.)
 
 // ═══════════════════════════════════════════════════════ Demo Mode
 

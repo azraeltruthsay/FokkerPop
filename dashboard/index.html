@@ -1115,6 +1115,22 @@ html, body {
           <iframe id="layout-preview-frame" src="/?demo=0" title="Layout Editor Preview" style="display:block; width:100%; aspect-ratio:16/9; border:none;"></iframe>
         </div>
       </div>
+
+      <div class="card">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <div class="card-title" style="margin:0;">Custom Widgets</div>
+          <div style="display:flex; gap:6px;">
+            <button class="btn btn-ghost btn-sm" onclick="addWidget('counter')">+ Counter</button>
+            <button class="btn btn-ghost btn-sm" onclick="addWidget('text')">+ Text</button>
+            <button class="btn btn-ghost btn-sm" onclick="addWidget('recent')">+ Latest Chatter</button>
+            <button class="btn btn-ghost btn-sm" onclick="addWidget('hot-button')">+ Hot Button</button>
+          </div>
+        </div>
+        <p style="font-size:.78rem; color:var(--text-dim); margin:8px 0 12px;">
+          Custom overlay widgets save to <code>widgets.json</code> and appear in every overlay (Test Effects preview, Pop-out Editor, OBS). Drag in the preview above with Drag Mode on to position them. <strong>Counter</strong> binds to a metric path like <code>session.subCount</code> or <code>leaderboard.bits.TopUser</code>. <strong>Text</strong> is a static label. <strong>Hot Button</strong> fires a chosen effect when clicked in OBS (via right-click → Interact) or in the preview.
+        </p>
+        <div id="widget-list"></div>
+      </div>
     </div>
 
     <!-- ════════════════════════ CONFIG PAGE -->

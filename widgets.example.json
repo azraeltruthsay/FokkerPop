@@ -1,0 +1,14 @@
+[
+  {
+    "id": "w-sample-counter",
+    "type": "counter",
+    "x": 40,
+    "y": 4,
+    "config": {
+      "label": "SUBS TODAY",
+      "metric": "session.subCount",
+      "fontSize": 38,
+      "color": "#9147FF"
+    }
+  }
+]

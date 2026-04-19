@@ -28,7 +28,9 @@ const goals    = loadAndEnsureJson('goals.json',   []);
 const redeems  = loadAndEnsureJson('redeems.json', {});
 const commands = loadAndEnsureJson('commands.json', {});
 const flows    = loadAndEnsureJson('flows.json',   []);
+const widgets  = loadAndEnsureJson('widgets.json', []);
 state.set('goals', goals);
+state.set('overlay.widgets', widgets);
 flowEngine.setFlows(flows);
 
 const commandCooldowns = new Map();
@@ -514,6 +516,30 @@ const httpServer = createServer((req, res) => {
     return;
   }
 
+  if (path === '/api/widgets' && req.method === 'GET') {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    return res.end(JSON.stringify(widgets));
+  }
+
+  if (path === '/api/widgets' && req.method === 'POST') {
+    let body = '';
+    req.on('data', d => { body += d; if (body.length > 65536) req.destroy(); });
+    req.on('end', () => {
+      try {
+        const incoming = JSON.parse(body);
+        if (!Array.isArray(incoming)) throw new Error('widgets must be an array');
+        widgets.length = 0;
+        widgets.push(...incoming);
+        state.set('overlay.widgets', widgets);
+        writeFileSync(join(ROOT, 'widgets.json'), JSON.stringify(widgets, null, 2));
+        // Broadcast to overlays AND dashboards so every preview iframe rerenders.
+        broadcastState('overlay.widgets', widgets);
+        res.writeHead(200); res.end('{"ok":true}');
+      } catch (err) { res.writeHead(400); res.end(err.message); }
+    });
+    return;
+  }
+
   if (path === '/api/assets' && req.method === 'GET') {
     rebuildSoundSet();
     const assets = { sounds: [], stickers: [], characters: [] };
@@ -704,13 +730,31 @@ wss.on('connection', (ws, req) => {
         send(ws, { type: 'state', path: 'goals',        value: state.get('goals')         });
         send(ws, { type: 'state', path: 'leaderboard',  value: state.get('leaderboard')   });
         send(ws, { type: 'state', path: 'session',      value: state.get('session')        });
+        send(ws, { type: 'state', path: 'chatters',     value: state.get('chatters') ?? [] });
         send(ws, { type: 'state', path: 'overlay.positions',  value: state.get('overlay.positions') });
         send(ws, { type: 'state', path: 'overlay.layoutMode', value: layoutMode });
+        send(ws, { type: 'state', path: 'overlay.widgets',    value: widgets });
       }
       return;
     }
 
-    if (!dashboards.has(ws)) return;  // only dashboard can send commands
+    // Overlays can only fire a hot-button widget they're hosting (server looks up the widget).
+    if (!dashboards.has(ws)) {
+      if (msg.type === '_overlay.widget-trigger' && typeof msg.id === 'string') {
+        const w = widgets.find(w => w.id === msg.id);
+        if (w?.type === 'hot-button' && w.config?.effect) {
+          broadcastEffect(w.config.effect, w.config.payload ?? {}, true);
+        }
+      }
+      if (msg.type === '_dashboard.save-position') {
+        // allow overlays to save drag positions too (layout mode)
+        const positions = state.get('overlay.positions') ?? {};
+        positions[msg.id] = { x: msg.x, y: msg.y };
+        state.set('overlay.positions', positions);
+        broadcastState('overlay.positions', positions);
+      }
+      return;
+    }
 
     switch (msg.type) {
       case '_dashboard.test-event':

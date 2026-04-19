@@ -347,6 +347,7 @@ function applyStateUpdate(path, value) {
   }
   if (path === 'update.available') renderUpdateBanner(value);
   if (path === 'obs.streaming') handleStreamingChange(!!value);
+  if (path === 'overlay.widgets') { widgets = value || []; renderWidgetList(); }
 }
 
 let prevStreaming = false;
@@ -386,6 +387,93 @@ window.saveAutoUpdate = function (enabled) {
     if (!r.ok) alert('Could not save Auto-Install preference.');
   });
 };
+
+// ═══════════════════════════════════════════════ Custom widgets
+let widgets = [];
+
+async function loadWidgets() {
+  const r = await fetch('/api/widgets').catch(() => null);
+  if (!r?.ok) return;
+  widgets = await r.json();
+  renderWidgetList();
+}
+
+function saveWidgets() {
+  return fetch('/api/widgets', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(widgets) });
+}
+
+const EFFECT_OPTIONS = ['balloon','firework','firework-salvo','confetti','sticker-rain','crowd-explosion','alert-banner'];
+
+window.addWidget = function (type) {
+  const id = 'w-' + Date.now().toString(36);
+  const base = { id, type, x: 40, y: 10 };
+  if (type === 'counter')    base.config = { label: 'SUBS TODAY', metric: 'session.subCount', fontSize: 36, color: '#9147FF' };
+  if (type === 'text')       base.config = { text: 'STARTING SOON', fontSize: 48, color: '#FFD700' };
+  if (type === 'recent')     base.config = { label: 'LATEST CHATTER', fontSize: 24, color: '#6BCB77' };
+  if (type === 'hot-button') base.config = { label: '🎆 FIRE', effect: 'firework-salvo', payload: { count: 3 }, fontSize: 28, color: '#FFD700' };
+  widgets.push(base);
+  saveWidgets().then(renderWidgetList);
+};
+
+window.deleteWidget = function (id) {
+  if (!confirm('Delete this widget?')) return;
+  widgets = widgets.filter(w => w.id !== id);
+  saveWidgets().then(renderWidgetList);
+};
+
+window.updateWidgetField = function (id, field, value) {
+  const w = widgets.find(w => w.id === id);
+  if (!w) return;
+  w.config = w.config || {};
+  if (field === 'fontSize') value = parseInt(value, 10) || 0;
+  if (field === 'payload') { try { value = JSON.parse(value); } catch { return; } }
+  w.config[field] = value;
+  clearTimeout(updateWidgetField._t);
+  updateWidgetField._t = setTimeout(saveWidgets, 300);
+};
+
+function renderWidgetList() {
+  const host = document.getElementById('widget-list');
+  if (!host) return;
+  if (!widgets.length) { host.innerHTML = '<p style="color:var(--text-dim); font-size:.82rem;">No widgets yet. Add one from the buttons above.</p>'; return; }
+
+  host.innerHTML = widgets.map(w => {
+    const c = w.config || {};
+    const typeLabel = { counter: 'Counter', text: 'Text', recent: 'Latest Chatter', 'hot-button': 'Hot Button' }[w.type] || w.type;
+    const body = (() => {
+      if (w.type === 'counter') return `
+        <input class="input-field" value="${esc(c.label ?? '')}" placeholder="Label" oninput="updateWidgetField('${w.id}','label',this.value)">
+        <input class="input-field" value="${esc(c.metric ?? '')}" placeholder="Metric path (e.g. session.subCount)" oninput="updateWidgetField('${w.id}','metric',this.value)" style="font-family:monospace;">`;
+      if (w.type === 'text') return `
+        <input class="input-field" value="${esc(c.text ?? '')}" placeholder="Text" oninput="updateWidgetField('${w.id}','text',this.value)">`;
+      if (w.type === 'recent') return `
+        <input class="input-field" value="${esc(c.label ?? '')}" placeholder="Label" oninput="updateWidgetField('${w.id}','label',this.value)">`;
+      if (w.type === 'hot-button') return `
+        <input class="input-field" value="${esc(c.label ?? '')}" placeholder="Button label / emoji" oninput="updateWidgetField('${w.id}','label',this.value)" style="max-width:180px;">
+        <select class="input-field" onchange="updateWidgetField('${w.id}','effect',this.value)">
+          ${EFFECT_OPTIONS.map(e => `<option value="${e}" ${e === c.effect ? 'selected' : ''}>${e}</option>`).join('')}
+        </select>
+        <input class="input-field" value='${esc(JSON.stringify(c.payload ?? {}))}' placeholder='{"count":3}' oninput="updateWidgetField('${w.id}','payload',this.value)" style="font-family:monospace;">`;
+      return '';
+    })();
+    return `
+      <div class="card" style="margin-bottom:10px; padding:12px; background:var(--surface2);">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+          <div style="font-size:.65rem; font-weight:800; color:var(--accent2); letter-spacing:.1em; text-transform:uppercase;">${typeLabel} <span style="color:var(--text-dim); font-weight:500; margin-left:6px;">${w.id}</span></div>
+          <button class="btn btn-ghost btn-sm" onclick="deleteWidget('${w.id}')" style="color:var(--red);">Delete</button>
+        </div>
+        <div class="input-row">${body}</div>
+        <div class="input-row" style="margin-top:8px;">
+          <input class="input-field" type="number" value="${c.fontSize ?? 32}" oninput="updateWidgetField('${w.id}','fontSize',this.value)" style="max-width:100px;" title="Font size (px)">
+          <input class="input-field" value="${esc(c.color ?? '#FFFFFF')}" oninput="updateWidgetField('${w.id}','color',this.value)" style="max-width:120px; font-family:monospace;" title="Text color">
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+// Load widget list when dashboard connects
+loadWidgets();
 
 window.applyUpdate = function () {
   // Stream-aware gating — installing restarts the overlay, which would blip on stream.
