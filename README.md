@@ -53,6 +53,17 @@ The easiest way to update is using the **Auto-Updater**:
 
 Alternatively, you can download the `.zip` and manually extract it over your existing folder.
 
+## Support & Feedback
+
+If you run into a bug or have a cool idea for a new feature:
+
+1.  Go to the **[Issues Tab](../../issues)**
+2.  Click **"New Issue"**
+3.  Choose **🐛 Bug Report** or **🚀 Feature Request**
+4.  Fill in the blanks!
+
+I've added professional templates to make it nice and easy for you to send us what we need to help out.
+
 ## Customisation
 
 ### Sound Effects
