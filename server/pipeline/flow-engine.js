@@ -76,10 +76,18 @@ export class FlowEngine {
             bus.publish({ source: 'studio', type: 'obs.set-scene', scene: data.scene, isTest: event.isTest });
           } else if (node.action === 'showBanner') {
             broadcastEffect('alert-banner', { tier: data.tier || 'B', icon: data.icon || '📢', text: data.text, subText: data.subText }, event.isTest);
-          } else if (node.action === 'setEnergy') {
-            const next = Math.max(0, Math.min(100, Number(data.amount)));
+          } else if (node.action === 'adjustEnergy') {
+            const current = state.get('crowd.energy') ?? 0;
+            const amount  = Number(data.amount);
+            const mode    = data.mode || 'set';
+            
+            let next = amount;
+            if (mode === 'add')      next = current + amount;
+            if (mode === 'subtract') next = current - amount;
+
+            next = Math.max(0, Math.min(100, next));
             state.set('crowd.energy', next);
-            bus.publish({ source: 'studio', type: 'state', path: 'crowd.energy', value: next }); // notify dash/overlay
+            bus.publish({ source: 'studio', type: 'state', path: 'crowd.energy', value: next });
             if (next >= 100) broadcastEffect('crowd-explosion', {}, event.isTest);
           } else if (node.action === 'updateStat') {
             if (data.path) state.increment(data.path, Number(data.by ?? 1));
@@ -88,6 +96,13 @@ export class FlowEngine {
             const roll  = Math.floor(Math.random() * sides) + 1;
             ctx.exprCtx.roll = roll; // Inject into context for future nodes
             broadcastEffect('dice-roll', { result: roll, sides, user: event.payload?.user }, event.isTest);
+          } else if (node.action === 'fireEvent') {
+            let payload = data.payload;
+            if (typeof payload === 'string') {
+              try { payload = JSON.parse(payload); } catch { /* fail soft */ }
+            }
+            // Re-inject a new event into the bus
+            bus.publish({ source: 'flow-engine', type: data.eventType, payload, isTest: event.isTest });
           }
           break;
 
@@ -98,16 +113,13 @@ export class FlowEngine {
             const prob = (data.probability ?? 50) / 100;
             outputPort = Math.random() < prob ? 'true' : 'false';
           } else if (node.action === 'filter') {
-            // Field can be a dotted path or a full {{ expression }}
-            const val    = node.data?.field?.includes('{{')
-              ? resolve(node.data.field, exprCtx)
-              : this.getNested(event, node.data?.field);
+            const val    = data.field;
             const target = data.value;
             const op     = data.operator || '==';
 
             let pass = false;
-            if (op === '==') pass = val === target;
-            if (op === '!=') pass = val !== target;
+            if (op === '==') pass = val == target;
+            if (op === '!=') pass = val != target;
             if (op === '>')  pass = Number(val) >  Number(target);
             if (op === '<')  pass = Number(val) <  Number(target);
             if (op === '>=') pass = Number(val) >= Number(target);
@@ -115,6 +127,12 @@ export class FlowEngine {
 
             if (!pass) return;
             outputPort = 'true';
+          } else if (node.action === 'match') {
+            const val = data.field;
+            if (val == data.match1) outputPort = 'case1';
+            else if (val == data.match2) outputPort = 'case2';
+            else if (val == data.match3) outputPort = 'case3';
+            else outputPort = 'default';
           }
           break;
       }

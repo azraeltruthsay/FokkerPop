@@ -1,5 +1,9 @@
 'use strict';
 
+// Global state
+window.assets = { sounds: [], stickers: [] };
+let appState  = { session: {}, crowd: { energy: 0 }, goals: [], leaderboard: {} };
+
 // Hide loading overlay immediately when script runs
 (function() {
   const $l = document.getElementById('loading-overlay');
@@ -11,12 +15,30 @@ function dashSend(obj) {
 }
 window.dashSend = dashSend;
 
+window.fireEffect = function (effect, payload, btn) {
+  if (btn) {
+    btn.classList.remove('fired');
+    void btn.offsetWidth;
+    btn.classList.add('fired');
+    setTimeout(() => btn.classList.remove('fired'), 350);
+  }
+  dashSend({ type: '_dashboard.effect', effect, payload });
+};
+
+window.fireEvent = function (type, payload, btn) {
+  if (btn) {
+    btn.classList.remove('fired');
+    void btn.offsetWidth;
+    btn.classList.add('fired');
+    setTimeout(() => btn.classList.remove('fired'), 350);
+  }
+  dashSend({ type: '_dashboard.test-event', event: { type, source: 'dashboard', payload } });
+};
+
 // ═══════════════════════════════════════════════ WebSocket
 
 let ws        = null;
 let retries   = 0;
-let appState  = { session: {}, crowd: { energy: 0 }, goals: [], leaderboard: {} };
-let assets    = { sounds: [], stickers: [] };
 
 const WS_URL  = `ws://${location.hostname}:${location.port || 4747}`;
 const $badge  = document.getElementById('ws-badge');
@@ -26,7 +48,7 @@ const $dot    = document.getElementById('live-dot');
 
 function connect() {
   fetch('/api/assets').then(r => r.json()).then(a => {
-    assets = a;
+    window.assets = a;
     populateGallery();
   }).catch(() => {});
   
@@ -558,26 +580,13 @@ document.getElementById('log-filters')?.addEventListener('click', (e) => {
 
 // ═══════════════════════════════════════════════ Effect / Event helpers
 
-function triggerRipple(btn) {
-  if (!btn) return;
-  btn.classList.remove('fired');
-  void btn.offsetWidth;
-  btn.classList.add('fired');
-  setTimeout(() => btn.classList.remove('fired'), 350);
-}
-
-window.fireEffect = function (effect, payload, btn) {
-  triggerRipple(btn);
-  dashSend({ type: '_dashboard.effect', effect, payload });
-};
-
-window.fireEvent = function (type, payload, btn) {
-  triggerRipple(btn);
-  dashSend({ type: '_dashboard.test-event', event: { type, source: 'dashboard', payload } });
-};
-
 window.fireCombo = function (level, label, btn) {
-  triggerRipple(btn);
+  if (btn) {
+    btn.classList.remove('fired');
+    void btn.offsetWidth;
+    btn.classList.add('fired');
+    setTimeout(() => btn.classList.remove('fired'), 350);
+  }
   dashSend({ type: '_dashboard.effect', effect: 'combo-display', payload: { level, label, expiresAt: Date.now() + 20000, count: level * 2 } });
 };
 

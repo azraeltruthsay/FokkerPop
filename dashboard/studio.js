@@ -8,6 +8,7 @@
 let flows = [];
 let activeFlow = null;
 let activeNode = null;
+let clipboardNode = null;
 let zoom = 1;
 let offset = { x: 0, y: 0 };
 
@@ -103,13 +104,23 @@ function renderCanvas() {
       <div class="studio-port out" data-port="next"></div>
     `;
 
-    // Multi-port handling for Chance logic
+    // Multi-port handling for Chance/Match logic
     if (node.action === 'chance') {
       const outPort = div.querySelector('.out');
       if (outPort) outPort.remove();
       div.innerHTML += `
         <div class="studio-port out" data-port="true" style="top:30%"><span class="studio-port__label">Yes</span></div>
         <div class="studio-port out" data-port="false" style="top:70%"><span class="studio-port__label">No</span></div>
+      `;
+    }
+    if (node.action === 'match') {
+      const outPort = div.querySelector('.out');
+      if (outPort) outPort.remove();
+      div.innerHTML += `
+        <div class="studio-port out" data-port="case1" style="top:20%"><span class="studio-port__label">Case 1</span></div>
+        <div class="studio-port out" data-port="case2" style="top:40%"><span class="studio-port__label">Case 2</span></div>
+        <div class="studio-port out" data-port="case3" style="top:60%"><span class="studio-port__label">Case 3</span></div>
+        <div class="studio-port out" data-port="default" style="top:80%"><span class="studio-port__label">Default</span></div>
       `;
     }
     if (node.action === 'filter') {
@@ -260,10 +271,22 @@ function onWheel(e) {
 }
 
 function onKeyDown(e) {
+  if (e.target !== document.body) return; // not while typing
+
   if (!activeNode) return;
-  // Delete or Backspace removes the selected node (guard: not while typing in an input)
-  if ((e.key === 'Delete' || e.key === 'Backspace') && e.target === document.body) {
+  // Delete or Backspace removes the selected node
+  if (e.key === 'Delete' || e.key === 'Backspace') {
     window.deleteActiveNode();
+  }
+
+  // Ctrl+C Copy
+  if ((e.ctrlKey || e.metaKey) && e.key === 'c') {
+    window.copyNode(activeNode.id);
+  }
+
+  // Ctrl+V Paste
+  if ((e.ctrlKey || e.metaKey) && e.key === 'v') {
+    window.pasteNode();
   }
 }
 
@@ -283,6 +306,7 @@ function onContextMenu(e) {
       selectNode(node);
       html = `
         <div class="ctx-header">${esc(node.label || node.action || node.type)}</div>
+        <div class="ctx-item" onclick="copyNode('${nodeId}')">📄 Copy Node (Ctrl+C)</div>
         <div class="ctx-item" onclick="cloneNode('${nodeId}')">👯 Clone Node</div>
         <div class="ctx-item" onclick="disconnectNode('${nodeId}')">🔌 Disconnect All</div>
         <div class="ctx-divider"></div>
@@ -292,6 +316,7 @@ function onContextMenu(e) {
   } else {
     html = `
       <div class="ctx-header">Add Component</div>
+      ${clipboardNode ? `<div class="ctx-item" onclick="pasteNode(${x}, ${y})">📋 Paste Node (Ctrl+V)</div>` : ''}
       <div class="ctx-item" onclick="addNode('action', 'spawnEffect', ${x}, ${y})">🎇 Effect</div>
       <div class="ctx-item" onclick="addNode('action', 'showBanner', ${x}, ${y})">📢 Banner</div>
       <div class="ctx-item" onclick="addNode('action', 'playSound', ${x}, ${y})">🔊 Sound</div>
@@ -363,6 +388,32 @@ window.duplicateActiveFlow = function() {
   hideContextMenu();
   renderFlowList();
   loadFlow(newFlow.id);
+};
+
+window.copyNode = function(id) {
+  const node = activeFlow?.nodes?.[id];
+  if (!node) return;
+  clipboardNode = JSON.parse(JSON.stringify(node));
+  hideContextMenu();
+};
+
+window.pasteNode = function(startX, startY) {
+  if (!activeFlow || !clipboardNode) return;
+  const id = 'n' + Date.now();
+  const newNode = JSON.parse(JSON.stringify(clipboardNode));
+  newNode.id = id;
+  
+  if (startX !== undefined) {
+    newNode.x = (startX - offset.x) / zoom;
+    newNode.y = (startY - offset.y) / zoom;
+  } else {
+    newNode.x += 40;
+    newNode.y += 40;
+  }
+
+  activeFlow.nodes[id] = newNode;
+  hideContextMenu();
+  selectNode(newNode);
 };
 
 window.importExampleFlows = async function() {
@@ -486,8 +537,9 @@ function renderProps() {
     html += exprField('Icon', 'icon', n.data.icon || '📢');
   }
 
-  if (n.action === 'setEnergy') {
-    html += exprField('Value (0–100) or {{ expr }}', 'amount', n.data.amount ?? 100);
+  if (n.action === 'adjustEnergy') {
+    html += selectField('Mode', 'mode', ['set', 'add', 'subtract'], n.data.mode || 'set');
+    html += exprField('Amount (0–100) or {{ expr }}', 'amount', n.data.amount ?? 100);
   }
 
   if (n.action === 'rollDice') {
@@ -526,10 +578,25 @@ function renderProps() {
     html += exprField('Scene Name', 'scene', n.data.scene || '');
   }
 
+  if (n.action === 'fireEvent') {
+    const triggerOptions = ['sub', 'follow', 'cheer', 'raid', 'redeem', 'chat'];
+    html += selectField('Event to Fire', 'eventType', triggerOptions, n.data.eventType || 'redeem');
+    html += exprField('Payload (JSON)', 'payload', JSON.stringify(n.data.payload || {}));
+    html += `<div style="font-size:0.6rem; color:var(--text-dim); margin-top:-8px; margin-bottom:8px;">Example: {"rewardTitle":"Roll for Luck"}</div>`;
+  }
+
   if (n.action === 'filter') {
     html += exprField('Value to check', 'field', n.data.field || '');
     html += selectField('Comparison', 'operator', ['==', '!=', '>', '<', '>=', '<='], n.data.operator || '==');
     html += exprField('Target Value', 'value', n.data.value || '');
+  }
+
+  if (n.action === 'match') {
+    html += exprField('Value to Check (e.g. {{ roll }})', 'field', n.data.field || '');
+    html += exprField('Case 1 equals...', 'match1', n.data.match1 || '');
+    html += exprField('Case 2 equals...', 'match2', n.data.match2 || '');
+    html += exprField('Case 3 equals...', 'match3', n.data.match3 || '');
+    html += `<div style="font-size:0.6rem; color:var(--text-dim); margin-top:8px;">Matches land on Case ports; others land on Default.</div>`;
   }
 
   html += EXPR_REF;
