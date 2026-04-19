@@ -1405,9 +1405,24 @@ function handleMessage(msg) {
     case 'state':
       handleState(msg.path, msg.value);
       break;
+    case 'event-log':
+      flashEventBadges(msg.event);
+      break;
     case 'ping':
       ws?.send(JSON.stringify({ type: 'pong' }));
       break;
+  }
+}
+
+function flashEventBadges(event) {
+  if (!event?.type || !Array.isArray(state.widgets)) return;
+  for (const w of state.widgets) {
+    if (w.type !== 'event-badge') continue;
+    if (w.config?.eventType && w.config.eventType !== event.type) continue;
+    const el = document.getElementById(w.id);
+    if (!el) continue;
+    el.classList.remove('fire'); void el.offsetWidth; el.classList.add('fire');
+    setTimeout(() => el.classList.remove('fire'), 900);
   }
 }
 
@@ -1645,12 +1660,23 @@ function renderCustomWidgets() {
       const label = document.createElement('div');
       label.className = 'cw-label';
       label.textContent = cfg.label || (cfg.eventType || 'EVENT');
+      label.style.fontSize = (cfg.fontSize || 22) + 'px';
+      label.style.color    = cfg.color || '#FFD700';
+      label.style.letterSpacing = '0.05em';
+      label.style.textTransform = 'none';
+      label.style.fontWeight = '900';
       el.appendChild(label);
     }
+
+    // Per-widget visibility toggle (default true). Hidden widgets stay hidden
+    // even in layout mode so LilFokker can park retired widgets without
+    // deleting them.
+    if (cfg.visible === false) el.style.display = 'none';
 
     host.appendChild(el);
   }
   refreshCounterWidgets();
+  refreshRecentWidgets();
 }
 
 function refreshCounterWidgets() {
@@ -1683,8 +1709,23 @@ function readMetric(path) {
 }
 
 function applyPositions(positions) {
-  state.positions = positions || {};
-  if (!positions) return;
+  positions = positions || {};
+  const prev = state.positions || {};
+  state.positions = positions;
+
+  // Clear inline positioning for any element that used to have a saved position
+  // but no longer does (covers "Reset Positions" and deleting a single widget).
+  for (const id of Object.keys(prev)) {
+    if (positions[id]) continue;
+    const el = document.getElementById(id);
+    if (!el) continue;
+    el.style.left = '';
+    el.style.top = '';
+    el.style.bottom = '';
+    el.style.right = '';
+    el.style.transform = '';
+  }
+
   for (const [id, pos] of Object.entries(positions)) {
     const el = document.getElementById(id);
     if (!el) continue;
@@ -1692,7 +1733,7 @@ function applyPositions(positions) {
     el.style.top    = `${pos.y}%`;
     el.style.bottom = 'auto';
     el.style.right  = 'auto';
-    el.style.transform = 'none'; // clear any default centering
+    el.style.transform = 'none';
   }
 }
 

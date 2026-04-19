@@ -180,6 +180,8 @@ bus.on('*', async (event) => {
   }
 
   broadcast(dashboards, { type: 'event-log', event });
+  // Overlays need the event too so event-badge widgets can flash on matching types.
+  broadcast(overlays,   { type: 'event-log', event });
 });
 
 function applyBoost(event) {

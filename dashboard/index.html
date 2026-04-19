@@ -1093,9 +1093,9 @@ html, body {
     <div class="page" id="page-layout">
       <div class="page-header">
         <div class="page-title">Overlay Layout</div>
-        <div style="display:flex; gap:10px; align-items:center;">
-          <label class="toggle" style="display:inline-flex; align-items:center; gap:8px;" title="Enable drag to reposition widgets">
-            <span style="font-size:.72rem; font-weight:800; color:var(--text-dim); letter-spacing:.08em; text-transform:uppercase;">Drag Mode</span>
+        <div style="display:flex; gap:12px; align-items:center;">
+          <span style="font-size:.72rem; font-weight:800; color:var(--text-dim); letter-spacing:.08em; text-transform:uppercase;">Drag Mode</span>
+          <label class="toggle" title="Enable drag to reposition widgets">
             <input type="checkbox" id="layout-mode-cb-2" onchange="dashSend({type:'_dashboard.layout-mode',active:this.checked})">
             <div class="toggle-slider"></div>
           </label>
@@ -1119,10 +1119,11 @@ html, body {
       <div class="card">
         <div style="display:flex; justify-content:space-between; align-items:center;">
           <div class="card-title" style="margin:0;">Custom Widgets</div>
-          <div style="display:flex; gap:6px;">
+          <div style="display:flex; gap:6px; flex-wrap:wrap;">
             <button class="btn btn-ghost btn-sm" onclick="addWidget('counter')">+ Counter</button>
             <button class="btn btn-ghost btn-sm" onclick="addWidget('text')">+ Text</button>
             <button class="btn btn-ghost btn-sm" onclick="addWidget('recent')">+ Latest Chatter</button>
+            <button class="btn btn-ghost btn-sm" onclick="addWidget('event-badge')">+ Event Badge</button>
             <button class="btn btn-ghost btn-sm" onclick="addWidget('hot-button')">+ Hot Button</button>
           </div>
         </div>

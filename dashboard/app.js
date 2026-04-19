@@ -403,14 +403,16 @@ function saveWidgets() {
 }
 
 const EFFECT_OPTIONS = ['balloon','firework','firework-salvo','confetti','sticker-rain','crowd-explosion','alert-banner'];
+const EVENT_OPTIONS  = ['follow','sub','sub.gifted','cheer','raid','hype-train.start','hype-train.progress','hype-train.end','chat','redeem'];
 
 window.addWidget = function (type) {
   const id = 'w-' + Date.now().toString(36);
   const base = { id, type, x: 40, y: 10 };
-  if (type === 'counter')    base.config = { label: 'SUBS TODAY', metric: 'session.subCount', fontSize: 36, color: '#9147FF' };
-  if (type === 'text')       base.config = { text: 'STARTING SOON', fontSize: 48, color: '#FFD700' };
-  if (type === 'recent')     base.config = { label: 'LATEST CHATTER', fontSize: 24, color: '#6BCB77' };
-  if (type === 'hot-button') base.config = { label: '🎆 FIRE', effect: 'firework-salvo', payload: { count: 3 }, fontSize: 28, color: '#FFD700' };
+  if (type === 'counter')     base.config = { visible: true, label: 'SUBS TODAY', metric: 'session.subCount', fontSize: 36, color: '#9147FF' };
+  if (type === 'text')        base.config = { visible: true, text: 'STARTING SOON', fontSize: 48, color: '#FFD700' };
+  if (type === 'recent')      base.config = { visible: true, label: 'LATEST CHATTER', fontSize: 24, color: '#6BCB77' };
+  if (type === 'hot-button')  base.config = { visible: true, label: '🎆 FIRE', effect: 'firework-salvo', payload: { count: 3 }, fontSize: 28, color: '#FFD700' };
+  if (type === 'event-badge') base.config = { visible: true, label: '💜 SUB', eventType: 'sub', fontSize: 22, color: '#9147FF' };
   widgets.push(base);
   saveWidgets().then(renderWidgetList);
 };
@@ -427,6 +429,7 @@ window.updateWidgetField = function (id, field, value) {
   w.config = w.config || {};
   if (field === 'fontSize') value = parseInt(value, 10) || 0;
   if (field === 'payload') { try { value = JSON.parse(value); } catch { return; } }
+  if (field === 'visible') value = !!value;
   w.config[field] = value;
   clearTimeout(updateWidgetField._t);
   updateWidgetField._t = setTimeout(saveWidgets, 300);
@@ -439,7 +442,11 @@ function renderWidgetList() {
 
   host.innerHTML = widgets.map(w => {
     const c = w.config || {};
-    const typeLabel = { counter: 'Counter', text: 'Text', recent: 'Latest Chatter', 'hot-button': 'Hot Button' }[w.type] || w.type;
+    const visible = c.visible !== false;
+    const typeLabel = {
+      counter: 'Counter', text: 'Text', recent: 'Latest Chatter',
+      'hot-button': 'Hot Button', 'event-badge': 'Event Badge'
+    }[w.type] || w.type;
     const body = (() => {
       if (w.type === 'counter') return `
         <input class="input-field" value="${esc(c.label ?? '')}" placeholder="Label" oninput="updateWidgetField('${w.id}','label',this.value)">
@@ -454,13 +461,23 @@ function renderWidgetList() {
           ${EFFECT_OPTIONS.map(e => `<option value="${e}" ${e === c.effect ? 'selected' : ''}>${e}</option>`).join('')}
         </select>
         <input class="input-field" value='${esc(JSON.stringify(c.payload ?? {}))}' placeholder='{"count":3}' oninput="updateWidgetField('${w.id}','payload',this.value)" style="font-family:monospace;">`;
+      if (w.type === 'event-badge') return `
+        <input class="input-field" value="${esc(c.label ?? '')}" placeholder="Badge text (e.g. 💜 SUB)" oninput="updateWidgetField('${w.id}','label',this.value)" style="max-width:180px;">
+        <select class="input-field" onchange="updateWidgetField('${w.id}','eventType',this.value)" title="Flashes when an event of this type fires">
+          ${EVENT_OPTIONS.map(e => `<option value="${e}" ${e === c.eventType ? 'selected' : ''}>${e}</option>`).join('')}
+        </select>`;
       return '';
     })();
     return `
-      <div class="card" style="margin-bottom:10px; padding:12px; background:var(--surface2);">
+      <div class="card" style="margin-bottom:10px; padding:12px; background:var(--surface2); ${visible ? '' : 'opacity:0.55;'}">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
           <div style="font-size:.65rem; font-weight:800; color:var(--accent2); letter-spacing:.1em; text-transform:uppercase;">${typeLabel} <span style="color:var(--text-dim); font-weight:500; margin-left:6px;">${w.id}</span></div>
-          <button class="btn btn-ghost btn-sm" onclick="deleteWidget('${w.id}')" style="color:var(--red);">Delete</button>
+          <div style="display:flex; gap:8px; align-items:center;">
+            <label style="display:inline-flex; align-items:center; gap:6px; font-size:.72rem; color:var(--text-dim); cursor:pointer;">
+              <input type="checkbox" ${visible ? 'checked' : ''} onchange="updateWidgetField('${w.id}','visible',this.checked); renderWidgetList();"> visible
+            </label>
+            <button class="btn btn-ghost btn-sm" onclick="deleteWidget('${w.id}')" style="color:var(--red);">Delete</button>
+          </div>
         </div>
         <div class="input-row">${body}</div>
         <div class="input-row" style="margin-top:8px;">
