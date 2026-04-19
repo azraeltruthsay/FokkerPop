@@ -456,13 +456,13 @@ window.addWidget = function (type) {
   if (type === 'hot-button')  base.config = { visible: true, label: '🎆 FIRE', effect: 'firework-salvo', payload: { count: 3 }, fontSize: 28, color: '#FFD700' };
   if (type === 'event-badge') base.config = { visible: true, label: '💜 SUB', eventType: 'sub', fontSize: 22, color: '#9147FF' };
   if (type === 'physics-pit') base.config = {
-    visible: true, size: 18, gravity: 1, width: 320, height: 220, maxAlive: 60,
+    visible: true, autoHide: true, size: 18, gravity: 1, width: 320, height: 220, maxAlive: 60,
     spawns: [
       { triggerEvent: 'sub',   emojis: ['🎈','✨'], count: 6, layer: 1 },
       { triggerEvent: 'cheer', emojis: ['💎'],      count: 4, layer: 2 },
     ],
   };
-  if (type === 'dice')        base.config = { visible: true, sides: 20, triggerEvent: 'redeem', width: 220, height: 220 };
+  if (type === 'dice')        base.config = { visible: true, autoHide: true, sides: 20, triggerEvent: 'redeem', width: 220, height: 220 };
   if (type === 'model-3d')    base.config = { visible: true, modelUrl: '', rotationSpeed: 0.005, scale: 1, reactiveScale: '', width: 300, height: 300 };
   widgets.push(base);
   saveWidgets().then(renderWidgetList);
@@ -583,14 +583,19 @@ function renderWidgetList() {
       }
       return '';
     })();
+    const autoHideTypes = new Set(['physics-pit', 'dice', 'event-badge']);
+    const showAutoHide = autoHideTypes.has(w.type);
     return `
       <div class="card" style="margin-bottom:10px; padding:12px; background:var(--surface2); ${visible ? '' : 'opacity:0.55;'}">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
           <div style="font-size:.65rem; font-weight:800; color:var(--accent2); letter-spacing:.1em; text-transform:uppercase;">${typeLabel} <span style="color:var(--text-dim); font-weight:500; margin-left:6px;">${w.id}</span></div>
-          <div style="display:flex; gap:8px; align-items:center;">
+          <div style="display:flex; gap:10px; align-items:center;">
             <label style="display:inline-flex; align-items:center; gap:6px; font-size:.72rem; color:var(--text-dim); cursor:pointer;">
               <input type="checkbox" ${visible ? 'checked' : ''} onchange="updateWidgetField('${w.id}','visible',this.checked); renderWidgetList();"> visible
             </label>
+            ${showAutoHide ? `<label style="display:inline-flex; align-items:center; gap:6px; font-size:.72rem; color:var(--text-dim); cursor:pointer;" title="Hide until the trigger event fires; fade back out after 8 s">
+              <input type="checkbox" ${c.autoHide ? 'checked' : ''} onchange="updateWidgetField('${w.id}','autoHide',this.checked)"> auto-hide
+            </label>` : ''}
             <button class="btn btn-ghost btn-sm" onclick="deleteWidget('${w.id}')" style="color:var(--red);">Delete</button>
           </div>
         </div>

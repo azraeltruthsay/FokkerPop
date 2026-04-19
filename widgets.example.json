@@ -1,14 +1,102 @@
 [
   {
-    "id": "w-sample-counter",
-    "type": "counter",
-    "x": 40,
-    "y": 4,
+    "id": "w-latest-chatter",
+    "type": "recent",
+    "x": 3, "y": 4,
     "config": {
+      "visible": true,
+      "label": "LATEST CHATTER",
+      "fontSize": 20,
+      "color": "#6BCB77"
+    }
+  },
+  {
+    "id": "w-subs-count",
+    "type": "counter",
+    "x": 3, "y": 16,
+    "config": {
+      "visible": true,
       "label": "SUBS TODAY",
       "metric": "session.subCount",
-      "fontSize": 38,
+      "fontSize": 32,
       "color": "#9147FF"
+    }
+  },
+  {
+    "id": "w-bits-count",
+    "type": "counter",
+    "x": 3, "y": 30,
+    "config": {
+      "visible": true,
+      "label": "BITS TODAY",
+      "metric": "session.bitsTotal",
+      "fontSize": 28,
+      "color": "#00C9FF"
+    }
+  },
+  {
+    "id": "w-badge-follow",
+    "type": "event-badge",
+    "x": 38, "y": 5,
+    "config": {
+      "visible": true,
+      "label": "💚 FOLLOW",
+      "eventType": "follow",
+      "color": "#6BCB77"
+    }
+  },
+  {
+    "id": "w-badge-sub",
+    "type": "event-badge",
+    "x": 52, "y": 5,
+    "config": {
+      "visible": true,
+      "label": "💜 SUB",
+      "eventType": "sub",
+      "color": "#9147FF"
+    }
+  },
+  {
+    "id": "w-badge-cheer",
+    "type": "event-badge",
+    "x": 66, "y": 5,
+    "config": {
+      "visible": true,
+      "label": "💎 CHEER",
+      "eventType": "cheer",
+      "color": "#00C9FF"
+    }
+  },
+  {
+    "id": "w-physics-pit",
+    "type": "physics-pit",
+    "x": 34, "y": 60,
+    "config": {
+      "visible": true,
+      "autoHide": true,
+      "width": 400,
+      "height": 200,
+      "gravity": 1,
+      "size": 22,
+      "maxAlive": 60,
+      "spawns": [
+        { "triggerEvent": "sub",    "emojis": ["🎈","✨","💜"], "count": 6, "layer": 1 },
+        { "triggerEvent": "cheer",  "emojis": ["💎","✨"],       "count": 4, "layer": 2 },
+        { "triggerEvent": "follow", "emojis": ["💚"],            "count": 2, "layer": 3 }
+      ]
+    }
+  },
+  {
+    "id": "w-dice-d20",
+    "type": "dice",
+    "x": 76, "y": 30,
+    "config": {
+      "visible": true,
+      "autoHide": true,
+      "sides": 20,
+      "triggerEvent": "redeem",
+      "width": 220,
+      "height": 220
     }
   }
 ]

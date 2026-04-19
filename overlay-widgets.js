@@ -182,28 +182,41 @@ const diceWidgets = new Map(); // widget id -> { scene, renderer, cleanup }
 
 const DICE_SIDES = [4, 6, 8, 10, 12, 20];
 
-// Build a pentagonal bipyramid (10 planar triangle faces). A real D10 is a
-// pentagonal trapezohedron (kite faces), but kite faces aren't coplanar with
-// the winding three.js produces — the face-normal clustering would end up with
-// ~20 detected faces, not 10. The bipyramid is the simpler 10-sided polyhedron:
-// each face is a true triangle, perfectly flat, distinct normal.
-function buildPentagonalBipyramid(T) {
-  const r = 0.95;    // equator radius
-  const apex = 1.0;  // apex y-distance
-  const top = [0,  apex, 0];
-  const bot = [0, -apex, 0];
-  const eq = [];
+// Build an authentic pentagonal trapezohedron — the real D10 shape. 10 kite
+// faces, each as 2 triangles sharing an apex→belt edge. With these proportions
+// the two triangles of each kite have normals within ~16° of each other (dot
+// ≈ 0.96), so the downstream face clusterer (threshold looser for 10-sided)
+// merges them into a single face while adjacent kites (72° apart) stay
+// distinct. No manual group bookkeeping needed.
+function buildPentagonalTrapezohedron(T) {
+  const r = 0.68;  // belt radius
+  const z = 0.18;  // belt y-height (upper belt at +z, lower at -z)
+  const a = 1.08;  // apex y-distance
+  const top = [0,  a, 0];
+  const bot = [0, -a, 0];
+  const upper = [], lower = [];
   for (let i = 0; i < 5; i++) {
-    const a = (i / 5) * Math.PI * 2;
-    eq.push([r * Math.cos(a), 0, r * Math.sin(a)]);
+    const au = (i / 5) * Math.PI * 2;
+    upper.push([r * Math.cos(au), z, r * Math.sin(au)]);
+    const al = ((i + 0.5) / 5) * Math.PI * 2;
+    lower.push([r * Math.cos(al), -z, r * Math.sin(al)]);
   }
-  // Vertex layout: 0=top, 1=bot, 2..6 = equator
-  const verts = [top, bot, ...eq].flat();
+  // Vertex layout: 0=top apex, 1=bot apex, 2..6 upper belt, 7..11 lower belt
+  const verts = [top, bot, ...upper, ...lower].flat();
   const idx = [];
+  // 5 upper kites (top apex + U_i + L_i + U_{i+1}), each = 2 triangles
   for (let i = 0; i < 5; i++) {
-    const a = 2 + i, b = 2 + ((i + 1) % 5);
-    idx.push(0, a, b);   // upper triangle (CCW viewed from +Y → outward normal)
-    idx.push(1, b, a);   // lower triangle (CCW viewed from -Y → outward normal)
+    const u = 2 + i, uN = 2 + ((i + 1) % 5);
+    const l = 7 + i;
+    idx.push(0, u, l);
+    idx.push(0, l, uN);
+  }
+  // 5 lower kites (bot apex + L_i + U_{i+1} + L_{i+1})
+  for (let i = 0; i < 5; i++) {
+    const uN = 2 + ((i + 1) % 5);
+    const l = 7 + i, lN = 7 + ((i + 1) % 5);
+    idx.push(1, lN, uN);
+    idx.push(1, uN, l);
   }
   const indexed = new T.BufferGeometry();
   indexed.setAttribute('position', new T.Float32BufferAttribute(verts, 3));
@@ -219,7 +232,7 @@ async function buildDieMesh(sides) {
     4:  new T.TetrahedronGeometry(0.95),
     6:  new T.BoxGeometry(1.2, 1.2, 1.2),
     8:  new T.OctahedronGeometry(1),
-    10: buildPentagonalBipyramid(T),
+    10: buildPentagonalTrapezohedron(T),
     12: new T.DodecahedronGeometry(0.95),
     20: new T.IcosahedronGeometry(1),
   }[sides];
@@ -235,14 +248,24 @@ async function buildDieMesh(sides) {
     const n = new T.Vector3().subVectors(b, a).cross(new T.Vector3().subVectors(c, a)).normalize();
     triNormals.push(n);
   }
-  // Cluster triangles whose normals match (within epsilon) to form canonical faces.
+  // Cluster triangles whose normals match within epsilon to form canonical
+  // faces. For D10's trapezohedron the two triangles of a kite have normals
+  // ~16° apart (dot ≈ 0.96), whereas adjacent kites are 72° apart (dot ≈ 0.31),
+  // so a looser threshold merges kite-halves without false collisions.
+  const threshold = sides === 10 ? 0.92 : 0.999;
   const faces = [];
   for (let i = 0; i < triNormals.length; i++) {
     const n = triNormals[i];
-    const existing = faces.find(f => f.normal.dot(n) > 0.999);
-    if (existing) existing.tris.push(i);
-    else faces.push({ normal: n.clone(), tris: [i], index: faces.length });
+    const existing = faces.find(f => f.normal.dot(n) > threshold);
+    if (existing) {
+      existing.tris.push(i);
+      // Re-average the face normal so it represents the kite (not just the first tri).
+      existing.normal.add(n);
+    } else {
+      faces.push({ normal: n.clone(), tris: [i], index: faces.length });
+    }
   }
+  for (const f of faces) f.normal.normalize();
 
   // Build group-based material: each face group gets its own material with a
   // number texture. three.js uses geometry.groups to map triangles to material

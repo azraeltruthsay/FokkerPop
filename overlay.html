@@ -207,6 +207,12 @@ body.layout-mode .draggable[data-placeholder]::before {
   padding: 14px;
 }
 
+/* Auto-hide: widgets with .cw-hidden stay invisible until their trigger fires.
+   Layout mode forces everything visible so LilFokker can still place them. */
+.custom-widget.cw-hidden { opacity: 0; pointer-events: none; transition: opacity 0.35s ease; }
+.custom-widget.cw-visible { opacity: 1; transition: opacity 0.25s ease; }
+body.layout-mode .custom-widget.cw-hidden { opacity: 0.5 !important; pointer-events: auto !important; }
+
 /* ═══════════════════════════════════════════════════════ Custom widgets */
 .custom-widget {
   position: absolute;
@@ -1414,9 +1420,36 @@ function handleMessage(msg) {
   }
 }
 
+const autoHideTimers = new Map();
+function pokeAutoHide(widget, holdMs = 8000) {
+  if (!widget?.config?.autoHide) return;
+  const el = document.getElementById(widget.id);
+  if (!el) return;
+  el.classList.remove('cw-hidden');
+  el.classList.add('cw-visible');
+  clearTimeout(autoHideTimers.get(widget.id));
+  autoHideTimers.set(widget.id, setTimeout(() => {
+    el.classList.remove('cw-visible');
+    el.classList.add('cw-hidden');
+  }, holdMs));
+}
+
+function widgetMatchesEvent(w, event) {
+  if (w.type === 'event-badge' || w.type === 'dice') {
+    return !w.config?.eventType || w.config.eventType === event.type;
+  }
+  if (w.type === 'physics-pit') {
+    const spawns = w.config?.spawns ?? [];
+    return spawns.some(s => !s.triggerEvent || s.triggerEvent === event.type)
+        || (w.config?.triggerEvent && w.config.triggerEvent === event.type);
+  }
+  return false;
+}
+
 function flashEventBadges(event) {
   if (!event?.type || !Array.isArray(state.widgets)) return;
   for (const w of state.widgets) {
+    if (widgetMatchesEvent(w, event)) pokeAutoHide(w, w.type === 'dice' ? 10000 : 8000);
     if (w.type !== 'event-badge') continue;
     if (w.config?.eventType && w.config.eventType !== event.type) continue;
     const el = document.getElementById(w.id);
@@ -1705,6 +1738,10 @@ function renderCustomWidgets() {
     // even in layout mode so LilFokker can park retired widgets without
     // deleting them.
     if (cfg.visible === false) el.style.display = 'none';
+
+    // Auto-hide: start invisible, show when trigger event fires, then fade
+    // back out after a timeout. Drag Mode CSS overrides so it's always editable.
+    if (cfg.autoHide) el.classList.add('cw-hidden');
 
     host.appendChild(el);
   }
