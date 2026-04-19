@@ -611,6 +611,32 @@ html, body {
 #studio-svg path.active { stroke: var(--accent); }
 #studio-svg path.ghost-wire { stroke: var(--accent); stroke-dasharray: 6 4; opacity: 0.6; pointer-events: none; }
 
+/* ── Context Menu ── */
+#studio-ctx-menu {
+  position: fixed;
+  z-index: 10000;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  min-width: 160px;
+  padding: 6px 0;
+  box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+  display: none;
+}
+.ctx-item {
+  padding: 8px 16px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.ctx-item:hover { background: var(--accent); color: #fff; }
+.ctx-divider { height: 1px; background: var(--border); margin: 6px 0; }
+.ctx-header { padding: 4px 16px; font-size: 0.6rem; text-transform: uppercase; color: var(--text-dim); letter-spacing: 0.05em; font-weight: 800; }
+
 #page-studio.active { display: flex; }
 </style>
 </head>
