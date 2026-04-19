@@ -81,17 +81,23 @@ jobs:
           sudo apt-get update && sudo apt-get install -y nsis
           
           cat > updater.nsi << EOF
-          Name "FokkerPop Updater"
+          Name "FokkerPop Updater ${VERSION}"
           OutFile "FokkerPop-Updater-${VERSION}.exe"
+          InstallDir "\$EXEDIR"
           RequestExecutionLevel user
-          
+
+          DirText "Pick the folder to install or update FokkerPop in. If you already have FokkerPop installed, choose that folder to overwrite it in place. Defaults to the folder this updater is running from."
+
+          Page directory
+          Page instfiles
+
           Section "Update"
-            SetOutPath "\$EXEDIR"
+            SetOutPath "\$INSTDIR"
             SetOverwrite on
             File /r "${PKG}\\*.*"
-            
+
             # Launch the app automatically after update
-            ExecShell "" "\$EXEDIR\\start.bat"
+            ExecShell "" "\$INSTDIR\\start.bat"
           SectionEnd
           EOF
 
@@ -112,9 +118,9 @@ jobs:
 
           ### 🚀 FokkerPop Updater (Recommended)
           1. Download \`FokkerPop-Updater-${VERSION}.exe\` below
-          2. Place it **inside** your existing FokkerPop folder
-          3. Double-click it. (It runs silently to update your files)
-          4. Run **start.bat** as usual. Your settings are safe!
+          2. Double-click it from anywhere.
+          3. When the installer asks, pick your **existing FokkerPop folder** to update in place (or pick a new folder for a fresh install), then click Install.
+          4. FokkerPop will start automatically when the update finishes. Your settings are safe!
 
           ### 📦 First-time Install
           1. Download \`FokkerPop-${VERSION}-windows.zip\`
