@@ -859,11 +859,13 @@ wss.on('connection', (ws, req) => {
         });
       }
       if (msg.type === '_overlay.dice-tray-rolled' && Array.isArray(msg.dice)) {
-        log.info(`Dice tray rolled: [${msg.dice.map(d => `d${d.sides}:${d.result}`).join(', ')}] sum=${msg.sum}`);
+        log.info(`Dice tray rolled: [${msg.dice.map(d => `d${d.sides}:${d.result}`).join(', ')}] sum=${msg.sum}${msg.tag ? ` tag=${msg.tag}` : ''}`);
+        const payload = { dice: msg.dice, sum: msg.sum, widgetId: msg.widgetId };
+        if (msg.tag) payload.tag = msg.tag;
         bus.publish({
           type:    'dice-tray.rolled',
           source:  'overlay',
-          payload: { dice: msg.dice, sum: msg.sum, widgetId: msg.widgetId },
+          payload,
         });
       }
       if (msg.type === '_dashboard.save-position') {

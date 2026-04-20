@@ -571,6 +571,23 @@ function selectField(label, dataKey, options, current) {
   </div>`;
 }
 
+// Nested payload-field updaters used by the spawnEffect Sound/Vol controls.
+// Writing directly into node.data.payload.* keeps the free-form payload JSON
+// field in sync automatically.
+window.setEffectPayloadSound = function (node, value) {
+  if (!node) return;
+  node.data = node.data || {};
+  node.data.payload = node.data.payload || {};
+  if (value) node.data.payload.sound = value;
+  else delete node.data.payload.sound;
+};
+window.setEffectPayloadVol = function (node, value) {
+  if (!node) return;
+  node.data = node.data || {};
+  node.data.payload = node.data.payload || {};
+  if (Number.isFinite(value)) node.data.payload.vol = value;
+};
+
 function renderProps() {
   const $props = document.getElementById('studio-props');
   const $fields = document.getElementById('prop-fields');
@@ -603,9 +620,30 @@ function renderProps() {
   }
 
   if (n.action === 'spawnEffect') {
-    const effectOptions = ['balloon', 'firework', 'firework-salvo', 'confetti', 'sticker-rain', 'crowd-explosion', 'alert-banner'];
+    const effectOptions = ['balloon', 'firework', 'firework-salvo', 'confetti', 'sticker-rain', 'crowd-explosion', 'alert-banner', 'dice-roll'];
     html += selectField('Effect Type', 'effect', effectOptions, n.data.effect);
-    html += exprField('Payload (JSON)', 'payload', JSON.stringify(n.data.payload || {}));
+    // Structured Sound dropdown writes into payload.sound (and vol). Leaves
+    // the free-form payload JSON below for anything the dropdown can't express.
+    const soundOptions = window.assets?.sounds || [];
+    const currentSound = (n.data.payload && n.data.payload.sound) || '';
+    const currentVol   = (n.data.payload && typeof n.data.payload.vol === 'number') ? n.data.payload.vol : 1;
+    html += `
+      <div class="prop-field">
+        <label>Sound (optional — overrides the effect's default)</label>
+        <div style="display:flex; gap:6px; align-items:center;">
+          <select class="input-field" style="flex:1;" oninput="window.setEffectPayloadSound(activeNode, this.value); window.queueStudioSave()">
+            <option value="">— effect default —</option>
+            ${soundOptions.map(s => `<option value="${esc(s)}" ${s === currentSound ? 'selected' : ''}>${esc(s)}</option>`).join('')}
+          </select>
+          <button class="btn btn-ghost btn-sm" onclick="window.previewSound(this.previousElementSibling.value)" title="Play Sample">▶️</button>
+        </div>
+        <div style="display:flex; align-items:center; gap:8px; margin-top:4px;">
+          <span style="font-size:0.6rem; color:var(--text-dim); min-width:40px;" id="studio-effect-vol-label">Vol: ${Math.round(currentVol * 100)}%</span>
+          <input type="range" min="0" max="1" step="0.05" value="${currentVol}" style="flex:1; height:4px; accent-color:var(--accent);"
+            oninput="document.getElementById('studio-effect-vol-label').textContent = 'Vol: ' + Math.round(this.value * 100) + '%'; window.setEffectPayloadVol(activeNode, parseFloat(this.value)); window.queueStudioSave()">
+        </div>
+      </div>`;
+    html += exprField('Payload (JSON, advanced)', 'payload', JSON.stringify(n.data.payload || {}));
   }
 
   if (n.action === 'showBanner') {
@@ -629,7 +667,8 @@ function renderProps() {
     html += exprField('Dice Spec (e.g. 2d6+1d20)', 'spec', n.data.spec ?? '2d6');
     const themeOpts = ['', ...(typeof diceThemeOptions === 'function' ? diceThemeOptions() : ['gold','silver','obsidian','marble','wood','neon','blood'])];
     html += selectField('Face Theme', 'theme', themeOpts, n.data.theme ?? '');
-    html += `<div style="font-size:0.6rem; color:var(--text-dim); margin-top:-8px; margin-bottom:8px;">Rolls on any <code>dice-tray</code> widget with matching triggerEvent. Theme blank = use widget's own theme. Sides allowed: 4/6/8/10/12/20. Result arrives asynchronously on the <code>dice-tray.rolled</code> trigger — build a second flow to branch on <code>{{ payload.sum }}</code>, <code>{{ payload.dice[0].result }}</code>.</div>`;
+    html += exprField('Tag (optional — to filter the result flow)', 'tag', n.data.tag ?? '');
+    html += `<div style="font-size:0.6rem; color:var(--text-dim); margin-top:-8px; margin-bottom:8px;">Theme blank = widget's own. Tag travels through to the <code>dice-tray.rolled</code> payload so a follow-up flow can filter <code>payload.tag == "my-tag"</code> and only react to its own rolls. Result also exposes <code>{{ payload.sum }}</code> and <code>{{ payload.dice[0].result }}</code>.</div>`;
   }
 
   if (n.action === 'updateStat') {

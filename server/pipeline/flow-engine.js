@@ -120,6 +120,7 @@ export class FlowEngine {
             const dice = parseDiceSpecServer(data.spec) ?? [{ sides: 6, count: 2 }];
             const payload = { dice, user: event.payload?.user };
             if (data.theme) payload.theme = data.theme;
+            if (data.tag)   payload.tag   = data.tag;
             bus.publish({
               source: 'flow-engine',
               type: 'dice-tray-roll',

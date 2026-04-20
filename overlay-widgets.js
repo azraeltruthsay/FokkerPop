@@ -1139,6 +1139,7 @@ export async function mountDiceTray(widget, el, sendToServer) {
 
   const dice = []; // { body, mesh, faces, sides, settled, stillFor, result }
   let rollActive = false;
+  let currentTag = null; // propagated from the triggering event to the settle message
 
   function readFaceUp(body, faces) {
     const q = new T.Quaternion(body.quaternion.x, body.quaternion.y, body.quaternion.z, body.quaternion.w);
@@ -1181,6 +1182,7 @@ export async function mountDiceTray(widget, el, sendToServer) {
     for (const d of dice) disposeDie(d);
     dice.length = 0;
     rollActive = true;
+    currentTag = (optsOverride && optsOverride.tag) || null;
     const spec = (Array.isArray(specOverride) && specOverride.length)
       ? normalizeDiceSpec({ dice: specOverride })
       : normalizeDiceSpec(cfg);
@@ -1243,7 +1245,9 @@ export async function mountDiceTray(widget, el, sendToServer) {
         label = `[${faces}] = ${sum}`;
       }
       showResult(label);
-      sendToServer?.({ type: '_overlay.dice-tray-rolled', widgetId: widget.id, dice: results, sum });
+      const settleMsg = { type: '_overlay.dice-tray-rolled', widgetId: widget.id, dice: results, sum };
+      if (currentTag) settleMsg.tag = currentTag;
+      sendToServer?.(settleMsg);
     }
 
     renderer.render(scene, camera);
@@ -1292,10 +1296,12 @@ export function triggerDiceTray(widgets, event) {
   const p = typeof event === 'object' ? (event?.payload ?? {}) : {};
   const diceOverride  = p.dice  ?? null;
   const themeOverride = p.theme ?? null;
-  const optsOverride  = (p.pips !== undefined || p.meshUrl) ? {} : null;
+  const tag           = p.tag   ?? null;
+  const optsOverride  = (p.pips !== undefined || p.meshUrl || tag) ? {} : null;
   if (optsOverride) {
     if (p.pips !== undefined) optsOverride.pips = !!p.pips;
     if (p.meshUrl)            optsOverride.meshUrl = p.meshUrl;
+    if (tag)                  optsOverride.tag = tag;
   }
   for (const w of widgets) {
     if (w.type !== 'dice-tray') continue;
