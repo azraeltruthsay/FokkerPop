@@ -620,8 +620,8 @@ async function buildDieMesh(sides, themeName = 'gold', options = {}) {
       map,
       bumpMap,
       bumpScale: bumpMap ? 0.04 : 0,
-      clearcoat: 0.75,
-      clearcoatRoughness: 0.18,
+      clearcoat: 0.45,
+      clearcoatRoughness: 0.3,
     };
     return T.MeshPhysicalMaterial ? new T.MeshPhysicalMaterial(matOpts) : new T.MeshStandardMaterial(matOpts);
   }));
