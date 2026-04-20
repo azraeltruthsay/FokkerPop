@@ -392,6 +392,43 @@ async function buildDieGlbMesh(url, targetMaxDim) {
   return group;
 }
 
+// Procedural environment map for PBR reflections. Horizon-blue sky, warm
+// ground, a single hotspot for a virtual key light — cheap but gives metallic
+// (gold/silver/obsidian) themes real-looking highlights.
+function makeDiceEnvMap(T) {
+  const w = 512, h = 256;
+  const c = document.createElement('canvas');
+  c.width = w; c.height = h;
+  const ctx = c.getContext('2d');
+  const g = ctx.createLinearGradient(0, 0, 0, h);
+  g.addColorStop(0.00, '#9db8d6');
+  g.addColorStop(0.50, '#f4e9c8');
+  g.addColorStop(1.00, '#3a2a1c');
+  ctx.fillStyle = g; ctx.fillRect(0, 0, w, h);
+  // Virtual sun — bright spot on the "sky" half.
+  const sun = ctx.createRadialGradient(w * 0.6, h * 0.3, 0, w * 0.6, h * 0.3, h * 0.45);
+  sun.addColorStop(0, 'rgba(255,255,255,0.85)');
+  sun.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = sun; ctx.fillRect(0, 0, w, h);
+  const tex = new T.CanvasTexture(c);
+  tex.mapping    = T.EquirectangularReflectionMapping;
+  tex.colorSpace = T.SRGBColorSpace;
+  return tex;
+}
+
+// Install a PMREM-prefiltered env map on `scene.environment` so
+// MeshPhysicalMaterial's clearcoat picks up proper mipmapped reflections.
+// Returns the generated texture (so callers can dispose on unmount).
+function installDiceEnv(T, renderer, scene) {
+  const pmrem = new T.PMREMGenerator(renderer);
+  const equirect = makeDiceEnvMap(T);
+  const prefiltered = pmrem.fromEquirectangular(equirect).texture;
+  equirect.dispose();
+  pmrem.dispose();
+  scene.environment = prefiltered;
+  return prefiltered;
+}
+
 // Unified resolver: canvas theme wins; else image theme; else gold.
 async function loadDieThemeData(themeName) {
   if (DIE_THEMES[themeName]) {
@@ -450,11 +487,78 @@ function buildPentagonalTrapezohedron(T) {
   return g;
 }
 
+// Face-shape metadata per die type. Drives per-face UV remapping and adaptive
+// glyph sizing so a D20 face isn't rendered with the same number-size as a D6.
+const FACE_SHAPE = { 4: 'triangle', 6: 'square', 8: 'triangle', 10: 'kite', 12: 'pentagon', 20: 'triangle' };
+const FACE_BASE_FONT_PX = { triangle: 108, square: 152, pentagon: 166, kite: 124 };
+function faceFontPx(shape, n) {
+  const base = FACE_BASE_FONT_PX[shape] || 128;
+  return n >= 10 ? Math.floor(base * 0.82) : base;
+}
+
+// Remap UVs so each face's vertices project onto a centered, roughly unit-disc
+// region of UV space. This guarantees the number drawn at canvas center (0.5,
+// 0.5) is always centered on the face regardless of die type, and scales
+// naturally with the face's 3D size.
+function remapFaceUVs(T, geo, faces) {
+  const pos = geo.attributes.position;
+  const uv = new Float32Array(pos.count * 2);
+  const tmp = new T.Vector3();
+  const worldUp = new T.Vector3(0, 1, 0);
+  const worldX  = new T.Vector3(1, 0, 0);
+
+  for (const face of faces) {
+    // Pick an "up" tangent in the face plane. Prefer world +Y projected onto
+    // the face; if the face itself is horizontal, fall back to +X. This keeps
+    // glyphs oriented consistently ("up on the face" ≈ up in the world).
+    const n = face.normal;
+    const tangent = worldUp.clone().sub(n.clone().multiplyScalar(worldUp.dot(n)));
+    if (tangent.lengthSq() < 0.01) {
+      tangent.copy(worldX).sub(n.clone().multiplyScalar(worldX.dot(n)));
+    }
+    tangent.normalize();
+    const bitangent = new T.Vector3().crossVectors(n, tangent).normalize();
+
+    // Find centroid from all triangle vertices of the face.
+    const centroid = new T.Vector3();
+    let vCount = 0;
+    for (const tri of face.tris) {
+      for (let k = 0; k < 3; k++) {
+        centroid.add(tmp.fromBufferAttribute(pos, tri * 3 + k));
+        vCount++;
+      }
+    }
+    centroid.divideScalar(vCount);
+
+    // First pass: project each vertex, find max distance from centroid.
+    const projected = []; // [{vi, u, v}]
+    let maxR = 0;
+    for (const tri of face.tris) {
+      for (let k = 0; k < 3; k++) {
+        const vi = tri * 3 + k;
+        tmp.fromBufferAttribute(pos, vi).sub(centroid);
+        const u = tmp.dot(tangent);
+        const v = tmp.dot(bitangent);
+        const r = Math.hypot(u, v);
+        if (r > maxR) maxR = r;
+        projected.push({ vi, u, v });
+      }
+    }
+    // Second pass: write normalized UVs with a 4% margin inside the texture.
+    const scale = 0.48 / (maxR || 1);
+    for (const { vi, u, v } of projected) {
+      uv[vi * 2]     = 0.5 + u * scale;
+      uv[vi * 2 + 1] = 0.5 + v * scale;
+    }
+  }
+  geo.setAttribute('uv', new T.BufferAttribute(uv, 2));
+}
+
 async function buildDieMesh(sides, themeName = 'gold', options = {}) {
   const T = await loadThree();
   const theme = await loadDieThemeData(themeName);
   const pipMode = sides === 6 && !!options.pips;
-  const geo = {
+  let geo = {
     4:  new T.TetrahedronGeometry(0.95),
     6:  new T.BoxGeometry(1.2, 1.2, 1.2),
     8:  new T.OctahedronGeometry(1),
@@ -462,8 +566,10 @@ async function buildDieMesh(sides, themeName = 'gold', options = {}) {
     12: new T.DodecahedronGeometry(0.95),
     20: new T.IcosahedronGeometry(1),
   }[sides];
+  // Force non-indexed so the clustering + UV remap below can index by triangle
+  // without worrying about D6's indexed position buffer.
+  if (geo.index) geo = geo.toNonIndexed();
 
-  // Compute triangle face normals in body space, then group into canonical faces.
   const pos = geo.attributes.position;
   const triCount = pos.count / 3;
   const triNormals = [];
@@ -471,13 +577,11 @@ async function buildDieMesh(sides, themeName = 'gold', options = {}) {
     const a = new T.Vector3().fromBufferAttribute(pos, i * 3);
     const b = new T.Vector3().fromBufferAttribute(pos, i * 3 + 1);
     const c = new T.Vector3().fromBufferAttribute(pos, i * 3 + 2);
-    const n = new T.Vector3().subVectors(b, a).cross(new T.Vector3().subVectors(c, a)).normalize();
-    triNormals.push(n);
+    triNormals.push(new T.Vector3().subVectors(b, a).cross(new T.Vector3().subVectors(c, a)).normalize());
   }
-  // Cluster triangles whose normals match within epsilon to form canonical
-  // faces. For D10's trapezohedron the two triangles of a kite have normals
-  // ~16° apart (dot ≈ 0.96), whereas adjacent kites are 72° apart (dot ≈ 0.31),
-  // so a looser threshold merges kite-halves without false collisions.
+  // Cluster triangles whose normals match. D10's trapezohedron kites are ~16°
+  // apart (dot ≈ 0.96); adjacent kites 72° apart (dot ≈ 0.31). Looser threshold
+  // merges kite halves without false collisions.
   const threshold = sides === 10 ? 0.92 : 0.999;
   const faces = [];
   for (let i = 0; i < triNormals.length; i++) {
@@ -485,7 +589,6 @@ async function buildDieMesh(sides, themeName = 'gold', options = {}) {
     const existing = faces.find(f => f.normal.dot(n) > threshold);
     if (existing) {
       existing.tris.push(i);
-      // Re-average the face normal so it represents the kite (not just the first tri).
       existing.normal.add(n);
     } else {
       faces.push({ normal: n.clone(), tris: [i], index: faces.length });
@@ -493,19 +596,34 @@ async function buildDieMesh(sides, themeName = 'gold', options = {}) {
   }
   for (const f of faces) f.normal.normalize();
 
-  // Build group-based material: each face group gets its own material with a
-  // number texture. three.js uses geometry.groups to map triangles to material
-  // indices; we reassign groups accordingly.
+  remapFaceUVs(T, geo, faces);
+
   geo.clearGroups();
   faces.forEach((f, i) => {
     for (const tri of f.tris) geo.addGroup(tri * 3, 3, i);
   });
 
+  const shape = FACE_SHAPE[sides] || 'square';
   const materials = await Promise.all(faces.map(async (_, i) => {
-    const map = await theme.makeFace(T, i + 1, { pip: pipMode });
-    return new T.MeshStandardMaterial({
-      color: theme.color3d, roughness: theme.roughness, metalness: theme.metalness, map,
-    });
+    const n = i + 1;
+    const glyphPx = pipMode ? 0 : faceFontPx(shape, n);
+    const map     = await theme.makeFace(T, n, { pip: pipMode, glyphPx });
+    // Etched look: a grayscale bump map where the glyph area is recessed, so
+    // three.js perturbs the surface normal around the number. Only generated
+    // for built-in canvas themes — image themes bring their own visuals and
+    // we don't want to force a generic engraving shape on top.
+    const bumpMap = DIE_THEMES[themeName] ? makeEtchedBumpTexture(T, n, { pip: pipMode, glyphPx }) : null;
+    const matOpts = {
+      color:     theme.color3d,
+      roughness: theme.roughness,
+      metalness: theme.metalness,
+      map,
+      bumpMap,
+      bumpScale: bumpMap ? 0.04 : 0,
+      clearcoat: 0.75,
+      clearcoatRoughness: 0.18,
+    };
+    return T.MeshPhysicalMaterial ? new T.MeshPhysicalMaterial(matOpts) : new T.MeshStandardMaterial(matOpts);
   }));
   const mesh = new T.Mesh(geo, materials);
   mesh.castShadow = true;
@@ -542,17 +660,17 @@ function makeNumberTexture(T, n, theme, opts = {}) {
       ctx.fill();
     }
   } else {
-    // Two-digit numbers (10–20) shrink to stay inside the face.
-    const fontSize = n >= 10 ? 120 : 150;
+    // Caller picks fontSize per face-shape; fall back to 150 if unspecified.
+    const fontSize = opts.glyphPx || (n >= 10 ? 120 : 150);
     ctx.font = `900 ${fontSize}px system-ui, sans-serif`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    // Dark contrast outline so the number pops on any theme, even busy ones.
-    ctx.lineWidth = Math.floor(fontSize * 0.09);
+    // Dark contrast outline so the number pops on any theme.
+    ctx.lineWidth   = Math.floor(fontSize * 0.09);
     ctx.strokeStyle = 'rgba(0,0,0,0.55)';
-    ctx.strokeText(String(n), size / 2, size / 2 + 8);
+    ctx.strokeText(String(n), size / 2, size / 2 + Math.floor(fontSize * 0.05));
     ctx.fillStyle = t.fontColor;
-    ctx.fillText(String(n), size / 2, size / 2 + 8);
+    ctx.fillText(String(n), size / 2, size / 2 + Math.floor(fontSize * 0.05));
     // Underline on 6 and 9 so they're unambiguous at weird angles.
     if (n === 6 || n === 9) {
       ctx.strokeStyle = t.fontColor;
@@ -568,6 +686,47 @@ function makeNumberTexture(T, n, theme, opts = {}) {
   ctx.shadowBlur = 0;
   const tex = new T.CanvasTexture(c);
   tex.colorSpace = T.SRGBColorSpace;
+  return tex;
+}
+
+// Grayscale bump map that matches the glyph geometry: the face surface is
+// high (white) and the glyph area is low (black), so three.js renders the
+// number as if it were engraved into the die. Stacked with the color texture
+// and clearcoat, it reads as a classic etched-and-inked die.
+function makeEtchedBumpTexture(T, n, opts = {}) {
+  const size = 256;
+  const c = document.createElement('canvas');
+  c.width = size; c.height = size;
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, size, size);
+  ctx.fillStyle = '#000000';
+  if (opts.pip && n >= 1 && n <= 6) {
+    const r = size * 0.09;
+    for (const [fx, fy] of PIP_POSITIONS[n]) {
+      ctx.beginPath();
+      ctx.arc(fx * size, fy * size, r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  } else {
+    const fontSize = opts.glyphPx || (n >= 10 ? 120 : 150);
+    ctx.font = `900 ${fontSize}px system-ui, sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(String(n), size / 2, size / 2 + Math.floor(fontSize * 0.05));
+    if (n === 6 || n === 9) {
+      ctx.strokeStyle = '#000000';
+      ctx.lineWidth = Math.floor(fontSize * 0.08);
+      const w = fontSize * 0.35;
+      const y = size / 2 + fontSize * 0.48;
+      ctx.beginPath();
+      ctx.moveTo(size / 2 - w / 2, y);
+      ctx.lineTo(size / 2 + w / 2, y);
+      ctx.stroke();
+    }
+  }
+  const tex = new T.CanvasTexture(c);
+  // Bump maps are linear data, not sRGB color, so leave default colorSpace.
   return tex;
 }
 
@@ -599,6 +758,8 @@ export async function mountDice(widget, el, sendToServer) {
   renderer.setClearColor(0x000000, 0);
   renderer.domElement.style.cssText = 'display:block; width:100%; height:100%; border-radius:12px; background:rgba(8,8,16,0.2); border:1px solid rgba(255,255,255,0.08);';
   el.appendChild(renderer.domElement);
+
+  const envTex = installDiceEnv(T, renderer, scene);
 
   const built = await buildDieMesh(side, cfg.theme, { pips: !!cfg.pips });
   const faces = built.faces;
@@ -708,12 +869,13 @@ export async function mountDice(widget, el, sendToServer) {
     rollDie: startRoll,
     dispose: () => {
       cancelAnimationFrame(rafId);
+      envTex?.dispose?.();
       renderer.dispose();
       renderer.domElement.remove();
       // Traverse walks both Mesh (procedural) and Group (GLB) trees uniformly.
       mesh.traverse?.((o) => {
         if (o.geometry) o.geometry.dispose?.();
-        if (o.material) (Array.isArray(o.material) ? o.material : [o.material]).forEach(m => { m.map?.dispose?.(); m.dispose?.(); });
+        if (o.material) (Array.isArray(o.material) ? o.material : [o.material]).forEach(m => { m.map?.dispose?.(); m.bumpMap?.dispose?.(); m.dispose?.(); });
       });
     }
   };
@@ -904,6 +1066,8 @@ export async function mountDiceTray(widget, el, sendToServer) {
   renderer.domElement.style.cssText = 'display:block; width:100%; height:100%; border-radius:12px; background:rgba(8,8,16,0.25); border:1px solid rgba(255,255,255,0.08);';
   el.appendChild(renderer.domElement);
 
+  const envTex = installDiceEnv(T, renderer, scene);
+
   // Post-settle result overlay — guarantees the sum is readable even when a
   // die lands at an awkward angle. Fades in on settle, out ~5s later.
   const resultEl = document.createElement('div');
@@ -968,7 +1132,7 @@ export async function mountDiceTray(widget, el, sendToServer) {
     scene.remove(d.mesh);
     d.mesh.traverse?.((o) => {
       if (o.geometry) o.geometry.dispose?.();
-      if (o.material) (Array.isArray(o.material) ? o.material : [o.material]).forEach(m => { m.map?.dispose?.(); m.dispose?.(); });
+      if (o.material) (Array.isArray(o.material) ? o.material : [o.material]).forEach(m => { m.map?.dispose?.(); m.bumpMap?.dispose?.(); m.dispose?.(); });
     });
   }
 
@@ -1079,6 +1243,7 @@ export async function mountDiceTray(widget, el, sendToServer) {
       cancelAnimationFrame(rafId);
       clearTimeout(resultFadeTimer);
       for (const d of dice) disposeDie(d);
+      envTex?.dispose?.();
       renderer.dispose();
       renderer.domElement.remove();
       resultEl.remove();
