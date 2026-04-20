@@ -98,7 +98,7 @@
     "nodes": {
       "t1": { "id": "t1", "type": "trigger", "x": 100, "y": 100 },
       "f1": { "id": "f1", "type": "logic", "action": "filter", "data": { "field": "payload.rewardTitle", "operator": "==", "value": "Roll 6s!" }, "x": 300, "y": 100 },
-      "r1": { "id": "r1", "type": "action", "action": "rollDiceTray", "data": { "spec": "1d6", "tag": "roll-6s" }, "x": 500, "y": 100 }
+      "r1": { "id": "r1", "type": "action", "action": "rollDiceTray", "data": { "spec": "2d6", "tag": "roll-6s" }, "x": 500, "y": 100 }
     },
     "edges": [
       { "src": "t1", "outPort": "next", "dst": "f1" },
@@ -113,7 +113,7 @@
     "nodes": {
       "t1":   { "id": "t1",   "type": "trigger", "x": 100, "y": 100 },
       "ftag": { "id": "ftag", "type": "logic", "action": "filter", "data": { "field": "payload.tag", "operator": "==", "value": "roll-6s" }, "x": 300, "y": 100 },
-      "m1":   { "id": "m1",   "type": "logic", "action": "match", "data": { "field": "payload.sum", "match1": "6" }, "x": 500, "y": 100 },
+      "m1":   { "id": "m1",   "type": "logic", "action": "match", "data": { "field": "payload.sum", "match1": "12" }, "x": 500, "y": 100 },
       "hit":  { "id": "hit",  "type": "action", "action": "spawnEffect", "data": { "effect": "firework-salvo", "payload": { "count": 5, "sound": "boom.wav" } }, "x": 700, "y": 50 },
       "miss": { "id": "miss", "type": "action", "action": "spawnEffect", "data": { "effect": "sticker-rain", "payload": { "duration": 1500, "sound": "ding.wav" } }, "x": 700, "y": 180 }
     },
@@ -132,7 +132,7 @@
     "nodes": {
       "t1": { "id": "t1", "type": "trigger", "x": 100, "y": 100 },
       "f1": { "id": "f1", "type": "logic", "action": "filter", "data": { "field": "payload.rewardTitle", "operator": "==", "value": "Roll 1s!" }, "x": 300, "y": 100 },
-      "r1": { "id": "r1", "type": "action", "action": "rollDiceTray", "data": { "spec": "1d6", "tag": "roll-1s" }, "x": 500, "y": 100 }
+      "r1": { "id": "r1", "type": "action", "action": "rollDiceTray", "data": { "spec": "2d6", "tag": "roll-1s" }, "x": 500, "y": 100 }
     },
     "edges": [
       { "src": "t1", "outPort": "next", "dst": "f1" },
@@ -147,7 +147,7 @@
     "nodes": {
       "t1":   { "id": "t1",   "type": "trigger", "x": 100, "y": 100 },
       "ftag": { "id": "ftag", "type": "logic", "action": "filter", "data": { "field": "payload.tag", "operator": "==", "value": "roll-1s" }, "x": 300, "y": 100 },
-      "m1":   { "id": "m1",   "type": "logic", "action": "match", "data": { "field": "payload.sum", "match1": "1" }, "x": 500, "y": 100 },
+      "m1":   { "id": "m1",   "type": "logic", "action": "match", "data": { "field": "payload.sum", "match1": "2" }, "x": 500, "y": 100 },
       "hit":  { "id": "hit",  "type": "action", "action": "spawnEffect", "data": { "effect": "confetti", "payload": { "sound": "pop.wav" } }, "x": 700, "y": 50 },
       "miss": { "id": "miss", "type": "action", "action": "spawnEffect", "data": { "effect": "balloon", "payload": { "count": 2, "sound": "chime.wav" } }, "x": 700, "y": 180 }
     },
