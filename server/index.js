@@ -75,6 +75,9 @@ function parseChatRollSpec(str) {
   return groups.length ? groups : null;
 }
 
+export let currentRollId = null;
+export function setRollId(id) { currentRollId = id; }
+
 async function fireChatRoll(text, event) {
   if (!ROLL_PREFIX_RE.test(text)) return;
   const rest = text.replace(ROLL_PREFIX_RE, '').trim();
@@ -85,14 +88,23 @@ async function fireChatRoll(text, event) {
   const canRenderInTray = spec.every(g => CHAT_TRAY_SIDES.has(g.sides) || g.sides === 100);
 
   if (canRenderInTray) {
-    // Expand D100 → 2 × D10 percentile so the tray can render it.
-    const dice = spec.flatMap(g => g.sides === 100
-      ? [{ sides: 10, count: g.count * 2 }]
-      : [g]);
+    currentRollId = Math.random().toString(36).slice(2);
+    // Expand D100 → 2 × D10 percentile (Red Tens, Blue Units)
+    const dice = spec.flatMap(g => {
+      if (g.sides === 100) {
+        const out = [];
+        for (let i = 0; i < g.count; i++) {
+          out.push({ sides: 10, count: 1, isPercentile: true, theme: 'ruby' });     // Tens
+          out.push({ sides: 10, count: 1, isPercentile: true, theme: 'sapphire' }); // Units
+        }
+        return out;
+      }
+      return [g];
+    });
     bus.publish({
       source: 'chat-roll',
       type:   'dice-tray-roll',
-      payload: { dice, user },
+      payload: { dice, user, tag: `chat-roll:${user}`, rollId: currentRollId },
       isTest: event.isTest,
     });
     return;
@@ -859,13 +871,37 @@ wss.on('connection', (ws, req) => {
         });
       }
       if (msg.type === '_overlay.dice-tray-rolled' && Array.isArray(msg.dice)) {
+        // Multi-overlay protection: only process the first result that comes back for the current rollId.
+        if (msg.rollId && currentRollId && msg.rollId !== currentRollId) {
+          log.debug(`Ignoring stale/duplicate roll result (msg.rollId=${msg.rollId}, currentRollId=${currentRollId})`);
+          return;
+        }
+        currentRollId = null; // Reset once a valid result is processed
+
         log.info(`Dice tray rolled: [${msg.dice.map(d => `d${d.sides}:${d.result}`).join(', ')}] sum=${msg.sum}${msg.tag ? ` tag=${msg.tag}` : ''}`);
         const payload = { dice: msg.dice, sum: msg.sum, widgetId: msg.widgetId };
         if (msg.tag) payload.tag = msg.tag;
+
+        // Auto-reply to chat if this was a !roll from chat
+        if (msg.tag?.startsWith('chat-roll:')) {
+          const user = msg.tag.split(':')[1];
+          const isP  = !!msg.isPercentile;
+          const detail = isP 
+            ? `D100 [Red:${msg.dice[0].result}, Blue:${msg.dice[1].result}]`
+            : msg.dice.map(d => `d${d.sides}:${d.result}`).join(', ');
+          const reply = `@${user} 🎲 ${detail} → ${msg.sum}`;
+          if (!msg.isTest && settings.twitch?.userId && settings.twitch?.accessToken && twitchEventSub.status === 'connected') {
+            helix.sendChatMessage(settings.twitch.userId, reply).catch(err => log.error('Chat tray-roll reply failed:', err.message));
+          } else {
+            log.info(`[chat-roll tray-settle] ${reply}`);
+          }
+        }
+
         bus.publish({
           type:    'dice-tray.rolled',
           source:  'overlay',
           payload,
+          isTest:  !!msg.isTest,
         });
       }
       if (msg.type === '_dashboard.save-position') {

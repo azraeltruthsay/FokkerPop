@@ -529,7 +529,7 @@ window.deleteWidget = function (id) {
 
 // Dice-tray spec editor. Accepts human-readable dice notation like
 // "2d6+1d20+3d4" and round-trips with the structured cfg.dice array.
-const DICE_SIDES_ALLOWED = [4, 6, 8, 10, 12, 20];
+const DICE_SIDES_ALLOWED = [4, 6, 8, 10, 12, 20, 100];
 function parseDiceSpec(str) {
   if (!str || typeof str !== 'string') return null;
   const parts = str.replace(/\s+/g, '').split(/[+,]/).filter(Boolean);

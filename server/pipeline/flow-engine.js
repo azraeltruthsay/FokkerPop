@@ -2,13 +2,14 @@ import log from '../logger.js';
 import bus from '../bus.js';
 import state from '../state.js';
 import { makeCtx, resolveDeep, resolve } from '../template.js';
+import { setRollId } from '../index.js';
 
 /**
  * Fokker Studio Engine
  * Interprets and executes node-based logic graphs.
  */
 
-const DICE_SIDES_ALLOWED = new Set([4, 6, 8, 10, 12, 20]);
+const DICE_SIDES_ALLOWED = new Set([4, 6, 8, 10, 12, 20, 100]);
 function parseDiceSpecServer(str) {
   if (!str || typeof str !== 'string') return null;
   const parts = str.replace(/\s+/g, '').split(/[+,]/).filter(Boolean);
@@ -117,8 +118,24 @@ export class FlowEngine {
             // Kick off a dice-tray widget roll. The overlay widget produces the
             // authentic physics-based result and publishes dice-tray.rolled
             // separately — use that as a flow trigger to branch on the result.
-            const dice = parseDiceSpecServer(data.spec) ?? [{ sides: 6, count: 2 }];
-            const payload = { dice, user: event.payload?.user };
+            const groups = parseDiceSpecServer(data.spec) ?? [{ sides: 6, count: 2 }];
+            const rid = Math.random().toString(36).slice(2);
+            setRollId(rid);
+
+            // Expand D100 → 2 × D10 percentile (Red Tens, Blue Units)
+            const dice = groups.flatMap(g => {
+              if (g.sides === 100) {
+                const out = [];
+                for (let i = 0; i < g.count; i++) {
+                  out.push({ sides: 10, count: 1, isPercentile: true, theme: 'ruby' });     // Tens
+                  out.push({ sides: 10, count: 1, isPercentile: true, theme: 'sapphire' }); // Units
+                }
+                return out;
+              }
+              return [g];
+            });
+
+            const payload = { dice, user: event.payload?.user, rollId: rid };
             if (data.theme) payload.theme = data.theme;
             if (data.tag)   payload.tag   = data.tag;
             bus.publish({

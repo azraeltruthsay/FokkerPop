@@ -941,7 +941,11 @@ function normalizeDiceSpec(cfg) {
   let spec;
   if (Array.isArray(cfg.dice) && cfg.dice.length) {
     spec = cfg.dice
-      .map(d => ({ sides: DICE_SIDES.includes(Number(d.sides)) ? Number(d.sides) : 6, count: Math.max(1, Math.min(20, Number(d.count) || 1)) }));
+      .map(d => ({
+        sides: DICE_SIDES.includes(Number(d.sides)) ? Number(d.sides) : 6,
+        count: Math.max(1, Math.min(20, Number(d.count) || 1)),
+        isPercentile: !!d.isPercentile
+      }));
   } else {
     spec = [{ sides: 6, count: Math.max(1, Math.min(20, Number(cfg.count) || 2)) }];
   }
@@ -950,7 +954,7 @@ function normalizeDiceSpec(cfg) {
   for (const d of spec) {
     if (total >= 20) break;
     const count = Math.min(d.count, 20 - total);
-    clamped.push({ sides: d.sides, count });
+    clamped.push({ sides: d.sides, count, isPercentile: d.isPercentile });
     total += count;
   }
   return clamped;
@@ -1140,6 +1144,8 @@ export async function mountDiceTray(widget, el, sendToServer) {
   const dice = []; // { body, mesh, faces, sides, settled, stillFor, result }
   let rollActive = false;
   let currentTag = null; // propagated from the triggering event to the settle message
+  let currentRollId = null;
+  let currentIsTest = false;
 
   function readFaceUp(body, faces) {
     const q = new T.Quaternion(body.quaternion.x, body.quaternion.y, body.quaternion.z, body.quaternion.w);
@@ -1175,7 +1181,7 @@ export async function mountDiceTray(widget, el, sendToServer) {
     body.quaternion.setFromEuler(Math.random() * 6.28, Math.random() * 6.28, Math.random() * 6.28);
     world.addBody(body);
     scene.add(mesh);
-    dice.push({ body, mesh, faces, sides, settled: false, stillFor: 0, result: null });
+    dice.push({ body, mesh, faces, sides, settled: false, stillFor: 0, result: null, isPercentile: !!opts.isPercentile });
   }
 
   async function rollTray(specOverride, themeOverride, optsOverride) {
@@ -1183,13 +1189,15 @@ export async function mountDiceTray(widget, el, sendToServer) {
     dice.length = 0;
     rollActive = true;
     currentTag = (optsOverride && optsOverride.tag) || null;
+    currentRollId = (optsOverride && optsOverride.rollId) || null;
+    currentIsTest = !!(optsOverride && optsOverride.isTest);
     const spec = (Array.isArray(specOverride) && specOverride.length)
       ? normalizeDiceSpec({ dice: specOverride })
       : normalizeDiceSpec(cfg);
     const theme = themeOverride || cfg.theme;
     const baseOpts = { pips: !!cfg.pips, meshUrl: cfg.meshUrl, customTheme: cfg.customTheme, ...(optsOverride || {}) };
     for (const group of spec) {
-      const groupOpts = { ...baseOpts };
+      const groupOpts = { ...baseOpts, isPercentile: group.isPercentile };
       if (group.pips !== undefined) groupOpts.pips = !!group.pips;
       if (group.meshUrl) groupOpts.meshUrl = group.meshUrl;
       if (group.customTheme) groupOpts.customTheme = group.customTheme;
@@ -1216,11 +1224,12 @@ export async function mountDiceTray(widget, el, sendToServer) {
       d.mesh.quaternion.set(d.body.quaternion.x, d.body.quaternion.y, d.body.quaternion.z, d.body.quaternion.w);
       const vel2 = d.body.velocity.lengthSquared();
       const ang2 = d.body.angularVelocity.lengthSquared();
-      if (!d.settled && vel2 < 0.05 && ang2 < 0.05) {
+      if (!d.settled && vel2 < 0.01 && ang2 < 0.01) {
         d.stillFor += dt;
-        if (d.stillFor > 0.4) {
+        if (d.stillFor > 0.6) {
           d.settled = true;
           d.result = readFaceUp(d.body, d.faces);
+          console.info(`[dice-tray] die settled: d${d.sides}=${d.result}`);
         }
       } else if (!d.settled) {
         d.stillFor = 0;
@@ -1231,14 +1240,17 @@ export async function mountDiceTray(widget, el, sendToServer) {
     if (rollActive && dice.length > 0 && allSettled && dice.every(d => d.settled)) {
       rollActive = false;
       const results = dice.map(d => ({ sides: d.sides, result: d.result }));
-      const sum = results.reduce((s, r) => s + r.result, 0);
-      // Percentile shorthand: 2× D10 → show as DD (tens face × 10 + units).
+      let sum = results.reduce((s, r) => s + r.result, 0);
+
+      // Percentile shorthand: 2× D10 flagged as isPercentile → show as DD (tens face × 10 + units).
       let label;
-      if (results.length === 2 && results.every(r => r.sides === 10)) {
+      const isP100 = results.length === 2 && results.every(r => r.sides === 10) && dice.every(d => d.isPercentile);
+      if (isP100) {
         const tens = (results[0].result % 10) * 10;  // treat face 10 as 0 in tens slot
         const units = results[1].result % 10;
         const percentile = tens + units === 0 ? 100 : tens + units;
-        label = `D100 = ${percentile}  (${results[0].result} · ${results[1].result})`;
+        sum = percentile; // Sync reported sum with visual result
+        label = `D100 = ${percentile}  (Red: ${results[0].result} · Blue: ${results[1].result})`;
       } else {
         const mixed = new Set(results.map(r => r.sides)).size > 1;
         const faces = results.map(r => mixed ? `d${r.sides}:${r.result}` : r.result).join(', ');
@@ -1246,7 +1258,10 @@ export async function mountDiceTray(widget, el, sendToServer) {
       }
       showResult(label);
       const settleMsg = { type: '_overlay.dice-tray-rolled', widgetId: widget.id, dice: results, sum };
-      if (currentTag) settleMsg.tag = currentTag;
+      if (isP100)        settleMsg.isPercentile = true;
+      if (currentTag)    settleMsg.tag = currentTag;
+      if (currentRollId) settleMsg.rollId = currentRollId;
+      if (currentIsTest) settleMsg.isTest = true;
       sendToServer?.(settleMsg);
     }
 
@@ -1297,11 +1312,15 @@ export function triggerDiceTray(widgets, event) {
   const diceOverride  = p.dice  ?? null;
   const themeOverride = p.theme ?? null;
   const tag           = p.tag   ?? null;
-  const optsOverride  = (p.pips !== undefined || p.meshUrl || tag) ? {} : null;
+  const rid           = p.rollId ?? null;
+  const isTest        = !!event?.isTest;
+  const optsOverride  = (p.pips !== undefined || p.meshUrl || tag || rid || isTest) ? {} : null;
   if (optsOverride) {
     if (p.pips !== undefined) optsOverride.pips = !!p.pips;
     if (p.meshUrl)            optsOverride.meshUrl = p.meshUrl;
     if (tag)                  optsOverride.tag = tag;
+    if (rid)                  optsOverride.rollId = rid;
+    if (isTest)               optsOverride.isTest = true;
   }
   for (const w of widgets) {
     if (w.type !== 'dice-tray') continue;
