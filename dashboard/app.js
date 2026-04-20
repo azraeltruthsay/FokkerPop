@@ -50,6 +50,8 @@ function connect() {
   fetch('/api/assets').then(r => r.json()).then(a => {
     window.assets = a;
     populateGallery();
+    window.initCustomDicePickers?.();
+    if (typeof renderWidgetList === 'function') renderWidgetList();
   }).catch(() => {});
   
   document.getElementById('overlay-url').textContent = `http://localhost:${location.port || 4747}/?live=1`;
@@ -445,7 +447,15 @@ function saveWidgets() {
 }
 
 const EFFECT_OPTIONS = ['balloon','firework','firework-salvo','confetti','sticker-rain','crowd-explosion','alert-banner'];
-const EVENT_OPTIONS  = ['follow','sub','sub.gifted','cheer','raid','hype-train.start','hype-train.progress','hype-train.end','chat','redeem'];
+const EVENT_OPTIONS  = ['follow','sub','sub.gifted','cheer','raid','hype-train.start','hype-train.progress','hype-train.end','chat','redeem','dice-tray-roll'];
+// Built-in (procedural canvas) themes; must match DIE_THEME_NAMES in
+// overlay-widgets.js. Image themes discovered from /api/assets.diceThemes are
+// appended at render time via diceThemeOptions().
+const DIE_THEMES_BUILTIN = ['gold','silver','obsidian','marble','wood','neon','blood'];
+function diceThemeOptions() {
+  const imgs = window.assets?.diceThemes || [];
+  return [...DIE_THEMES_BUILTIN, ...imgs.filter(t => !DIE_THEMES_BUILTIN.includes(t))];
+}
 
 window.addWidget = function (type) {
   const id = 'w-' + Date.now().toString(36);
@@ -473,8 +483,8 @@ window.addWidget = function (type) {
       { triggerEvent: 'cheer', emojis: ['💎'],      count: 4, layer: 2 },
     ],
   };
-  if (type === 'dice')        base.config = { visible: true, autoHide: true, sides: 20, triggerEvent: 'redeem', width: 220, height: 220 };
-  if (type === 'dice-tray')   base.config = { visible: true, autoHide: true, count: 2, triggerEvent: 'redeem', width: 420, height: 280, dieSize: 0.45, trayWidth: 2.5, trayDepth: 1.6 };
+  if (type === 'dice')        base.config = { visible: true, autoHide: true, sides: 20, triggerEvent: 'redeem', theme: 'gold', pips: false, width: 220, height: 220 };
+  if (type === 'dice-tray')   base.config = { visible: true, autoHide: true, dice: [{ sides: 6, count: 2 }], triggerEvent: 'dice-tray-roll', eventType: 'dice-tray-roll', theme: 'gold', pips: true, width: 420, height: 280, dieSize: 0.45, trayWidth: 2.5, trayDepth: 1.6 };
   if (type === 'model-3d')    base.config = { visible: true, modelUrl: '', rotationSpeed: 0.005, scale: 1, reactiveScale: '', width: 300, height: 300 };
   widgets.push(base);
   saveWidgets().then(renderWidgetList);
@@ -484,6 +494,86 @@ window.deleteWidget = function (id) {
   if (!confirm('Delete this widget?')) return;
   widgets = widgets.filter(w => w.id !== id);
   saveWidgets().then(renderWidgetList);
+};
+
+// Dice-tray spec editor. Accepts human-readable dice notation like
+// "2d6+1d20+3d4" and round-trips with the structured cfg.dice array.
+const DICE_SIDES_ALLOWED = [4, 6, 8, 10, 12, 20];
+function parseDiceSpec(str) {
+  if (!str || typeof str !== 'string') return null;
+  const parts = str.replace(/\s+/g, '').split(/[+,]/).filter(Boolean);
+  const groups = [];
+  for (const p of parts) {
+    const m = /^(\d*)d(\d+)$/i.exec(p);
+    if (!m) return null;
+    const count = Math.max(1, Math.min(20, parseInt(m[1] || '1', 10)));
+    const sides = parseInt(m[2], 10);
+    if (!DICE_SIDES_ALLOWED.includes(sides)) return null;
+    groups.push({ sides, count });
+  }
+  return groups.length ? groups : null;
+}
+function formatDiceSpec(dice) {
+  if (!Array.isArray(dice) || !dice.length) return '2d6';
+  return dice.map(g => `${g.count}d${g.sides}`).join('+');
+}
+// Populate the custom dice-roll selectors in the Test Effects panel. Slot 0
+// defaults to D6, the rest to None so the user starts with a 1-die roll.
+function initCustomDicePickers() {
+  const opts = [
+    { v: '0',  l: '—' },
+    { v: '4',  l: 'D4' },
+    { v: '6',  l: 'D6' },
+    { v: '8',  l: 'D8' },
+    { v: '10', l: 'D10' },
+    { v: '12', l: 'D12' },
+    { v: '20', l: 'D20' },
+  ];
+  const defaults = ['6', '0', '0', '0', '0'];
+  for (let i = 0; i < 5; i++) {
+    const sel = document.getElementById(`custom-die-${i}`);
+    if (!sel || sel.options.length) continue;
+    sel.innerHTML = opts.map(o => `<option value="${o.v}" ${o.v === defaults[i] ? 'selected' : ''}>${o.l}</option>`).join('');
+  }
+  const themeSel = document.getElementById('custom-die-theme');
+  if (themeSel) {
+    const prev = themeSel.value || 'gold';
+    themeSel.innerHTML = diceThemeOptions().map(t => `<option value="${t}" ${t === prev ? 'selected' : ''}>${t}</option>`).join('');
+  }
+}
+document.addEventListener('DOMContentLoaded', initCustomDicePickers);
+window.initCustomDicePickers = initCustomDicePickers;
+
+window.rollCustomDice = function (btn) {
+  const dice = [];
+  for (let i = 0; i < 5; i++) {
+    const sides = Number(document.getElementById(`custom-die-${i}`)?.value || 0);
+    if (sides > 0) dice.push({ sides, count: 1 });
+  }
+  if (!dice.length) return;
+  const theme = document.getElementById('custom-die-theme')?.value || 'gold';
+  const pips  = !!document.getElementById('custom-die-pips')?.checked;
+  if (btn) {
+    btn.classList.remove('fired');
+    void btn.offsetWidth;
+    btn.classList.add('fired');
+    setTimeout(() => btn.classList.remove('fired'), 350);
+  }
+  dashSend({
+    type:  '_dashboard.test-event',
+    event: { type: 'dice-tray-roll', source: 'dashboard', payload: { user: 'Roller', dice, theme, pips } },
+  });
+};
+
+window.updateDiceSpec = function (id, value) {
+  const w = widgets.find(x => x.id === id);
+  if (!w) return;
+  const parsed = parseDiceSpec(value);
+  if (!parsed) return; // invalid → leave previous state untouched
+  w.config = w.config || {};
+  w.config.dice = parsed;
+  clearTimeout(updateDiceSpec._t);
+  updateDiceSpec._t = setTimeout(saveWidgets, 300);
 };
 
 // Physics-pit spawn-rule editors
@@ -605,21 +695,48 @@ function renderWidgetList() {
           <p style="font-size:.7rem; color:var(--text-dim); margin:4px 0;">Each spawn rule = trigger event + emojis + count + <strong>layer</strong>. Objects on the same layer collide; different layers pass through each other.${is3d ? ' 3D pit uses cannon-es rigid bodies.' : ''}</p>
           ${rows || '<p style="font-size:.75rem; color:var(--text-dim);">No spawn rules yet. Click "+ Spawn Rule".</p>'}`;
       }
-      if (w.type === 'dice') return `
+      if (w.type === 'dice') {
+        const models = (window.assets?.models) || [];
+        return `
         <select class="input-field" onchange="updateWidgetField('${w.id}','sides',parseInt(this.value))" title="Die type">
           ${[4,6,8,10,12,20].map(n => `<option value="${n}" ${n === c.sides ? 'selected' : ''}>D${n}</option>`).join('')}
         </select>
         <select class="input-field" onchange="updateWidgetField('${w.id}','triggerEvent',this.value)" title="Event type that rolls the die">
           ${EVENT_OPTIONS.map(e => `<option value="${e}" ${e === c.triggerEvent ? 'selected' : ''}>${e}</option>`).join('')}
         </select>
+        <select class="input-field" onchange="updateWidgetField('${w.id}','theme',this.value)" title="Face texture theme">
+          ${diceThemeOptions().map(t => `<option value="${t}" ${t === (c.theme || 'gold') ? 'selected' : ''}>${t}</option>`).join('')}
+        </select>
+        <label style="display:inline-flex; gap:4px; align-items:center; font-size:.75rem; color:var(--text-dim);" title="Show pips (dots) instead of numerals on a D6">
+          <input type="checkbox" ${c.pips ? 'checked' : ''} onchange="updateWidgetField('${w.id}','pips',this.checked)">pips
+        </label>
+        <select class="input-field" onchange="updateWidgetField('${w.id}','meshUrl',this.value)" title="Optional GLB mesh skin (procedural physics + face-detect still apply). Upload in the Models tab.">
+          <option value="">— procedural —</option>
+          ${models.map(m => { const url = '/assets/models/' + m; return `<option value="${esc(url)}" ${url === c.meshUrl ? 'selected' : ''}>${esc(m)}</option>`; }).join('')}
+        </select>
         <span style="font-size:.7rem; color:var(--text-dim);">Result fires bus event <code>dice.rolled</code> {result, sides} — use Studio to branch on it.</span>`;
-      if (w.type === 'dice-tray') return `
-        <input class="input-field" type="number" min="1" max="20" value="${c.count ?? 2}" oninput="updateWidgetField('${w.id}','count',parseInt(this.value)||1)" style="max-width:80px;" title="Number of D6 dice in the tray">
+      }
+      if (w.type === 'dice-tray') {
+        const spec = formatDiceSpec(c.dice ?? (c.count ? [{ sides: 6, count: c.count }] : [{ sides: 6, count: 2 }]));
+        const models = (window.assets?.models) || [];
+        return `
+        <input class="input-field" value="${esc(spec)}" placeholder="2d6+1d20" oninput="updateDiceSpec('${w.id}',this.value)" style="max-width:180px; font-family:monospace;" title="Mixed dice spec. D4, D6, D8, D10, D12, D20 allowed. Combine with '+' (e.g. '2d6+1d20').">
         <select class="input-field" onchange="updateWidgetField('${w.id}','triggerEvent',this.value)" title="Event type that rolls the tray">
           ${EVENT_OPTIONS.map(e => `<option value="${e}" ${e === c.triggerEvent ? 'selected' : ''}>${e}</option>`).join('')}
         </select>
-        <input class="input-field" type="number" step="0.05" value="${c.dieSize ?? 0.45}" oninput="updateWidgetField('${w.id}','dieSize',parseFloat(this.value)||0)" style="max-width:80px;" title="Die half-extent (world units)">
-        <span style="font-size:.7rem; color:var(--text-dim);">Rolls N D6s together. Result fires bus event <code>dice-tray.rolled</code> {dice:[{sides,result}], sum}.</span>`;
+        <select class="input-field" onchange="updateWidgetField('${w.id}','theme',this.value)" title="Face texture theme">
+          ${diceThemeOptions().map(t => `<option value="${t}" ${t === (c.theme || 'gold') ? 'selected' : ''}>${t}</option>`).join('')}
+        </select>
+        <label style="display:inline-flex; gap:4px; align-items:center; font-size:.75rem; color:var(--text-dim);" title="Show pips (dots) on any D6 in the tray">
+          <input type="checkbox" ${c.pips ? 'checked' : ''} onchange="updateWidgetField('${w.id}','pips',this.checked)">pips
+        </label>
+        <select class="input-field" onchange="updateWidgetField('${w.id}','meshUrl',this.value)" title="Optional GLB mesh skin applied to every die (per-die override via widgets.json). Upload in Models tab.">
+          <option value="">— procedural —</option>
+          ${models.map(m => { const url = '/assets/models/' + m; return `<option value="${esc(url)}" ${url === c.meshUrl ? 'selected' : ''}>${esc(m)}</option>`; }).join('')}
+        </select>
+        <input class="input-field" type="number" step="0.05" value="${c.dieSize ?? 0.45}" oninput="updateWidgetField('${w.id}','dieSize',parseFloat(this.value)||0)" style="max-width:80px;" title="Die size (world units)">
+        <span style="font-size:.7rem; color:var(--text-dim);">Authentic 3D polyhedra + cannon-es physics. Result fires bus event <code>dice-tray.rolled</code> {dice:[{sides,result}], sum, total per sides}.</span>`;
+      }
       if (w.type === 'model-3d') {
         const models = (window.assets?.models) || [];
         return `
@@ -1182,6 +1299,12 @@ function buildLogBody(event) {
     case 'raid':          return `${p.user} · ${p.viewers} viewers`;
     case 'redeem':        return `${p.user} · ${p.rewardTitle}${p.input ? ' · "' + p.input + '"' : ''}`;
     case 'sub.combo':     return `${p.label} ×${p.level} (${p.count} subs)`;
+    case 'dice.rolled':   return `D${p.sides} → ${p.result}`;
+    case 'dice-tray.rolled': {
+      const mixed = new Set((p.dice ?? []).map(d => d.sides)).size > 1;
+      const faces = (p.dice ?? []).map(d => mixed ? `d${d.sides}:${d.result}` : d.result).join(', ');
+      return `[${faces}] = ${p.sum}`;
+    }
     default:              return JSON.stringify(p).slice(0, 80);
   }
 }

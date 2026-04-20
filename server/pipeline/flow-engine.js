@@ -8,6 +8,22 @@ import { makeCtx, resolveDeep, resolve } from '../template.js';
  * Interprets and executes node-based logic graphs.
  */
 
+const DICE_SIDES_ALLOWED = new Set([4, 6, 8, 10, 12, 20]);
+function parseDiceSpecServer(str) {
+  if (!str || typeof str !== 'string') return null;
+  const parts = str.replace(/\s+/g, '').split(/[+,]/).filter(Boolean);
+  const groups = [];
+  for (const p of parts) {
+    const m = /^(\d*)d(\d+)$/i.exec(p);
+    if (!m) return null;
+    const count = Math.max(1, Math.min(20, parseInt(m[1] || '1', 10)));
+    const sides = parseInt(m[2], 10);
+    if (!DICE_SIDES_ALLOWED.has(sides)) return null;
+    groups.push({ sides, count });
+  }
+  return groups.length ? groups : null;
+}
+
 export class FlowEngine {
   #flows = [];
 
@@ -97,6 +113,19 @@ export class FlowEngine {
             const roll  = Math.floor(Math.random() * sides) + 1;
             ctx.exprCtx.roll = roll; // Inject into context for future nodes
             broadcastEffect('dice-roll', { result: roll, sides, user: event.payload?.user }, event.isTest);
+          } else if (node.action === 'rollDiceTray') {
+            // Kick off a dice-tray widget roll. The overlay widget produces the
+            // authentic physics-based result and publishes dice-tray.rolled
+            // separately — use that as a flow trigger to branch on the result.
+            const dice = parseDiceSpecServer(data.spec) ?? [{ sides: 6, count: 2 }];
+            const payload = { dice, user: event.payload?.user };
+            if (data.theme) payload.theme = data.theme;
+            bus.publish({
+              source: 'flow-engine',
+              type: 'dice-tray-roll',
+              payload,
+              isTest: event.isTest,
+            });
           } else if (node.action === 'fireEvent') {
             let payload = data.payload;
             if (typeof payload === 'string') {

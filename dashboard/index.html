@@ -871,6 +871,10 @@ html, body {
               onclick="fireEvent('redeem', { user: 'Roller', rewardTitle: 'Roll for Luck' }, this)">
               <div class="icon-bg">🎲</div>D20 Roll of Fate
             </button>
+            <button class="effect-btn" style="--c:#FFD700"
+              onclick="fireEvent('dice-tray-roll', { user: 'Roller' }, this)">
+              <div class="icon-bg">🎲🎲</div>Roll 2d6
+            </button>
             <button class="effect-btn" style="--c:var(--accent)"
               onclick="fireEvent('chat', { user: 'SecretFriend', message: '!hype' }, this)">
               <div class="icon-bg">💬</div>Secret !hype Cmd
@@ -883,8 +887,27 @@ html, body {
               onclick="fireEvent('redeem', { user: 'MathWhiz', rewardTitle: 'Kaprekar\'s Curse' }, this)">
               <div class="icon-bg">🔢</div>Kaprekar's Curse
             </button>
-            </div>
-            </div>
+          </div>
+        </div>
+
+        <div class="effects-section">
+          <div class="effects-section-label">Custom Dice Roll (1–5 dice)</div>
+          <div id="custom-dice-row" style="display:flex; gap:6px; align-items:center; flex-wrap:wrap;">
+            <select id="custom-die-0" class="input-field" style="max-width:90px;"></select>
+            <select id="custom-die-1" class="input-field" style="max-width:90px;"></select>
+            <select id="custom-die-2" class="input-field" style="max-width:90px;"></select>
+            <select id="custom-die-3" class="input-field" style="max-width:90px;"></select>
+            <select id="custom-die-4" class="input-field" style="max-width:90px;"></select>
+            <select id="custom-die-theme" class="input-field" style="max-width:110px;" title="Face texture theme"></select>
+            <label style="display:inline-flex; gap:4px; align-items:center; font-size:.78rem; color:var(--text-dim);" title="Pips instead of numerals on D6">
+              <input type="checkbox" id="custom-die-pips" checked>pips
+            </label>
+            <button class="btn btn-primary btn-sm" onclick="rollCustomDice(this)" style="margin-left:auto;">🎲 Roll</button>
+          </div>
+          <p style="font-size:.7rem; color:var(--text-dim); margin:6px 0 0;">
+            Pick up to 5 dice (any mix of D4/D6/D8/D10/D12/D20), then roll — fires <code>dice-tray-roll</code> with your spec and rolls on any dice-tray widget configured with that trigger.
+          </p>
+        </div>
 
       </div>
       <div class="card">

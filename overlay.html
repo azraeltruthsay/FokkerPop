@@ -1462,7 +1462,7 @@ function flashEventBadges(event) {
     widgetModule.onPhysicsPitEvent?.(state.widgets, event);
     widgetModule.onPhysicsPit3DEvent?.(state.widgets, event);
     widgetModule.triggerDice?.(state.widgets, event.type);
-    widgetModule.triggerDiceTray?.(state.widgets, event.type);
+    widgetModule.triggerDiceTray?.(state.widgets, event);
   }
 }
 
@@ -1566,8 +1566,21 @@ function spawnKaprekar(p) {
   }, 800);
 }
 
+// Default sound per effect. `p.sound` overrides; `p.sound === null` silences.
+const EFFECT_DEFAULT_SOUNDS = {
+  'balloon':         'pop.wav',
+  'firework':        'boom.wav',
+  'firework-salvo':  'boom.wav',
+  'confetti':        'chime.wav',
+  'sticker-rain':    'ding.wav',
+  'crowd-explosion': 'boom.wav',
+  'dice-roll':       'coin.wav',
+};
+
 function dispatchEffect(effect, p) {
-  if (p.sound) playSound(p.sound, p.vol);
+  const explicit = Object.prototype.hasOwnProperty.call(p, 'sound');
+  const sound = explicit ? p.sound : EFFECT_DEFAULT_SOUNDS[effect];
+  if (sound) playSound(sound, p.vol);
 
   const heavyEffects = ['firework-salvo', 'crowd-explosion', 'combo-display'];
   if (heavyEffects.includes(effect)) triggerCharacterReaction();

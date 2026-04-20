@@ -199,6 +199,213 @@ const diceWidgets = new Map(); // widget id -> { scene, renderer, cleanup }
 
 const DICE_SIDES = [4, 6, 8, 10, 12, 20];
 
+// Canvas-drawn face-texture themes. `bg(ctx, s)` paints the background for a
+// single face canvas of size s; `fontColor` is the number colour; `fontGlow`
+// adds a blurred shadow for a neon effect; `color3d` / `metalness` /
+// `roughness` tint the MeshStandardMaterial behind the texture.
+const DIE_THEMES = {
+  gold: {
+    bg: (ctx, s) => { ctx.fillStyle = '#FFD700'; ctx.fillRect(0, 0, s, s); },
+    fontColor: '#1a0f00',
+    color3d: 0xFFD700, metalness: 0.15, roughness: 0.35,
+  },
+  silver: {
+    bg: (ctx, s) => {
+      const g = ctx.createLinearGradient(0, 0, s, s);
+      g.addColorStop(0, '#e6e8ec'); g.addColorStop(1, '#b8bcc4');
+      ctx.fillStyle = g; ctx.fillRect(0, 0, s, s);
+    },
+    fontColor: '#0a1622',
+    color3d: 0xD0D4DA, metalness: 0.5, roughness: 0.22,
+  },
+  obsidian: {
+    bg: (ctx, s) => {
+      const g = ctx.createRadialGradient(s / 2, s / 2, 0, s / 2, s / 2, s * 0.8);
+      g.addColorStop(0, '#1a1a26'); g.addColorStop(1, '#050508');
+      ctx.fillStyle = g; ctx.fillRect(0, 0, s, s);
+    },
+    fontColor: '#FFD700',
+    color3d: 0x1a1a22, metalness: 0.4, roughness: 0.18,
+  },
+  marble: {
+    bg: (ctx, s) => {
+      ctx.fillStyle = '#f2efe6'; ctx.fillRect(0, 0, s, s);
+      ctx.strokeStyle = 'rgba(110,110,128,0.32)';
+      ctx.lineWidth = 1.2;
+      for (let i = 0; i < 7; i++) {
+        ctx.beginPath();
+        ctx.moveTo(Math.random() * s, Math.random() * s);
+        ctx.bezierCurveTo(Math.random() * s, Math.random() * s, Math.random() * s, Math.random() * s, Math.random() * s, Math.random() * s);
+        ctx.stroke();
+      }
+    },
+    fontColor: '#2a1515',
+    color3d: 0xf2efe6, metalness: 0.05, roughness: 0.5,
+  },
+  wood: {
+    bg: (ctx, s) => {
+      const g = ctx.createLinearGradient(0, 0, 0, s);
+      g.addColorStop(0, '#a0623a'); g.addColorStop(0.5, '#845028'); g.addColorStop(1, '#6b3f1e');
+      ctx.fillStyle = g; ctx.fillRect(0, 0, s, s);
+      ctx.strokeStyle = 'rgba(50,25,10,0.35)';
+      ctx.lineWidth = 1;
+      for (let y = 6; y < s; y += 8 + Math.random() * 5) {
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.bezierCurveTo(s * 0.3, y - 2, s * 0.7, y + 2, s, y + (Math.random() - 0.5) * 5);
+        ctx.stroke();
+      }
+    },
+    fontColor: '#f5e5c8',
+    color3d: 0x6b3f1e, metalness: 0.0, roughness: 0.8,
+  },
+  neon: {
+    bg: (ctx, s) => {
+      ctx.fillStyle = '#0f0f1a'; ctx.fillRect(0, 0, s, s);
+      ctx.strokeStyle = 'rgba(0,255,255,0.22)';
+      ctx.lineWidth = 1;
+      for (let i = 1; i < 5; i++) {
+        ctx.beginPath();
+        ctx.moveTo(i * s / 5, 0); ctx.lineTo(i * s / 5, s);
+        ctx.moveTo(0, i * s / 5); ctx.lineTo(s, i * s / 5);
+        ctx.stroke();
+      }
+    },
+    fontColor: '#00ffff', fontGlow: '#00ffff',
+    color3d: 0x0a1020, metalness: 0.1, roughness: 0.3,
+  },
+  blood: {
+    bg: (ctx, s) => {
+      const g = ctx.createRadialGradient(s / 2, s / 2, 0, s / 2, s / 2, s * 0.85);
+      g.addColorStop(0, '#8b0000'); g.addColorStop(1, '#2a0000');
+      ctx.fillStyle = g; ctx.fillRect(0, 0, s, s);
+    },
+    fontColor: '#ffeeee',
+    color3d: 0x8b0000, metalness: 0.3, roughness: 0.4,
+  },
+};
+const DIE_THEME_NAMES = Object.keys(DIE_THEMES);
+function resolveTheme(name) { return DIE_THEMES[name] || DIE_THEMES.gold; }
+
+// ── Image-based dice themes ────────────────────────────────────────────────
+// Users drop PNGs into assets/dice/<theme>/face-<n>.png (optional theme.json
+// for material overrides). The server exposes the list of available image
+// themes via /api/assets.diceThemes; we lazy-fetch that list once and resolve
+// each theme on first use.
+
+let knownImageThemesPromise = null;
+function getKnownImageThemes() {
+  if (!knownImageThemesPromise) {
+    knownImageThemesPromise = fetch('/api/assets')
+      .then(r => r.json())
+      .then(d => Array.isArray(d.diceThemes) ? d.diceThemes : [])
+      .catch(() => []);
+  }
+  return knownImageThemesPromise;
+}
+
+function parseColorSpec(v) {
+  if (typeof v === 'number') return v;
+  if (typeof v === 'string') {
+    if (v.startsWith('0x')) return parseInt(v.slice(2), 16);
+    if (v.startsWith('#'))  return parseInt(v.slice(1), 16);
+    const n = parseInt(v, 10);
+    return Number.isFinite(n) ? n : null;
+  }
+  return null;
+}
+
+function loadTexture(T, url) {
+  return new Promise((res, rej) => {
+    new T.TextureLoader().load(url, tex => { tex.colorSpace = T.SRGBColorSpace; res(tex); }, undefined, () => rej(new Error('texture load failed: ' + url)));
+  });
+}
+
+const imageThemeCache = new Map(); // theme name -> Promise<themeData>
+async function loadImageTheme(themeName) {
+  if (imageThemeCache.has(themeName)) return imageThemeCache.get(themeName);
+  const p = (async () => {
+    const known = await getKnownImageThemes();
+    if (!known.includes(themeName)) return null;
+    let meta = null;
+    try {
+      const res = await fetch(`/assets/dice/${encodeURIComponent(themeName)}/theme.json`);
+      if (res.ok) meta = await res.json();
+    } catch { /* theme.json is optional */ }
+    const color3d   = parseColorSpec(meta?.color3d) ?? 0xffffff;
+    const metalness = Number.isFinite(meta?.metalness) ? meta.metalness : 0.1;
+    const roughness = Number.isFinite(meta?.roughness) ? meta.roughness : 0.5;
+    const rollSound = meta?.rollSound || null;
+    const texByFace = new Map();
+    return {
+      color3d, metalness, roughness, rollSound,
+      async makeFace(T, n, opts) {
+        if (texByFace.has(n)) return texByFace.get(n);
+        for (const ext of ['png', 'jpg', 'jpeg', 'webp']) {
+          try {
+            const tex = await loadTexture(T, `/assets/dice/${encodeURIComponent(themeName)}/face-${n}.${ext}`);
+            texByFace.set(n, tex);
+            return tex;
+          } catch { /* try next ext */ }
+        }
+        // Missing face → fall back to canvas gold so the die still labels itself.
+        return makeNumberTexture(T, n, DIE_THEMES.gold, opts);
+      },
+    };
+  })();
+  imageThemeCache.set(themeName, p);
+  return p;
+}
+
+// ── GLB die skins ──────────────────────────────────────────────────────────
+// GLB meshes replace the *visual* of a procedural die. Physics + face-up
+// detection still use the procedural polyhedron so rolls stay fair. The user
+// is responsible for orienting their GLB so its visible faces line up with
+// the procedural face normals (standard dice GLBs usually do).
+
+const glbCache = new Map(); // url -> Promise<{gltf}>
+async function loadGlb(url) {
+  if (!glbCache.has(url)) {
+    glbCache.set(url, (async () => {
+      const { GLTFLoader } = await import('/vendor/GLTFLoader.js');
+      return new Promise((res, rej) => {
+        new GLTFLoader().load(url, res, undefined, rej);
+      });
+    })());
+  }
+  return glbCache.get(url);
+}
+
+async function buildDieGlbMesh(url, targetMaxDim) {
+  const T = await loadThree();
+  const gltf = await loadGlb(url);
+  const obj = gltf.scene.clone(true);
+  const box = new T.Box3().setFromObject(obj);
+  const size = box.getSize(new T.Vector3());
+  const maxDim = Math.max(size.x, size.y, size.z) || 1;
+  const s = targetMaxDim / maxDim;
+  obj.scale.setScalar(s);
+  const center = box.getCenter(new T.Vector3()).multiplyScalar(s);
+  obj.position.sub(center);
+  const group = new T.Group();
+  group.add(obj);
+  return group;
+}
+
+// Unified resolver: canvas theme wins; else image theme; else gold.
+async function loadDieThemeData(themeName) {
+  if (DIE_THEMES[themeName]) {
+    const t = DIE_THEMES[themeName];
+    return {
+      color3d: t.color3d, metalness: t.metalness, roughness: t.roughness, rollSound: null,
+      makeFace: async (T, n, opts) => makeNumberTexture(T, n, t, opts),
+    };
+  }
+  const img = await loadImageTheme(themeName);
+  if (img) return img;
+  return loadDieThemeData('gold');
+}
+
 // Build an authentic pentagonal trapezohedron — the real D10 shape. 10 kite
 // faces, each as 2 triangles sharing an apex→belt edge. With these proportions
 // the two triangles of each kite have normals within ~16° of each other (dot
@@ -243,8 +450,10 @@ function buildPentagonalTrapezohedron(T) {
   return g;
 }
 
-async function buildDieMesh(sides) {
+async function buildDieMesh(sides, themeName = 'gold', options = {}) {
   const T = await loadThree();
+  const theme = await loadDieThemeData(themeName);
+  const pipMode = sides === 6 && !!options.pips;
   const geo = {
     4:  new T.TetrahedronGeometry(0.95),
     6:  new T.BoxGeometry(1.2, 1.2, 1.2),
@@ -292,26 +501,53 @@ async function buildDieMesh(sides) {
     for (const tri of f.tris) geo.addGroup(tri * 3, 3, i);
   });
 
-  const materials = faces.map((_, i) => new T.MeshStandardMaterial({
-    color: 0xFFD700, roughness: 0.35, metalness: 0.15,
-    map: makeNumberTexture(T, i + 1),
+  const materials = await Promise.all(faces.map(async (_, i) => {
+    const map = await theme.makeFace(T, i + 1, { pip: pipMode });
+    return new T.MeshStandardMaterial({
+      color: theme.color3d, roughness: theme.roughness, metalness: theme.metalness, map,
+    });
   }));
   const mesh = new T.Mesh(geo, materials);
   mesh.castShadow = true;
   return { mesh, faces };
 }
 
-function makeNumberTexture(T, n) {
+// Pip layout (fraction of canvas width/height) for traditional D6 faces 1–6.
+const PIP_POSITIONS = {
+  1: [[0.5, 0.5]],
+  2: [[0.28, 0.28], [0.72, 0.72]],
+  3: [[0.28, 0.28], [0.5, 0.5], [0.72, 0.72]],
+  4: [[0.28, 0.28], [0.72, 0.28], [0.28, 0.72], [0.72, 0.72]],
+  5: [[0.28, 0.28], [0.72, 0.28], [0.5, 0.5], [0.28, 0.72], [0.72, 0.72]],
+  6: [[0.28, 0.25], [0.72, 0.25], [0.28, 0.5], [0.72, 0.5], [0.28, 0.75], [0.72, 0.75]],
+};
+
+function makeNumberTexture(T, n, theme, opts = {}) {
+  const t = theme && theme.bg ? theme : resolveTheme('gold');
   const size = 128;
   const c = document.createElement('canvas');
   c.width = size; c.height = size;
   const ctx = c.getContext('2d');
-  ctx.fillStyle = '#FFD700'; ctx.fillRect(0, 0, size, size);
-  ctx.fillStyle = '#1a0f00';
-  ctx.font = 'bold 70px system-ui, sans-serif';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillText(String(n), size / 2, size / 2 + 5);
+  t.bg(ctx, size);
+  if (t.fontGlow) {
+    ctx.shadowColor = t.fontGlow;
+    ctx.shadowBlur  = 18;
+  }
+  ctx.fillStyle = t.fontColor;
+  if (opts.pip && n >= 1 && n <= 6) {
+    const r = size * 0.09;
+    for (const [fx, fy] of PIP_POSITIONS[n]) {
+      ctx.beginPath();
+      ctx.arc(fx * size, fy * size, r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  } else {
+    ctx.font = 'bold 70px system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(String(n), size / 2, size / 2 + 5);
+  }
+  ctx.shadowBlur = 0;
   const tex = new T.CanvasTexture(c);
   tex.colorSpace = T.SRGBColorSpace;
   return tex;
@@ -346,7 +582,22 @@ export async function mountDice(widget, el, sendToServer) {
   renderer.domElement.style.cssText = 'display:block; width:100%; height:100%; border-radius:12px; background:rgba(8,8,16,0.2); border:1px solid rgba(255,255,255,0.08);';
   el.appendChild(renderer.domElement);
 
-  const { mesh, faces } = await buildDieMesh(side);
+  const built = await buildDieMesh(side, cfg.theme, { pips: !!cfg.pips });
+  const faces = built.faces;
+  let mesh = built.mesh;
+  if (cfg.meshUrl) {
+    try {
+      // Swap in the GLB as the visual; procedural `faces` still drive face-up
+      // detection. Scale the GLB to roughly the procedural die's extent.
+      const extent = side === 6 ? 1.2 : 2.0;
+      mesh = await buildDieGlbMesh(cfg.meshUrl, extent);
+      built.mesh.geometry.dispose();
+      const mats = Array.isArray(built.mesh.material) ? built.mesh.material : [built.mesh.material];
+      for (const m of mats) { m.map?.dispose?.(); m.dispose?.(); }
+    } catch (err) {
+      console.warn('[dice] GLB load failed, falling back to procedural mesh:', cfg.meshUrl, err);
+    }
+  }
   scene.add(mesh);
 
   const state = { pos: new T.Vector3(0, 3, 0), vel: new T.Vector3(), spin: new T.Vector3(), quat: new T.Quaternion(), settled: true, stillFor: 0, rollId: null };
@@ -360,6 +611,7 @@ export async function mountDice(widget, el, sendToServer) {
     state.settled = false;
     state.stillFor = 0;
     state.rollId = rollId || ('r' + Date.now().toString(36));
+    window.playSound?.(cfg.rollSound ?? 'coin.wav', 0.6);
   }
 
   const GRAVITY = 9.5, FLOOR = -1.4, BOUNCE = 0.38, DAMPING = 0.985, SPIN_DAMPING = 0.975;
@@ -440,8 +692,11 @@ export async function mountDice(widget, el, sendToServer) {
       cancelAnimationFrame(rafId);
       renderer.dispose();
       renderer.domElement.remove();
-      for (const m of mesh.material) { m.map?.dispose(); m.dispose(); }
-      mesh.geometry.dispose();
+      // Traverse walks both Mesh (procedural) and Group (GLB) trees uniformly.
+      mesh.traverse?.((o) => {
+        if (o.geometry) o.geometry.dispose?.();
+        if (o.material) (Array.isArray(o.material) ? o.material : [o.material]).forEach(m => { m.map?.dispose?.(); m.dispose?.(); });
+      });
     }
   };
   diceWidgets.set(widget.id, entry);
@@ -464,12 +719,134 @@ export function triggerDice(widgets, eventType) {
 }
 
 // ─── Dice Tray (multi-die pit with summed/individual readback) ────────────
-// Uses cannon-es for 3D physics and three.js BoxGeometry bodies (D6 first
-// pass — the tray rolls N D6s as ConvexPolyhedron-approximated cubes so
-// they tumble realistically and the face-up is readable). Reports
+// Uses cannon-es for 3D physics and the authentic polyhedron meshes from the
+// single-die widget (buildDieMesh). Each die gets its own cannon-es shape —
+// C.Box for D6s, C.ConvexPolyhedron for D4/D8/D10/D12/D20 — so they tumble
+// and settle on real faces. Accepts a mixed dice spec:
+//   cfg.dice = [{sides: 20, count: 1}, {sides: 6, count: 2}]
+// (or legacy cfg.count which defaults to N D6s). Reports
 // dice-tray.rolled { widgetId, dice: [{sides,result}], sum } after all settle.
 
 const diceTrays = new Map();
+
+// Normalize dice config. Accepts new `dice: [{sides,count}]` or legacy
+// `count: N` (all D6). Clamps total dice to 20 to keep physics reasonable.
+function normalizeDiceSpec(cfg) {
+  let spec;
+  if (Array.isArray(cfg.dice) && cfg.dice.length) {
+    spec = cfg.dice
+      .map(d => ({ sides: DICE_SIDES.includes(Number(d.sides)) ? Number(d.sides) : 6, count: Math.max(1, Math.min(20, Number(d.count) || 1)) }));
+  } else {
+    spec = [{ sides: 6, count: Math.max(1, Math.min(20, Number(cfg.count) || 2)) }];
+  }
+  let total = 0;
+  const clamped = [];
+  for (const d of spec) {
+    if (total >= 20) break;
+    const count = Math.min(d.count, 20 - total);
+    clamped.push({ sides: d.sides, count });
+    total += count;
+  }
+  return clamped;
+}
+
+// Deduplicate a non-indexed BufferGeometry's position buffer into unique
+// vertices (within eps), returning { verts, indexMap }. indexMap[i] = unique
+// index for triangle-vertex i in the original attribute.
+function dedupeVerts(geo, eps = 0.0005) {
+  const pos = geo.attributes.position;
+  const verts = [];
+  const indexMap = new Array(pos.count);
+  for (let i = 0; i < pos.count; i++) {
+    const x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i);
+    let found = -1;
+    for (let j = 0; j < verts.length; j++) {
+      const u = verts[j];
+      if (Math.abs(u[0] - x) < eps && Math.abs(u[1] - y) < eps && Math.abs(u[2] - z) < eps) { found = j; break; }
+    }
+    if (found < 0) { found = verts.length; verts.push([x, y, z]); }
+    indexMap[i] = found;
+  }
+  return { verts, indexMap };
+}
+
+// Sort face vertex indices CCW around the face centroid when viewed from
+// outside (along face normal). cannon-es ConvexPolyhedron requires this
+// winding so its computed face normals point outward.
+function sortFaceCCW(indices, verts, normal) {
+  const n = { x: normal.x, y: normal.y, z: normal.z };
+  let cx = 0, cy = 0, cz = 0;
+  for (const i of indices) { cx += verts[i][0]; cy += verts[i][1]; cz += verts[i][2]; }
+  cx /= indices.length; cy /= indices.length; cz /= indices.length;
+
+  // Build an orthonormal basis (u, v) on the face plane. Pick any axis not
+  // parallel to the normal, cross to get u, cross again to get v.
+  const refX = Math.abs(n.y) > 0.9 ? 1 : 0;
+  const refY = Math.abs(n.y) > 0.9 ? 0 : 1;
+  const refZ = 0;
+  let ux = n.y * refZ - n.z * refY;
+  let uy = n.z * refX - n.x * refZ;
+  let uz = n.x * refY - n.y * refX;
+  const uL = Math.hypot(ux, uy, uz) || 1;
+  ux /= uL; uy /= uL; uz /= uL;
+  const vx = n.y * uz - n.z * uy;
+  const vy = n.z * ux - n.x * uz;
+  const vz = n.x * uy - n.y * ux;
+
+  return indices.slice().sort((ia, ib) => {
+    const a = verts[ia], b = verts[ib];
+    const ax = a[0] - cx, ay = a[1] - cy, az = a[2] - cz;
+    const bx = b[0] - cx, by = b[1] - cy, bz = b[2] - cz;
+    const aa = Math.atan2(ax * vx + ay * vy + az * vz, ax * ux + ay * uy + az * uz);
+    const ba = Math.atan2(bx * vx + by * vy + bz * vz, bx * ux + by * uy + bz * uz);
+    return aa - ba;
+  });
+}
+
+// Build a die rigid-body primitive: three.js mesh (scaled) + cannon-es shape
+// + per-face metadata (normal in body space, face number). For D6 we use a
+// simple C.Box for speed; all other polyhedra use C.ConvexPolyhedron derived
+// from the clustered faces so they settle on authentic facets.
+async function buildDieRigidBody(C, sides, scale, theme, options = {}) {
+  const { mesh: proceduralMesh, faces } = await buildDieMesh(sides, theme, options);
+  proceduralMesh.scale.setScalar(scale);
+  let mesh = proceduralMesh;
+  // GLB skin: replace the visual mesh while keeping procedural physics/faces.
+  if (options.meshUrl) {
+    try {
+      mesh = await buildDieGlbMesh(options.meshUrl, scale * 2);
+      proceduralMesh.geometry.dispose();
+      const mats = Array.isArray(proceduralMesh.material) ? proceduralMesh.material : [proceduralMesh.material];
+      for (const m of mats) { m.map?.dispose?.(); m.dispose?.(); }
+    } catch (err) {
+      console.warn('[dice] GLB load failed, falling back to procedural mesh:', options.meshUrl, err);
+    }
+  }
+
+  let shape;
+  if (sides === 6) {
+    // BoxGeometry(1.2) → half-extent 0.6, then visual scale → 0.6 * scale.
+    const he = 0.6 * scale;
+    shape = new C.Box(new C.Vec3(he, he, he));
+  } else {
+    const { verts, indexMap } = dedupeVerts(mesh.geometry);
+    const cannonVerts = verts.map(v => new C.Vec3(v[0] * scale, v[1] * scale, v[2] * scale));
+    const cannonFaces = faces.map(face => {
+      const vertSet = new Set();
+      for (const tri of face.tris) {
+        vertSet.add(indexMap[tri * 3]);
+        vertSet.add(indexMap[tri * 3 + 1]);
+        vertSet.add(indexMap[tri * 3 + 2]);
+      }
+      return sortFaceCCW([...vertSet], verts, face.normal);
+    });
+    shape = new C.ConvexPolyhedron({ vertices: cannonVerts, faces: cannonFaces });
+  }
+
+  // Cache face metadata for readFaceUp. Normals are unit vectors in body space.
+  const faceMeta = faces.map(f => ({ normal: { x: f.normal.x, y: f.normal.y, z: f.normal.z }, number: f.index + 1 }));
+  return { mesh, shape, faces: faceMeta };
+}
 
 export async function mountDiceTray(widget, el, sendToServer) {
   const T = await loadThree();
@@ -506,13 +883,11 @@ export async function mountDiceTray(widget, el, sendToServer) {
   world.defaultContactMaterial.restitution = 0.3;
   world.defaultContactMaterial.friction    = 0.4;
 
-  // Tray dimensions
   const halfX = cfg.trayWidth  ?? 2.5;
   const halfZ = cfg.trayDepth  ?? 1.6;
   const wallH = 1.2;
   const wallT = 0.08;
 
-  // Ground + walls
   world.addBody(new C.Body({ type: C.Body.STATIC, shape: new C.Plane(),
     quaternion: new C.Quaternion().setFromEuler(-Math.PI / 2, 0, 0) }));
   const wall = (w2, h2, d2, px, py, pz) => world.addBody(new C.Body({
@@ -523,7 +898,6 @@ export async function mountDiceTray(widget, el, sendToServer) {
   wall(halfX + wallT, wallH / 2, wallT, 0, wallH / 2, -halfZ - wallT);
   wall(halfX + wallT, wallH / 2, wallT, 0, wallH / 2,  halfZ + wallT);
 
-  // Tray visual
   const trayGeo = new T.PlaneGeometry(halfX * 2, halfZ * 2);
   const trayMat = new T.MeshStandardMaterial({ color: 0x181822, roughness: 0.8 });
   const trayMesh = new T.Mesh(trayGeo, trayMat);
@@ -531,82 +905,69 @@ export async function mountDiceTray(widget, el, sendToServer) {
   scene.add(trayMesh);
   scene.add(new T.Box3Helper(new T.Box3(new T.Vector3(-halfX, 0, -halfZ), new T.Vector3(halfX, wallH, halfZ)), 0x9147FF));
 
-  // Pre-build D6 textures (shared across all dice in this tray)
-  const faceTextures = [1, 2, 3, 4, 5, 6].map(n => {
-    const s = 128;
-    const c = document.createElement('canvas');
-    c.width = s; c.height = s;
-    const ctx = c.getContext('2d');
-    ctx.fillStyle = '#FFD700'; ctx.fillRect(0, 0, s, s);
-    ctx.fillStyle = '#1a0f00';
-    ctx.font = 'bold 80px system-ui, sans-serif';
-    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillText(String(n), s / 2, s / 2 + 4);
-    const tex = new T.CanvasTexture(c);
-    tex.colorSpace = T.SRGBColorSpace;
-    return tex;
-  });
+  const dieScale = cfg.dieSize ?? 0.45;
 
-  // Cube-face -> number mapping. three.js BoxGeometry groups materials by
-  // side: [+X, -X, +Y, -Y, +Z, -Z]. Standard dice have opposite faces
-  // summing to 7: 1↔6, 2↔5, 3↔4.
-  const FACE_NUMBERS = [1, 6, 2, 5, 3, 4];
-  const FACE_NORMALS = [
-    new T.Vector3( 1, 0,  0),
-    new T.Vector3(-1, 0,  0),
-    new T.Vector3( 0, 1,  0),
-    new T.Vector3( 0,-1,  0),
-    new T.Vector3( 0, 0,  1),
-    new T.Vector3( 0, 0, -1),
-  ];
-
-  const dice = []; // { body, mesh, settled, stillFor, result? }
+  const dice = []; // { body, mesh, faces, sides, settled, stillFor, result }
   let rollActive = false;
 
-  function spawnDice(count) {
-    const size = cfg.dieSize ?? 0.45;
-    for (let i = 0; i < count; i++) {
-      const body = new C.Body({
-        mass: 0.5, shape: new C.Box(new C.Vec3(size, size, size)),
-        position: new C.Vec3((Math.random() - 0.5) * halfX, 1.5 + Math.random() * 1.5, (Math.random() - 0.5) * halfZ),
-        angularDamping: 0.15, linearDamping: 0.08,
-      });
-      body.velocity.set((Math.random() - 0.5) * 3, 0, (Math.random() - 0.5) * 3);
-      body.angularVelocity.set(Math.random() * 10, Math.random() * 10, Math.random() * 10);
-      body.quaternion.setFromEuler(Math.random() * 6.28, Math.random() * 6.28, Math.random() * 6.28);
-      world.addBody(body);
-
-      const mats = faceTextures.map(tex => new T.MeshStandardMaterial({ map: tex, roughness: 0.35 }));
-      const mesh = new T.Mesh(new T.BoxGeometry(size * 2, size * 2, size * 2), mats);
-      scene.add(mesh);
-      dice.push({ body, mesh, settled: false, stillFor: 0, result: null });
-    }
-  }
-
-  function readFaceUp(body) {
+  function readFaceUp(body, faces) {
     const q = new T.Quaternion(body.quaternion.x, body.quaternion.y, body.quaternion.z, body.quaternion.w);
     const up = new T.Vector3(0, 1, 0);
+    const tmp = new T.Vector3();
     let best = -Infinity, num = 1;
-    for (let i = 0; i < 6; i++) {
-      const n = FACE_NORMALS[i].clone().applyQuaternion(q);
-      const d = n.dot(up);
-      if (d > best) { best = d; num = FACE_NUMBERS[i]; }
+    for (const f of faces) {
+      tmp.set(f.normal.x, f.normal.y, f.normal.z).applyQuaternion(q);
+      const d = tmp.dot(up);
+      if (d > best) { best = d; num = f.number; }
     }
     return num;
   }
 
-  function rollTray() {
-    // Remove previous dice
-    for (const d of dice) {
-      world.removeBody(d.body);
-      scene.remove(d.mesh);
-      d.mesh.geometry.dispose();
-      d.mesh.material.forEach(m => m.dispose());
-    }
+  function disposeDie(d) {
+    world.removeBody(d.body);
+    scene.remove(d.mesh);
+    d.mesh.traverse?.((o) => {
+      if (o.geometry) o.geometry.dispose?.();
+      if (o.material) (Array.isArray(o.material) ? o.material : [o.material]).forEach(m => { m.map?.dispose?.(); m.dispose?.(); });
+    });
+  }
+
+  async function spawnDie(sides, theme, opts = {}) {
+    const { mesh, shape, faces } = await buildDieRigidBody(C, sides, dieScale, theme, opts);
+    const body = new C.Body({
+      mass: 0.5, shape,
+      position: new C.Vec3((Math.random() - 0.5) * halfX, 1.5 + Math.random() * 1.5, (Math.random() - 0.5) * halfZ),
+      angularDamping: 0.15, linearDamping: 0.08,
+    });
+    body.velocity.set((Math.random() - 0.5) * 3, 0, (Math.random() - 0.5) * 3);
+    body.angularVelocity.set(Math.random() * 10, Math.random() * 10, Math.random() * 10);
+    body.quaternion.setFromEuler(Math.random() * 6.28, Math.random() * 6.28, Math.random() * 6.28);
+    world.addBody(body);
+    scene.add(mesh);
+    dice.push({ body, mesh, faces, sides, settled: false, stillFor: 0, result: null });
+  }
+
+  async function rollTray(specOverride, themeOverride, optsOverride) {
+    for (const d of dice) disposeDie(d);
     dice.length = 0;
     rollActive = true;
-    const n = Math.max(1, Math.min(20, cfg.count ?? 2));
-    spawnDice(n);
+    const spec = (Array.isArray(specOverride) && specOverride.length)
+      ? normalizeDiceSpec({ dice: specOverride })
+      : normalizeDiceSpec(cfg);
+    const theme = themeOverride || cfg.theme;
+    const baseOpts = { pips: !!cfg.pips, meshUrl: cfg.meshUrl, ...(optsOverride || {}) };
+    for (const group of spec) {
+      const groupOpts = { ...baseOpts };
+      if (group.pips !== undefined) groupOpts.pips = !!group.pips;
+      if (group.meshUrl) groupOpts.meshUrl = group.meshUrl;
+      for (let i = 0; i < group.count; i++) await spawnDie(group.sides, group.theme || theme, groupOpts);
+    }
+    // Roll sound precedence: cfg override > image theme's rollSound > coin.
+    let sound = cfg.rollSound;
+    if (!sound && theme) {
+      try { sound = (await loadDieThemeData(theme)).rollSound; } catch { /* ignore */ }
+    }
+    window.playSound?.(sound ?? 'coin.wav', 0.6);
   }
 
   let last = performance.now();
@@ -626,7 +987,7 @@ export async function mountDiceTray(widget, el, sendToServer) {
         d.stillFor += dt;
         if (d.stillFor > 0.4) {
           d.settled = true;
-          d.result = readFaceUp(d.body);
+          d.result = readFaceUp(d.body, d.faces);
         }
       } else if (!d.settled) {
         d.stillFor = 0;
@@ -636,7 +997,7 @@ export async function mountDiceTray(widget, el, sendToServer) {
 
     if (rollActive && dice.length > 0 && allSettled && dice.every(d => d.settled)) {
       rollActive = false;
-      const results = dice.map(d => ({ sides: 6, result: d.result }));
+      const results = dice.map(d => ({ sides: d.sides, result: d.result }));
       const sum = results.reduce((s, r) => s + r.result, 0);
       sendToServer?.({ type: '_overlay.dice-tray-rolled', widgetId: widget.id, dice: results, sum });
     }
@@ -646,15 +1007,24 @@ export async function mountDiceTray(widget, el, sendToServer) {
   }
   rafId = requestAnimationFrame(loop);
 
-  // Seed one idle die so layout mode shows the tray.
-  setTimeout(() => spawnDice(1), 60);
+  // Seed preview dice so layout-mode renders something.
+  setTimeout(async () => {
+    const spec = normalizeDiceSpec(cfg);
+    const preview = spec.slice(0, 2);
+    const baseOpts = { pips: !!cfg.pips, meshUrl: cfg.meshUrl };
+    for (const g of preview) {
+      const opts = { ...baseOpts };
+      if (g.pips !== undefined) opts.pips = !!g.pips;
+      if (g.meshUrl) opts.meshUrl = g.meshUrl;
+      await spawnDie(g.sides, g.theme || cfg.theme, opts);
+    }
+  }, 60);
 
   const entry = {
     rollTray,
     dispose: () => {
       cancelAnimationFrame(rafId);
-      for (const d of dice) { scene.remove(d.mesh); d.mesh.geometry.dispose(); d.mesh.material.forEach(m => m.dispose()); }
-      faceTextures.forEach(t => t.dispose());
+      for (const d of dice) disposeDie(d);
       renderer.dispose();
       renderer.domElement.remove();
       trayGeo.dispose(); trayMat.dispose();
@@ -669,15 +1039,28 @@ export function unmountDiceTray(widgetId) {
   if (t) { t.dispose(); diceTrays.delete(widgetId); }
 }
 
-export function triggerDiceTray(widgets, eventType) {
+export function triggerDiceTray(widgets, event) {
+  const eventType = typeof event === 'string' ? event : event?.type;
+  const p = typeof event === 'object' ? (event?.payload ?? {}) : {};
+  const diceOverride  = p.dice  ?? null;
+  const themeOverride = p.theme ?? null;
+  const optsOverride  = (p.pips !== undefined || p.meshUrl) ? {} : null;
+  if (optsOverride) {
+    if (p.pips !== undefined) optsOverride.pips = !!p.pips;
+    if (p.meshUrl)            optsOverride.meshUrl = p.meshUrl;
+  }
   for (const w of widgets) {
     if (w.type !== 'dice-tray') continue;
     const cfg = w.config || {};
     if (cfg.triggerEvent && cfg.triggerEvent !== eventType) continue;
     const entry = diceTrays.get(w.id);
-    entry?.rollTray?.();
+    entry?.rollTray?.(diceOverride, themeOverride, optsOverride);
   }
 }
+
+// Exposed so the dashboard's custom-dice picker can list available themes
+// without duplicating the list.
+export function listDieThemes() { return DIE_THEME_NAMES.slice(); }
 
 // ─── Hot Button 3D (clickable 3D mesh that fires a configured effect) ─────
 

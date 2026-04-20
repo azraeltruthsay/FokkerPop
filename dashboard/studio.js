@@ -339,6 +339,7 @@ function onContextMenu(e) {
         <div class="ctx-item" onclick="changeNodeAction('playSound')">🔊 Sound</div>
         <div class="ctx-item" onclick="changeNodeAction('fireEvent')">🚀 Fire Event</div>
         <div class="ctx-item" onclick="changeNodeAction('rollDice')">🎲 Roll Dice</div>
+        <div class="ctx-item" onclick="changeNodeAction('rollDiceTray')">🎲🎲 Roll Dice Tray</div>
         <div class="ctx-item" onclick="changeNodeAction('kaprekar')">🔢 Kaprekar</div>
         <div class="ctx-item" onclick="changeNodeAction('startTimer')">⏲️ Timer</div>
         <div class="ctx-item" onclick="changeNodeAction('delay')">⏳ Delay</div>
@@ -368,6 +369,7 @@ function onContextMenu(e) {
       <div class="ctx-item" onclick="addNode('action', 'playSound', ${x}, ${y})">🔊 Sound</div>
       <div class="ctx-item" onclick="addNode('action', 'fireEvent', ${x}, ${y})">🚀 Fire Event</div>
       <div class="ctx-item" onclick="addNode('action', 'rollDice', ${x}, ${y})">🎲 Roll Dice</div>
+      <div class="ctx-item" onclick="addNode('action', 'rollDiceTray', ${x}, ${y})">🎲🎲 Roll Dice Tray</div>
       <div class="ctx-item" onclick="addNode('action', 'kaprekar', ${x}, ${y})">🔢 Kaprekar</div>
       <div class="ctx-item" onclick="addNode('action', 'startTimer', ${x}, ${y})">⏲️ Timer</div>
       <div class="ctx-divider"></div>
@@ -581,7 +583,7 @@ function renderProps() {
   html += `<div class="prop-field"><label>Label</label><input class="input-field" value="${esc(n.label || '')}" oninput="activeNode.label=this.value;renderCanvas()"></div>`;
 
   if (n.type === 'trigger') {
-    const triggerOptions = ['sub', 'sub.gifted', 'follow', 'cheer', 'raid', 'redeem', 'chat', 'hype-train.start', 'hype-train.progress', 'hype-train.end'];
+    const triggerOptions = ['sub', 'sub.gifted', 'follow', 'cheer', 'raid', 'redeem', 'chat', 'hype-train.start', 'hype-train.progress', 'hype-train.end', 'dice.rolled', 'dice-tray.rolled', 'dice-tray-roll'];
     html += `<div class="prop-field">
       <label>Event Type</label>
       <select class="input-field" oninput="activeFlow.trigger=this.value; window.queueStudioSave()">
@@ -621,6 +623,13 @@ function renderProps() {
   if (n.action === 'rollDice') {
     html += exprField('Sides (e.g. 20)', 'sides', n.data.sides ?? 20);
     html += `<div style="font-size:0.6rem; color:var(--text-dim); margin-top:-8px; margin-bottom:8px;">Result available as {{ roll }}</div>`;
+  }
+
+  if (n.action === 'rollDiceTray') {
+    html += exprField('Dice Spec (e.g. 2d6+1d20)', 'spec', n.data.spec ?? '2d6');
+    const themeOpts = ['', ...(typeof diceThemeOptions === 'function' ? diceThemeOptions() : ['gold','silver','obsidian','marble','wood','neon','blood'])];
+    html += selectField('Face Theme', 'theme', themeOpts, n.data.theme ?? '');
+    html += `<div style="font-size:0.6rem; color:var(--text-dim); margin-top:-8px; margin-bottom:8px;">Rolls on any <code>dice-tray</code> widget with matching triggerEvent. Theme blank = use widget's own theme. Sides allowed: 4/6/8/10/12/20. Result arrives asynchronously on the <code>dice-tray.rolled</code> trigger — build a second flow to branch on <code>{{ payload.sum }}</code>, <code>{{ payload.dice[0].result }}</code>.</div>`;
   }
 
   if (n.action === 'updateStat') {

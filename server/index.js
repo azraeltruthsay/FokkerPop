@@ -561,7 +561,7 @@ const httpServer = createServer((req, res) => {
 
   if (path === '/api/assets' && req.method === 'GET') {
     rebuildSoundSet();
-    const assets = { sounds: [], stickers: [], characters: [], models: [] };
+    const assets = { sounds: [], stickers: [], characters: [], models: [], diceThemes: [] };
     try {
       const mDir = join(ROOT, 'assets/models');
       if (existsSync(mDir)) assets.models = readdirSync(mDir).filter(f => !f.startsWith('.') && /\.(gl[bt]f)$/i.test(f));
@@ -571,6 +571,19 @@ const httpServer = createServer((req, res) => {
       if (existsSync(tDir)) assets.stickers = readdirSync(tDir).filter(f => !f.startsWith('.'));
       const cDir = join(ROOT, 'characters/lilfokkermascot');
       if (existsSync(cDir)) assets.characters = readdirSync(cDir).filter(f => !f.startsWith('.'));
+      // Dice themes: each subdir of assets/dice/ with at least one face-N.{png,jpg,jpeg,webp}
+      const dDir = join(ROOT, 'assets/dice');
+      if (existsSync(dDir)) {
+        assets.diceThemes = readdirSync(dDir)
+          .filter(name => !name.startsWith('.'))
+          .filter(name => {
+            const sub = join(dDir, name);
+            try {
+              if (!statSync(sub).isDirectory()) return false;
+              return readdirSync(sub).some(f => /^face-\d+\.(png|jpe?g|webp)$/i.test(f));
+            } catch { return false; }
+          });
+      }
     } catch (err) { log.error('Asset scan error:', err.message); }
     res.writeHead(200, { 'Content-Type': 'application/json' });
     return res.end(JSON.stringify(assets));
@@ -779,7 +792,7 @@ wss.on('connection', (ws, req) => {
         });
       }
       if (msg.type === '_overlay.dice-tray-rolled' && Array.isArray(msg.dice)) {
-        log.info(`Dice tray rolled: [${msg.dice.map(d => d.result).join(', ')}] sum=${msg.sum}`);
+        log.info(`Dice tray rolled: [${msg.dice.map(d => `d${d.sides}:${d.result}`).join(', ')}] sum=${msg.sum}`);
         bus.publish({
           type:    'dice-tray.rolled',
           source:  'overlay',
