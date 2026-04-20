@@ -454,7 +454,38 @@ const EVENT_OPTIONS  = ['follow','sub','sub.gifted','cheer','raid','hype-train.s
 const DIE_THEMES_BUILTIN = ['gold','silver','obsidian','marble','wood','neon','blood'];
 function diceThemeOptions() {
   const imgs = window.assets?.diceThemes || [];
-  return [...DIE_THEMES_BUILTIN, ...imgs.filter(t => !DIE_THEMES_BUILTIN.includes(t))];
+  return [...DIE_THEMES_BUILTIN, 'custom', ...imgs.filter(t => !DIE_THEMES_BUILTIN.includes(t))];
+}
+
+// Nested updater for the per-widget `customTheme` object (face colour,
+// number colour, metalness, roughness). Debounced save matches updateWidgetField.
+window.updateCustomThemeField = function (id, field, value) {
+  const w = widgets.find(x => x.id === id);
+  if (!w) return;
+  w.config = w.config || {};
+  w.config.customTheme = w.config.customTheme || {};
+  w.config.customTheme[field] = value;
+  clearTimeout(updateCustomThemeField._t);
+  updateCustomThemeField._t = setTimeout(saveWidgets, 300);
+};
+
+function renderCustomThemePanel(w, ct) {
+  ct = ct || {};
+  return `
+    <div class="input-row" style="flex-basis:100%; margin-top:6px; padding:8px; background:rgba(145,71,255,0.06); border:1px solid rgba(145,71,255,0.15); border-radius:6px; gap:10px; flex-wrap:wrap; align-items:center;">
+      <label style="display:inline-flex; gap:4px; align-items:center; font-size:.72rem; color:var(--text-dim);">
+        Face <input type="color" value="${ct.faceColor || '#FFD700'}" oninput="updateCustomThemeField('${w.id}','faceColor',this.value)" style="width:34px; height:24px; border:1px solid rgba(255,255,255,0.1); border-radius:4px; background:transparent;">
+      </label>
+      <label style="display:inline-flex; gap:4px; align-items:center; font-size:.72rem; color:var(--text-dim);">
+        Numbers <input type="color" value="${ct.numberColor || '#1a0f00'}" oninput="updateCustomThemeField('${w.id}','numberColor',this.value)" style="width:34px; height:24px; border:1px solid rgba(255,255,255,0.1); border-radius:4px; background:transparent;">
+      </label>
+      <label style="display:inline-flex; gap:6px; align-items:center; font-size:.72rem; color:var(--text-dim);" title="0 = matte plastic, 1 = polished metal">
+        Metal <input type="range" min="0" max="1" step="0.05" value="${ct.metalness ?? 0.2}" oninput="updateCustomThemeField('${w.id}','metalness',parseFloat(this.value))" style="width:80px;">
+      </label>
+      <label style="display:inline-flex; gap:6px; align-items:center; font-size:.72rem; color:var(--text-dim);" title="0 = mirror, 1 = chalk">
+        Rough <input type="range" min="0" max="1" step="0.05" value="${ct.roughness ?? 0.4}" oninput="updateCustomThemeField('${w.id}','roughness',parseFloat(this.value))" style="width:80px;">
+      </label>
+    </div>`;
 }
 
 window.addWidget = function (type) {
@@ -680,6 +711,7 @@ function renderWidgetList() {
       }
       if (w.type === 'dice') {
         const models = (window.assets?.models) || [];
+        const customPanel = (c.theme === 'custom') ? renderCustomThemePanel(w, c.customTheme) : '';
         return `
         <select class="input-field" onchange="updateWidgetField('${w.id}','sides',parseInt(this.value))" title="Die type">
           ${[4,6,8,10,12,20].map(n => `<option value="${n}" ${n === c.sides ? 'selected' : ''}>D${n}</option>`).join('')}
@@ -687,7 +719,7 @@ function renderWidgetList() {
         <select class="input-field" onchange="updateWidgetField('${w.id}','triggerEvent',this.value)" title="Event type that rolls the die">
           ${EVENT_OPTIONS.map(e => `<option value="${e}" ${e === c.triggerEvent ? 'selected' : ''}>${e}</option>`).join('')}
         </select>
-        <select class="input-field" onchange="updateWidgetField('${w.id}','theme',this.value)" title="Face texture theme">
+        <select class="input-field" onchange="updateWidgetField('${w.id}','theme',this.value); renderWidgetList();" title="Face texture theme">
           ${diceThemeOptions().map(t => `<option value="${t}" ${t === (c.theme || 'gold') ? 'selected' : ''}>${t}</option>`).join('')}
         </select>
         <label style="display:inline-flex; gap:4px; align-items:center; font-size:.75rem; color:var(--text-dim);" title="Show pips (dots) instead of numerals on a D6">
@@ -697,17 +729,19 @@ function renderWidgetList() {
           <option value="">— procedural —</option>
           ${models.map(m => { const url = '/assets/models/' + m; return `<option value="${esc(url)}" ${url === c.meshUrl ? 'selected' : ''}>${esc(m)}</option>`; }).join('')}
         </select>
+        ${customPanel}
         <span style="font-size:.7rem; color:var(--text-dim);">Result fires bus event <code>dice.rolled</code> {result, sides} — use Studio to branch on it.</span>`;
       }
       if (w.type === 'dice-tray') {
         const spec = formatDiceSpec(c.dice ?? (c.count ? [{ sides: 6, count: c.count }] : [{ sides: 6, count: 2 }]));
         const models = (window.assets?.models) || [];
+        const customPanel = (c.theme === 'custom') ? renderCustomThemePanel(w, c.customTheme) : '';
         return `
         <input class="input-field" value="${esc(spec)}" placeholder="2d6+1d20" oninput="updateDiceSpec('${w.id}',this.value)" style="max-width:180px; font-family:monospace;" title="Mixed dice spec. D4, D6, D8, D10, D12, D20 allowed. Combine with '+' (e.g. '2d6+1d20').">
         <select class="input-field" onchange="updateWidgetField('${w.id}','triggerEvent',this.value)" title="Event type that rolls the tray">
           ${EVENT_OPTIONS.map(e => `<option value="${e}" ${e === c.triggerEvent ? 'selected' : ''}>${e}</option>`).join('')}
         </select>
-        <select class="input-field" onchange="updateWidgetField('${w.id}','theme',this.value)" title="Face texture theme">
+        <select class="input-field" onchange="updateWidgetField('${w.id}','theme',this.value); renderWidgetList();" title="Face texture theme">
           ${diceThemeOptions().map(t => `<option value="${t}" ${t === (c.theme || 'gold') ? 'selected' : ''}>${t}</option>`).join('')}
         </select>
         <label style="display:inline-flex; gap:4px; align-items:center; font-size:.75rem; color:var(--text-dim);" title="Show pips (dots) on any D6 in the tray">
@@ -717,7 +751,8 @@ function renderWidgetList() {
           <option value="">— procedural —</option>
           ${models.map(m => { const url = '/assets/models/' + m; return `<option value="${esc(url)}" ${url === c.meshUrl ? 'selected' : ''}>${esc(m)}</option>`; }).join('')}
         </select>
-        <input class="input-field" type="number" step="0.05" value="${c.dieSize ?? 0.45}" oninput="updateWidgetField('${w.id}','dieSize',parseFloat(this.value)||0)" style="max-width:80px;" title="Die size (world units)">
+        <input class="input-field" type="number" step="0.05" value="${c.dieSize ?? 0.55}" oninput="updateWidgetField('${w.id}','dieSize',parseFloat(this.value)||0)" style="max-width:80px;" title="Die size (world units)">
+        ${customPanel}
         <span style="font-size:.7rem; color:var(--text-dim);">Authentic 3D polyhedra + cannon-es physics. Result fires bus event <code>dice-tray.rolled</code> {dice:[{sides,result}], sum, total per sides}.</span>`;
       }
       if (w.type === 'model-3d') {

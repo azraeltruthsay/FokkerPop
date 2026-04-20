@@ -429,8 +429,33 @@ function installDiceEnv(T, renderer, scene) {
   return prefiltered;
 }
 
-// Unified resolver: canvas theme wins; else image theme; else gold.
-async function loadDieThemeData(themeName) {
+// Build an on-the-fly canvas theme from per-widget custom colour / PBR settings.
+// Accepts `{ faceColor, numberColor, metalness, roughness }` — any missing
+// field falls back to gold's value so partial configs still look like dice.
+function makeCustomTheme(customCfg = {}) {
+  const faceColor   = customCfg.faceColor   || '#FFD700';
+  const numberColor = customCfg.numberColor || '#1a0f00';
+  const metalness   = Number.isFinite(customCfg.metalness) ? customCfg.metalness : 0.2;
+  const roughness   = Number.isFinite(customCfg.roughness) ? customCfg.roughness : 0.4;
+  const color3d     = parseColorSpec(faceColor) ?? 0xFFD700;
+  // Canvas theme shape for makeNumberTexture — it needs bg() + fontColor.
+  const canvasTheme = {
+    bg: (ctx, s) => { ctx.fillStyle = faceColor; ctx.fillRect(0, 0, s, s); },
+    fontColor: numberColor,
+    color3d, metalness, roughness,
+  };
+  return {
+    color3d, metalness, roughness, rollSound: null,
+    makeFace: async (T, n, opts) => makeNumberTexture(T, n, canvasTheme, opts),
+  };
+}
+
+// Unified resolver: `custom` with per-widget config wins; else canvas preset;
+// else image theme from disk; else gold fallback.
+async function loadDieThemeData(themeName, customCfg) {
+  if (themeName === 'custom') {
+    return makeCustomTheme(customCfg || {});
+  }
   if (DIE_THEMES[themeName]) {
     const t = DIE_THEMES[themeName];
     return {
@@ -556,7 +581,7 @@ function remapFaceUVs(T, geo, faces) {
 
 async function buildDieMesh(sides, themeName = 'gold', options = {}) {
   const T = await loadThree();
-  const theme = await loadDieThemeData(themeName);
+  const theme = await loadDieThemeData(themeName, options.customTheme);
   const pipMode = sides === 6 && !!options.pips;
   let geo = {
     4:  new T.TetrahedronGeometry(0.95),
@@ -609,10 +634,11 @@ async function buildDieMesh(sides, themeName = 'gold', options = {}) {
     const glyphPx = pipMode ? 0 : faceFontPx(shape, n);
     const map     = await theme.makeFace(T, n, { pip: pipMode, glyphPx });
     // Etched look: a grayscale bump map where the glyph area is recessed, so
-    // three.js perturbs the surface normal around the number. Only generated
-    // for built-in canvas themes — image themes bring their own visuals and
-    // we don't want to force a generic engraving shape on top.
-    const bumpMap = DIE_THEMES[themeName] ? makeEtchedBumpTexture(T, n, { pip: pipMode, glyphPx }) : null;
+    // three.js perturbs the surface normal around the number. Generated for
+    // built-in canvas themes AND the `custom` theme — image themes bring
+    // their own visuals and we don't want to force a generic engraving shape.
+    const useBump = DIE_THEMES[themeName] || themeName === 'custom';
+    const bumpMap = useBump ? makeEtchedBumpTexture(T, n, { pip: pipMode, glyphPx }) : null;
     const matOpts = {
       color:     theme.color3d,
       roughness: theme.roughness,
@@ -761,7 +787,7 @@ export async function mountDice(widget, el, sendToServer) {
 
   const envTex = installDiceEnv(T, renderer, scene);
 
-  const built = await buildDieMesh(side, cfg.theme, { pips: !!cfg.pips });
+  const built = await buildDieMesh(side, cfg.theme, { pips: !!cfg.pips, customTheme: cfg.customTheme });
   const faces = built.faces;
   let mesh = built.mesh;
   if (cfg.meshUrl) {
@@ -1109,7 +1135,7 @@ export async function mountDiceTray(widget, el, sendToServer) {
   scene.add(trayMesh);
   scene.add(new T.Box3Helper(new T.Box3(new T.Vector3(-halfX, 0, -halfZ), new T.Vector3(halfX, wallH, halfZ)), 0x9147FF));
 
-  const dieScale = cfg.dieSize ?? 0.45;
+  const dieScale = cfg.dieSize ?? 0.55;
 
   const dice = []; // { body, mesh, faces, sides, settled, stillFor, result }
   let rollActive = false;
@@ -1159,11 +1185,12 @@ export async function mountDiceTray(widget, el, sendToServer) {
       ? normalizeDiceSpec({ dice: specOverride })
       : normalizeDiceSpec(cfg);
     const theme = themeOverride || cfg.theme;
-    const baseOpts = { pips: !!cfg.pips, meshUrl: cfg.meshUrl, ...(optsOverride || {}) };
+    const baseOpts = { pips: !!cfg.pips, meshUrl: cfg.meshUrl, customTheme: cfg.customTheme, ...(optsOverride || {}) };
     for (const group of spec) {
       const groupOpts = { ...baseOpts };
       if (group.pips !== undefined) groupOpts.pips = !!group.pips;
       if (group.meshUrl) groupOpts.meshUrl = group.meshUrl;
+      if (group.customTheme) groupOpts.customTheme = group.customTheme;
       for (let i = 0; i < group.count; i++) await spawnDie(group.sides, group.theme || theme, groupOpts);
     }
     // Roll sound precedence: cfg override > image theme's rollSound > coin.
@@ -1228,11 +1255,12 @@ export async function mountDiceTray(widget, el, sendToServer) {
   setTimeout(async () => {
     const spec = normalizeDiceSpec(cfg);
     const preview = spec.slice(0, 2);
-    const baseOpts = { pips: !!cfg.pips, meshUrl: cfg.meshUrl };
+    const baseOpts = { pips: !!cfg.pips, meshUrl: cfg.meshUrl, customTheme: cfg.customTheme };
     for (const g of preview) {
       const opts = { ...baseOpts };
       if (g.pips !== undefined) opts.pips = !!g.pips;
       if (g.meshUrl) opts.meshUrl = g.meshUrl;
+      if (g.customTheme) opts.customTheme = g.customTheme;
       await spawnDie(g.sides, g.theme || cfg.theme, opts);
     }
   }, 60);
