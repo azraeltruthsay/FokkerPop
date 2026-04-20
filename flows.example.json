@@ -78,14 +78,16 @@
       "m1":   { "id": "m1",   "type": "logic", "action": "match", "data": { "field": "payload.sum", "match1": "20", "match2": "1" }, "x": 500, "y": 800 },
       "a1":   { "id": "a1",   "type": "action", "action": "spawnEffect", "data": { "effect": "balloon", "payload": { "count": 15, "img": "/characters/lilfokkermascot/hype.gif", "sound": "yay.wav" } }, "x": 700, "y": 700 },
       "a2":   { "id": "a2",   "type": "action", "action": "spawnEffect", "data": { "effect": "firework-salvo", "payload": { "count": 20, "sound": "boom.wav" } }, "x": 900, "y": 700 },
-      "a3":   { "id": "a3",   "type": "action", "action": "spawnEffect", "data": { "effect": "sticker-rain", "payload": { "duration": 3000, "sound": "pop.wav" } }, "x": 700, "y": 900 }
+      "a3":   { "id": "a3",   "type": "action", "action": "spawnEffect", "data": { "effect": "sticker-rain", "payload": { "duration": 3000, "sound": "pop.wav" } }, "x": 700, "y": 900 },
+      "mid":  { "id": "mid",  "type": "action", "action": "spawnEffect", "data": { "effect": "balloon", "payload": { "count": 3, "sound": "chime.wav" } }, "x": 700, "y": 1040 }
     },
     "edges": [
-      { "src": "t1",   "outPort": "next",  "dst": "ftag" },
-      { "src": "ftag", "outPort": "true",  "dst": "m1" },
-      { "src": "m1",   "outPort": "case1", "dst": "a1" },
-      { "src": "m1",   "outPort": "case1", "dst": "a2" },
-      { "src": "m1",   "outPort": "case2", "dst": "a3" }
+      { "src": "t1",   "outPort": "next",    "dst": "ftag" },
+      { "src": "ftag", "outPort": "true",    "dst": "m1" },
+      { "src": "m1",   "outPort": "case1",   "dst": "a1" },
+      { "src": "m1",   "outPort": "case1",   "dst": "a2" },
+      { "src": "m1",   "outPort": "case2",   "dst": "a3" },
+      { "src": "m1",   "outPort": "default", "dst": "mid" }
     ]
   },
   {
@@ -111,13 +113,15 @@
     "nodes": {
       "t1":   { "id": "t1",   "type": "trigger", "x": 100, "y": 100 },
       "ftag": { "id": "ftag", "type": "logic", "action": "filter", "data": { "field": "payload.tag", "operator": "==", "value": "roll-6s" }, "x": 300, "y": 100 },
-      "fhit": { "id": "fhit", "type": "logic", "action": "filter", "data": { "field": "payload.sum", "operator": "==", "value": 6 }, "x": 500, "y": 100 },
-      "a1":   { "id": "a1",   "type": "action", "action": "spawnEffect", "data": { "effect": "firework-salvo", "payload": { "count": 5, "sound": "boom.wav" } }, "x": 700, "y": 100 }
+      "m1":   { "id": "m1",   "type": "logic", "action": "match", "data": { "field": "payload.sum", "match1": "6" }, "x": 500, "y": 100 },
+      "hit":  { "id": "hit",  "type": "action", "action": "spawnEffect", "data": { "effect": "firework-salvo", "payload": { "count": 5, "sound": "boom.wav" } }, "x": 700, "y": 50 },
+      "miss": { "id": "miss", "type": "action", "action": "spawnEffect", "data": { "effect": "sticker-rain", "payload": { "duration": 1500, "sound": "ding.wav" } }, "x": 700, "y": 180 }
     },
     "edges": [
-      { "src": "t1",   "outPort": "next", "dst": "ftag" },
-      { "src": "ftag", "outPort": "true", "dst": "fhit" },
-      { "src": "fhit", "outPort": "true", "dst": "a1" }
+      { "src": "t1",   "outPort": "next",    "dst": "ftag" },
+      { "src": "ftag", "outPort": "true",    "dst": "m1" },
+      { "src": "m1",   "outPort": "case1",   "dst": "hit" },
+      { "src": "m1",   "outPort": "default", "dst": "miss" }
     ]
   },
   {
@@ -143,13 +147,15 @@
     "nodes": {
       "t1":   { "id": "t1",   "type": "trigger", "x": 100, "y": 100 },
       "ftag": { "id": "ftag", "type": "logic", "action": "filter", "data": { "field": "payload.tag", "operator": "==", "value": "roll-1s" }, "x": 300, "y": 100 },
-      "fhit": { "id": "fhit", "type": "logic", "action": "filter", "data": { "field": "payload.sum", "operator": "==", "value": 1 }, "x": 500, "y": 100 },
-      "a1":   { "id": "a1",   "type": "action", "action": "spawnEffect", "data": { "effect": "confetti", "payload": { "sound": "pop.wav" } }, "x": 700, "y": 100 }
+      "m1":   { "id": "m1",   "type": "logic", "action": "match", "data": { "field": "payload.sum", "match1": "1" }, "x": 500, "y": 100 },
+      "hit":  { "id": "hit",  "type": "action", "action": "spawnEffect", "data": { "effect": "confetti", "payload": { "sound": "pop.wav" } }, "x": 700, "y": 50 },
+      "miss": { "id": "miss", "type": "action", "action": "spawnEffect", "data": { "effect": "balloon", "payload": { "count": 2, "sound": "chime.wav" } }, "x": 700, "y": 180 }
     },
     "edges": [
-      { "src": "t1",   "outPort": "next", "dst": "ftag" },
-      { "src": "ftag", "outPort": "true", "dst": "fhit" },
-      { "src": "fhit", "outPort": "true", "dst": "a1" }
+      { "src": "t1",   "outPort": "next",    "dst": "ftag" },
+      { "src": "ftag", "outPort": "true",    "dst": "m1" },
+      { "src": "m1",   "outPort": "case1",   "dst": "hit" },
+      { "src": "m1",   "outPort": "default", "dst": "miss" }
     ]
   },
   {
