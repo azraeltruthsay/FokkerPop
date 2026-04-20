@@ -810,26 +810,17 @@ function sortFaceCCW(indices, verts, normal) {
 async function buildDieRigidBody(C, sides, scale, theme, options = {}) {
   const { mesh: proceduralMesh, faces } = await buildDieMesh(sides, theme, options);
   proceduralMesh.scale.setScalar(scale);
-  let mesh = proceduralMesh;
-  // GLB skin: replace the visual mesh while keeping procedural physics/faces.
-  if (options.meshUrl) {
-    try {
-      mesh = await buildDieGlbMesh(options.meshUrl, scale * 2);
-      proceduralMesh.geometry.dispose();
-      const mats = Array.isArray(proceduralMesh.material) ? proceduralMesh.material : [proceduralMesh.material];
-      for (const m of mats) { m.map?.dispose?.(); m.dispose?.(); }
-    } catch (err) {
-      console.warn('[dice] GLB load failed, falling back to procedural mesh:', options.meshUrl, err);
-    }
-  }
 
+  // Physics shape is always derived from the procedural geometry — the GLB
+  // (if any) is a visual-only skin. Compute the shape BEFORE any mesh swap
+  // so the procedural geometry is still alive.
   let shape;
   if (sides === 6) {
     // BoxGeometry(1.2) → half-extent 0.6, then visual scale → 0.6 * scale.
     const he = 0.6 * scale;
     shape = new C.Box(new C.Vec3(he, he, he));
   } else {
-    const { verts, indexMap } = dedupeVerts(mesh.geometry);
+    const { verts, indexMap } = dedupeVerts(proceduralMesh.geometry);
     const cannonVerts = verts.map(v => new C.Vec3(v[0] * scale, v[1] * scale, v[2] * scale));
     const cannonFaces = faces.map(face => {
       const vertSet = new Set();
@@ -841,6 +832,19 @@ async function buildDieRigidBody(C, sides, scale, theme, options = {}) {
       return sortFaceCCW([...vertSet], verts, face.normal);
     });
     shape = new C.ConvexPolyhedron({ vertices: cannonVerts, faces: cannonFaces });
+  }
+
+  // GLB skin: replace the visual mesh while keeping procedural physics/faces.
+  let mesh = proceduralMesh;
+  if (options.meshUrl) {
+    try {
+      mesh = await buildDieGlbMesh(options.meshUrl, scale * 2);
+      proceduralMesh.geometry.dispose();
+      const mats = Array.isArray(proceduralMesh.material) ? proceduralMesh.material : [proceduralMesh.material];
+      for (const m of mats) { m.map?.dispose?.(); m.dispose?.(); }
+    } catch (err) {
+      console.warn('[dice] GLB load failed, falling back to procedural mesh:', options.meshUrl, err);
+    }
   }
 
   // Cache face metadata for readFaceUp. Normals are unit vectors in body space.
@@ -1054,7 +1058,12 @@ export function triggerDiceTray(widgets, event) {
     const cfg = w.config || {};
     if (cfg.triggerEvent && cfg.triggerEvent !== eventType) continue;
     const entry = diceTrays.get(w.id);
-    entry?.rollTray?.(diceOverride, themeOverride, optsOverride);
+    if (!entry) {
+      console.warn('[dice-tray] no mounted entry for widget', w.id, '— widget still loading or mount failed?');
+      continue;
+    }
+    Promise.resolve(entry.rollTray(diceOverride, themeOverride, optsOverride))
+      .catch(err => console.error('[dice-tray] rollTray failed for', w.id, err));
   }
 }
 

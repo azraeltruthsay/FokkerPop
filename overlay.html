@@ -1787,7 +1787,9 @@ function renderCustomWidgets() {
       el.style.padding = '0';
       el.style.minWidth = (cfg.width || 420) + 'px';
       el.style.minHeight = (cfg.height || 280) + 'px';
-      ensureWidgetModule().then(m => m.mountDiceTray(w, el, (msg) => { try { ws?.send?.(JSON.stringify(msg)); } catch {} }));
+      ensureWidgetModule()
+        .then(m => m.mountDiceTray(w, el, (msg) => { try { ws?.send?.(JSON.stringify(msg)); } catch {} }))
+        .catch(err => console.error('[dice-tray] mount failed for', w.id, err));
     } else if (w.type === 'hot-button-3d') {
       el.style.background = 'transparent';
       el.style.border = 'none';

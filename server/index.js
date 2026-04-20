@@ -355,6 +355,7 @@ const httpServer = createServer((req, res) => {
   // Narrow allowlist so we don't expose the rest of node_modules.
   const VENDOR = {
     '/vendor/three.module.min.js':    'three/build/three.module.min.js',
+    '/vendor/three.core.min.js':      'three/build/three.core.min.js',
     '/vendor/matter.min.js':          'matter-js/build/matter.min.js',
     '/vendor/cannon-es.js':           'cannon-es/dist/cannon-es.js',
     '/vendor/GLTFLoader.js':          'three/examples/jsm/loaders/GLTFLoader.js',
