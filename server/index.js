@@ -48,6 +48,71 @@ function fireCommand(text, event) {
   broadcastEffect(cmd.effect, { ...cmd }, event.isTest);
 }
 
+// Chat dice roller. Responds to `!r`, `!roll`, `/r`, `/roll` followed by a
+// standard RPG dice spec (e.g. `2d6`, `1d20+2d6`, `4d12`, `1d100`). If every
+// requested die type is renderable by the dice-tray (D4/D6/D8/D10/D12/D20, and
+// D100 as percentile 2×D10), the physical roll fires on the overlay and the
+// result comes back via the normal dice-tray.rolled bus event. Otherwise the
+// server rolls server-side and posts the result back to Twitch chat.
+//
+// Note: Twitch clients swallow some unknown `/` commands before sending, so
+// `!r` / `!roll` are the reliable triggers. `/r` / `/roll` work for chat
+// clients that let them through (and for dashboard simulation).
+const ROLL_PREFIX_RE = /^[!\/](?:r|roll)\b\s*/i;
+const CHAT_TRAY_SIDES = new Set([4, 6, 8, 10, 12, 20]);
+function parseChatRollSpec(str) {
+  if (!str) return null;
+  const parts = str.replace(/\s+/g, '').split(/[+,]/).filter(Boolean);
+  const groups = [];
+  for (const p of parts) {
+    const m = /^(\d*)d(\d+)$/i.exec(p);
+    if (!m) return null;
+    const count = Math.max(1, Math.min(20, parseInt(m[1] || '1', 10)));
+    const sides = parseInt(m[2], 10);
+    if (sides < 2 || sides > 1000) return null;
+    groups.push({ sides, count });
+  }
+  return groups.length ? groups : null;
+}
+
+async function fireChatRoll(text, event) {
+  if (!ROLL_PREFIX_RE.test(text)) return;
+  const rest = text.replace(ROLL_PREFIX_RE, '').trim();
+  const spec = parseChatRollSpec(rest);
+  if (!spec) return;
+
+  const user = event.payload?.user || 'Chatter';
+  const canRenderInTray = spec.every(g => CHAT_TRAY_SIDES.has(g.sides) || g.sides === 100);
+
+  if (canRenderInTray) {
+    // Expand D100 → 2 × D10 percentile so the tray can render it.
+    const dice = spec.flatMap(g => g.sides === 100
+      ? [{ sides: 10, count: g.count * 2 }]
+      : [g]);
+    bus.publish({
+      source: 'chat-roll',
+      type:   'dice-tray-roll',
+      payload: { dice, user },
+      isTest: event.isTest,
+    });
+    return;
+  }
+
+  // Non-standard die sides (e.g. d7, d30) — just roll server-side and reply.
+  const rolls = spec.map(g => ({
+    sides:   g.sides,
+    results: Array.from({ length: g.count }, () => 1 + Math.floor(Math.random() * g.sides)),
+  }));
+  const total  = rolls.reduce((s, r) => s + r.results.reduce((a, b) => a + b, 0), 0);
+  const detail = rolls.map(r => `${r.results.length}d${r.sides}[${r.results.join(',')}]`).join(' + ');
+  const reply  = `@${user} 🎲 ${detail} → ${total}`;
+  if (!event.isTest && settings.twitch?.userId && settings.twitch?.accessToken && twitchEventSub.status === 'connected') {
+    helix.sendChatMessage(settings.twitch.userId, reply).catch(err => log.error('Chat roll reply failed:', err.message));
+  } else {
+    log.info(`[chat-roll offline] ${reply}`);
+  }
+}
+
 function loadAndEnsureJson(name, defaultData) {
   const p  = join(ROOT, name);
   const ep = join(ROOT, name.replace('.json', '.example.json'));
@@ -159,6 +224,7 @@ bus.on('*', async (event) => {
     flowEngine.processEvent(event, broadcastEffect);
     if (event.type === 'chat') {
       fireCommand(event.payload.message, event);
+      fireChatRoll(event.payload.message, event);
     }
   } catch (err) {
     log.error('Event handler error:', err.message, err.stack);

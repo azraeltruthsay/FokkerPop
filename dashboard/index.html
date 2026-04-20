@@ -891,13 +891,15 @@ html, body {
         </div>
 
         <div class="effects-section">
-          <div class="effects-section-label">Custom Dice Roll (1–5 dice)</div>
-          <div id="custom-dice-row" style="display:flex; gap:6px; align-items:center; flex-wrap:wrap;">
-            <select id="custom-die-0" class="input-field" style="max-width:90px;"></select>
-            <select id="custom-die-1" class="input-field" style="max-width:90px;"></select>
-            <select id="custom-die-2" class="input-field" style="max-width:90px;"></select>
-            <select id="custom-die-3" class="input-field" style="max-width:90px;"></select>
-            <select id="custom-die-4" class="input-field" style="max-width:90px;"></select>
+          <div class="effects-section-label">Custom Dice Roll</div>
+          <div id="custom-dice-row" style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+            <select id="custom-die-count" class="input-field" style="max-width:70px;" title="How many dice">
+              <option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5">5</option>
+            </select>
+            <span style="color:var(--text-dim); font-size:.82rem;">of</span>
+            <select id="custom-die-type" class="input-field" style="max-width:90px;" title="Die type">
+              <option value="4">D4</option><option value="6" selected>D6</option><option value="8">D8</option><option value="10">D10</option><option value="12">D12</option><option value="20">D20</option><option value="100">D100</option>
+            </select>
             <select id="custom-die-theme" class="input-field" style="max-width:110px;" title="Face texture theme"></select>
             <label style="display:inline-flex; gap:4px; align-items:center; font-size:.78rem; color:var(--text-dim);" title="Pips instead of numerals on D6">
               <input type="checkbox" id="custom-die-pips" checked>pips
@@ -905,7 +907,7 @@ html, body {
             <button class="btn btn-primary btn-sm" onclick="rollCustomDice(this)" style="margin-left:auto;">🎲 Roll</button>
           </div>
           <p style="font-size:.7rem; color:var(--text-dim); margin:6px 0 0;">
-            Pick up to 5 dice (any mix of D4/D6/D8/D10/D12/D20), then roll — fires <code>dice-tray-roll</code> with your spec and rolls on any dice-tray widget configured with that trigger.
+            Rolls your pick on the dice-tray widget. D100 is rolled as 2× D10 (percentile): one die is tens, the other is units — read them together for 1–100.
           </p>
         </div>
 

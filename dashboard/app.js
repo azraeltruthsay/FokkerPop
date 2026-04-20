@@ -520,21 +520,6 @@ function formatDiceSpec(dice) {
 // Populate the custom dice-roll selectors in the Test Effects panel. Slot 0
 // defaults to D6, the rest to None so the user starts with a 1-die roll.
 function initCustomDicePickers() {
-  const opts = [
-    { v: '0',  l: '—' },
-    { v: '4',  l: 'D4' },
-    { v: '6',  l: 'D6' },
-    { v: '8',  l: 'D8' },
-    { v: '10', l: 'D10' },
-    { v: '12', l: 'D12' },
-    { v: '20', l: 'D20' },
-  ];
-  const defaults = ['6', '0', '0', '0', '0'];
-  for (let i = 0; i < 5; i++) {
-    const sel = document.getElementById(`custom-die-${i}`);
-    if (!sel || sel.options.length) continue;
-    sel.innerHTML = opts.map(o => `<option value="${o.v}" ${o.v === defaults[i] ? 'selected' : ''}>${o.l}</option>`).join('');
-  }
   const themeSel = document.getElementById('custom-die-theme');
   if (themeSel) {
     const prev = themeSel.value || 'gold';
@@ -545,12 +530,10 @@ document.addEventListener('DOMContentLoaded', initCustomDicePickers);
 window.initCustomDicePickers = initCustomDicePickers;
 
 window.rollCustomDice = function (btn) {
-  const dice = [];
-  for (let i = 0; i < 5; i++) {
-    const sides = Number(document.getElementById(`custom-die-${i}`)?.value || 0);
-    if (sides > 0) dice.push({ sides, count: 1 });
-  }
-  if (!dice.length) return;
+  const count = Math.max(1, Math.min(5, Number(document.getElementById('custom-die-count')?.value || 1)));
+  const type  = Number(document.getElementById('custom-die-type')?.value || 6);
+  // D100 = percentile (2 × D10): one for tens, one for units, read together.
+  const dice = type === 100 ? [{ sides: 10, count: count * 2 }] : [{ sides: type, count }];
   const theme = document.getElementById('custom-die-theme')?.value || 'gold';
   const pips  = !!document.getElementById('custom-die-pips')?.checked;
   if (btn) {

@@ -524,17 +524,17 @@ const PIP_POSITIONS = {
 
 function makeNumberTexture(T, n, theme, opts = {}) {
   const t = theme && theme.bg ? theme : resolveTheme('gold');
-  const size = 128;
+  const size = 256;  // Doubled from 128 for sharper readability at a distance.
   const c = document.createElement('canvas');
   c.width = size; c.height = size;
   const ctx = c.getContext('2d');
   t.bg(ctx, size);
   if (t.fontGlow) {
     ctx.shadowColor = t.fontGlow;
-    ctx.shadowBlur  = 18;
+    ctx.shadowBlur  = 36;
   }
-  ctx.fillStyle = t.fontColor;
   if (opts.pip && n >= 1 && n <= 6) {
+    ctx.fillStyle = t.fontColor;
     const r = size * 0.09;
     for (const [fx, fy] of PIP_POSITIONS[n]) {
       ctx.beginPath();
@@ -542,10 +542,28 @@ function makeNumberTexture(T, n, theme, opts = {}) {
       ctx.fill();
     }
   } else {
-    ctx.font = 'bold 70px system-ui, sans-serif';
+    // Two-digit numbers (10–20) shrink to stay inside the face.
+    const fontSize = n >= 10 ? 120 : 150;
+    ctx.font = `900 ${fontSize}px system-ui, sans-serif`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText(String(n), size / 2, size / 2 + 5);
+    // Dark contrast outline so the number pops on any theme, even busy ones.
+    ctx.lineWidth = Math.floor(fontSize * 0.09);
+    ctx.strokeStyle = 'rgba(0,0,0,0.55)';
+    ctx.strokeText(String(n), size / 2, size / 2 + 8);
+    ctx.fillStyle = t.fontColor;
+    ctx.fillText(String(n), size / 2, size / 2 + 8);
+    // Underline on 6 and 9 so they're unambiguous at weird angles.
+    if (n === 6 || n === 9) {
+      ctx.strokeStyle = t.fontColor;
+      ctx.lineWidth = Math.floor(fontSize * 0.08);
+      const w = fontSize * 0.35;
+      const y = size / 2 + fontSize * 0.48;
+      ctx.beginPath();
+      ctx.moveTo(size / 2 - w / 2, y);
+      ctx.lineTo(size / 2 + w / 2, y);
+      ctx.stroke();
+    }
   }
   ctx.shadowBlur = 0;
   const tex = new T.CanvasTexture(c);
@@ -865,14 +883,19 @@ export async function mountDiceTray(widget, el, sendToServer) {
   el.innerHTML = '';
 
   const scene = new T.Scene();
-  const camera = new T.PerspectiveCamera(45, w / h, 0.1, 100);
-  camera.position.set(0, 4, 6);
-  camera.lookAt(0, 0, 0);
+  // Steep camera tilt so top faces (where the settled number lives) are readable.
+  const camera = new T.PerspectiveCamera(52, w / h, 0.1, 100);
+  camera.position.set(0, 5.5, 3);
+  camera.lookAt(0, 0.2, 0);
 
-  scene.add(new T.AmbientLight(0xffffff, 0.7));
+  scene.add(new T.AmbientLight(0xffffff, 0.85));
   const key = new T.DirectionalLight(0xffffff, 1.1);
   key.position.set(3, 5, 3);
   scene.add(key);
+  // Secondary light aimed straight down so top faces never fall into shadow.
+  const top = new T.DirectionalLight(0xffffff, 0.7);
+  top.position.set(0, 6, 0.01);
+  scene.add(top);
 
   const renderer = new T.WebGLRenderer({ alpha: true, antialias: true });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -880,6 +903,19 @@ export async function mountDiceTray(widget, el, sendToServer) {
   renderer.setClearColor(0x000000, 0);
   renderer.domElement.style.cssText = 'display:block; width:100%; height:100%; border-radius:12px; background:rgba(8,8,16,0.25); border:1px solid rgba(255,255,255,0.08);';
   el.appendChild(renderer.domElement);
+
+  // Post-settle result overlay — guarantees the sum is readable even when a
+  // die lands at an awkward angle. Fades in on settle, out ~5s later.
+  const resultEl = document.createElement('div');
+  resultEl.style.cssText = 'position:absolute; top:8px; left:0; right:0; text-align:center; font:900 22px system-ui,sans-serif; color:#FFD700; text-shadow:0 2px 10px rgba(0,0,0,0.9),0 0 4px rgba(0,0,0,0.9); pointer-events:none; opacity:0; transition:opacity 0.35s ease; letter-spacing:0.04em;';
+  el.appendChild(resultEl);
+  let resultFadeTimer = null;
+  function showResult(text) {
+    resultEl.textContent = text;
+    resultEl.style.opacity = '1';
+    clearTimeout(resultFadeTimer);
+    resultFadeTimer = setTimeout(() => { resultEl.style.opacity = '0'; }, 5000);
+  }
 
   const world = new C.World({ gravity: new C.Vec3(0, -20, 0) });
   world.broadphase = new C.NaiveBroadphase();
@@ -1003,6 +1039,19 @@ export async function mountDiceTray(widget, el, sendToServer) {
       rollActive = false;
       const results = dice.map(d => ({ sides: d.sides, result: d.result }));
       const sum = results.reduce((s, r) => s + r.result, 0);
+      // Percentile shorthand: 2× D10 → show as DD (tens face × 10 + units).
+      let label;
+      if (results.length === 2 && results.every(r => r.sides === 10)) {
+        const tens = (results[0].result % 10) * 10;  // treat face 10 as 0 in tens slot
+        const units = results[1].result % 10;
+        const percentile = tens + units === 0 ? 100 : tens + units;
+        label = `D100 = ${percentile}  (${results[0].result} · ${results[1].result})`;
+      } else {
+        const mixed = new Set(results.map(r => r.sides)).size > 1;
+        const faces = results.map(r => mixed ? `d${r.sides}:${r.result}` : r.result).join(', ');
+        label = `[${faces}] = ${sum}`;
+      }
+      showResult(label);
       sendToServer?.({ type: '_overlay.dice-tray-rolled', widgetId: widget.id, dice: results, sum });
     }
 
@@ -1028,9 +1077,11 @@ export async function mountDiceTray(widget, el, sendToServer) {
     rollTray,
     dispose: () => {
       cancelAnimationFrame(rafId);
+      clearTimeout(resultFadeTimer);
       for (const d of dice) disposeDie(d);
       renderer.dispose();
       renderer.domElement.remove();
+      resultEl.remove();
       trayGeo.dispose(); trayMat.dispose();
     }
   };
