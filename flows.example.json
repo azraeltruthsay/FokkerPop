@@ -140,6 +140,40 @@
     ]
   },
   {
+    "id": "roll-pairs",
+    "name": "Roll for Pairs",
+    "active": true,
+    "trigger": "redeem",
+    "nodes": {
+      "t1": { "id": "t1", "type": "trigger", "x": 100, "y": 400 },
+      "f1": { "id": "f1", "type": "logic", "action": "filter", "data": { "field": "payload.rewardTitle", "operator": "==", "value": "Roll for Pairs" }, "x": 300, "y": 400 },
+      "r1": { "id": "r1", "type": "action", "action": "rollDiceTray", "data": { "spec": "2d6", "tag": "roll-pairs" }, "x": 500, "y": 400 }
+    },
+    "edges": [
+      { "src": "t1", "outPort": "next", "dst": "f1" },
+      { "src": "f1", "outPort": "true", "dst": "r1" }
+    ]
+  },
+  {
+    "id": "roll-pairs-result",
+    "name": "Roll for Pairs — Result",
+    "active": true,
+    "trigger": "dice-tray.rolled",
+    "nodes": {
+      "t1":   { "id": "t1",   "type": "trigger", "x": 100, "y": 400 },
+      "ftag": { "id": "ftag", "type": "logic", "action": "filter", "data": { "field": "payload.tag", "operator": "==", "value": "roll-pairs" }, "x": 300, "y": 400 },
+      "m1":   { "id": "m1",   "type": "logic", "action": "match",  "data": { "field": "{{ payload.dice[0].result === payload.dice[1].result ? 'pair' : 'none' }}", "match1": "pair" }, "x": 500, "y": 400 },
+      "hit":  { "id": "hit",  "type": "action", "action": "spawnEffect", "data": { "effect": "balloon", "payload": { "count": 8, "sound": "yay.wav" } }, "x": 700, "y": 340 },
+      "miss": { "id": "miss", "type": "action", "action": "spawnEffect", "data": { "effect": "balloon", "payload": { "count": 1, "sound": "chime.wav" } }, "x": 700, "y": 460 }
+    },
+    "edges": [
+      { "src": "t1",   "outPort": "next",    "dst": "ftag" },
+      { "src": "ftag", "outPort": "true",    "dst": "m1" },
+      { "src": "m1",   "outPort": "case1",   "dst": "hit" },
+      { "src": "m1",   "outPort": "default", "dst": "miss" }
+    ]
+  },
+  {
     "id": "roll-1s-result",
     "name": "Roll 1s! — Result",
     "active": true,

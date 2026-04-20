@@ -7,6 +7,7 @@
   "Karebec Slam Attack":   { "effect": "firework",       "count": 1,  "sound": "boom.wav" },
   "Roll 6s!":              { "comment": "Handled by the 'Roll 6s!' Studio Flow — rolls 2D6; boxcars (sum=12) fires a firework-salvo, anything else a short sticker-rain." },
   "Roll 1s!":              { "comment": "Handled by the 'Roll 1s!' Studio Flow — rolls 2D6; snake eyes (sum=2) fires confetti, anything else a couple of chiming balloons." },
+  "Roll for Pairs":        { "comment": "Handled by the 'Roll for Pairs' Studio Flow — rolls 2D6; matching pair (~17%) fires a balloon burst, any miss drops one chiming balloon." },
   "Roll for Luck":         { "comment": "Handled by the 'D20 Roll of Fate' Studio Flow — rolls a 3D D20; crit (20) fires balloons + salvo, fumble (1) fires sticker-rain." },
   "Kaprekar's Curse":      { "comment": "Handled by the 'Kaprekar's Curse' Studio Flow" },
   "Mystery Box":           { "comment": "Handled by the 'Mystery Box' Studio Flow" },
