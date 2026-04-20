@@ -711,6 +711,7 @@ function renderWidgetList() {
       }
       if (w.type === 'dice') {
         const models = (window.assets?.models) || [];
+        const sounds = (window.assets?.sounds) || [];
         const customPanel = (c.theme === 'custom') ? renderCustomThemePanel(w, c.customTheme) : '';
         return `
         <select class="input-field" onchange="updateWidgetField('${w.id}','sides',parseInt(this.value))" title="Die type">
@@ -729,12 +730,17 @@ function renderWidgetList() {
           <option value="">— procedural —</option>
           ${models.map(m => { const url = '/assets/models/' + m; return `<option value="${esc(url)}" ${url === c.meshUrl ? 'selected' : ''}>${esc(m)}</option>`; }).join('')}
         </select>
+        <select class="input-field" onchange="updateWidgetField('${w.id}','rollSound',this.value)" title="Sound played when the die rolls" style="max-width:120px;">
+          <option value="">— default (dice1) —</option>
+          ${sounds.map(s => `<option value="${esc(s)}" ${s === c.rollSound ? 'selected' : ''}>${esc(s)}</option>`).join('')}
+        </select>
         ${customPanel}
         <span style="font-size:.7rem; color:var(--text-dim);">Result fires bus event <code>dice.rolled</code> {result, sides} — use Studio to branch on it.</span>`;
       }
       if (w.type === 'dice-tray') {
         const spec = formatDiceSpec(c.dice ?? (c.count ? [{ sides: 6, count: c.count }] : [{ sides: 6, count: 2 }]));
         const models = (window.assets?.models) || [];
+        const sounds = (window.assets?.sounds) || [];
         const customPanel = (c.theme === 'custom') ? renderCustomThemePanel(w, c.customTheme) : '';
         return `
         <input class="input-field" value="${esc(spec)}" placeholder="2d6+1d20" oninput="updateDiceSpec('${w.id}',this.value)" style="max-width:180px; font-family:monospace;" title="Mixed dice spec. D4, D6, D8, D10, D12, D20 allowed. Combine with '+' (e.g. '2d6+1d20').">
@@ -752,6 +758,10 @@ function renderWidgetList() {
           ${models.map(m => { const url = '/assets/models/' + m; return `<option value="${esc(url)}" ${url === c.meshUrl ? 'selected' : ''}>${esc(m)}</option>`; }).join('')}
         </select>
         <input class="input-field" type="number" step="0.05" value="${c.dieSize ?? 0.55}" oninput="updateWidgetField('${w.id}','dieSize',parseFloat(this.value)||0)" style="max-width:80px;" title="Die size (world units)">
+        <select class="input-field" onchange="updateWidgetField('${w.id}','rollSound',this.value)" title="Sound played when the tray rolls" style="max-width:120px;">
+          <option value="">— default (dice1) —</option>
+          ${sounds.map(s => `<option value="${esc(s)}" ${s === c.rollSound ? 'selected' : ''}>${esc(s)}</option>`).join('')}
+        </select>
         ${customPanel}
         <span style="font-size:.7rem; color:var(--text-dim);">Authentic 3D polyhedra + cannon-es physics. Result fires bus event <code>dice-tray.rolled</code> {dice:[{sides,result}], sum, total per sides}.</span>`;
       }

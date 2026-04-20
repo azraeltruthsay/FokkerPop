@@ -816,7 +816,7 @@ export async function mountDice(widget, el, sendToServer) {
     state.settled = false;
     state.stillFor = 0;
     state.rollId = rollId || ('r' + Date.now().toString(36));
-    window.playSound?.(cfg.rollSound ?? 'coin.wav', 0.6);
+    window.playSound?.(cfg.rollSound ?? 'dice1.wav', 0.6);
   }
 
   const GRAVITY = 9.5, FLOOR = -1.4, BOUNCE = 0.38, DAMPING = 0.985, SPIN_DAMPING = 0.975;
@@ -1193,12 +1193,12 @@ export async function mountDiceTray(widget, el, sendToServer) {
       if (group.customTheme) groupOpts.customTheme = group.customTheme;
       for (let i = 0; i < group.count; i++) await spawnDie(group.sides, group.theme || theme, groupOpts);
     }
-    // Roll sound precedence: cfg override > image theme's rollSound > coin.
+    // Roll sound precedence: cfg override > image theme's rollSound > dice1.
     let sound = cfg.rollSound;
     if (!sound && theme) {
       try { sound = (await loadDieThemeData(theme)).rollSound; } catch { /* ignore */ }
     }
-    window.playSound?.(sound ?? 'coin.wav', 0.6);
+    window.playSound?.(sound ?? 'dice1.wav', 0.6);
   }
 
   let last = performance.now();
