@@ -1776,28 +1776,32 @@ function renderCustomWidgets() {
       el.style.padding = '0';
       el.style.minWidth = (cfg.width || 320) + 'px';
       el.style.minHeight = (cfg.height || 220) + 'px';
-      ensureWidgetModule().then(m => m.mountPhysicsPit(w, el, readMetric));
+      ensureWidgetModule().then(m => m.mountPhysicsPit(w, el, readMetric))
+        .catch(err => console.error('[physics-pit] mount failed for', w.id, err));
     } else if (w.type === 'dice') {
       el.style.background = 'transparent';
       el.style.border = 'none';
       el.style.padding = '0';
       el.style.minWidth = (cfg.width || 220) + 'px';
       el.style.minHeight = (cfg.height || 220) + 'px';
-      ensureWidgetModule().then(m => m.mountDice(w, el, (msg) => { try { ws?.send?.(JSON.stringify(msg)); } catch {} }));
+      ensureWidgetModule().then(m => m.mountDice(w, el, (msg) => { try { ws?.send?.(JSON.stringify(msg)); } catch {} }))
+        .catch(err => console.error('[dice] mount failed for', w.id, err));
     } else if (w.type === 'model-3d') {
       el.style.background = 'transparent';
       el.style.border = 'none';
       el.style.padding = '0';
       el.style.minWidth = (cfg.width || 300) + 'px';
       el.style.minHeight = (cfg.height || 300) + 'px';
-      ensureWidgetModule().then(m => m.mountModel3D(w, el, readMetric));
+      ensureWidgetModule().then(m => m.mountModel3D(w, el, readMetric))
+        .catch(err => console.error('[model-3d] mount failed for', w.id, err));
     } else if (w.type === 'physics-pit-3d') {
       el.style.background = 'transparent';
       el.style.border = 'none';
       el.style.padding = '0';
       el.style.minWidth = (cfg.width || 360) + 'px';
       el.style.minHeight = (cfg.height || 260) + 'px';
-      ensureWidgetModule().then(m => m.mountPhysicsPit3D(w, el, readMetric));
+      ensureWidgetModule().then(m => m.mountPhysicsPit3D(w, el, readMetric))
+        .catch(err => console.error('[physics-pit-3d] mount failed for', w.id, err));
     } else if (w.type === 'dice-tray') {
       el.style.background = 'transparent';
       el.style.border = 'none';
@@ -1817,7 +1821,8 @@ function renderCustomWidgets() {
         w, el,
         (msg) => { try { ws?.send?.(JSON.stringify(msg)); } catch {} },
         () => layoutMode
-      ));
+      ))
+        .catch(err => console.error('[hot-button-3d] mount failed for', w.id, err));
     }
 
     // Per-widget visibility toggle (default true). Hidden widgets stay hidden

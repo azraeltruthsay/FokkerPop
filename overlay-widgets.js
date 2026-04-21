@@ -9,6 +9,35 @@ async function loadThree() {
   return THREE;
 }
 
+// Try to construct a WebGLRenderer. If the browser refuses (typically WebGL
+// context limit — Chrome caps at ~16 live contexts per process, which is easy
+// to exhaust when dashboard preview iframes + the main overlay + OBS source
+// each run multiple 3D widgets) we render a clear placeholder into `el` and
+// return null. Callers check the return value and bail without throwing.
+function createWebGLRenderer(T, el, opts = {}) {
+  try {
+    return new T.WebGLRenderer({ alpha: true, antialias: true, ...opts });
+  } catch (err) {
+    renderWebGLUnavailablePlaceholder(el, err);
+    return null;
+  }
+}
+
+function renderWebGLUnavailablePlaceholder(el, err) {
+  const msg = String(err?.message || err || 'WebGL context creation failed');
+  el.innerHTML = `
+    <div style="width:100%; height:100%; min-height:120px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:6px; padding:12px; background:rgba(255,107,107,0.08); border:1px dashed rgba(255,107,107,0.4); border-radius:10px; color:#ffb4b4; font:600 12px system-ui,sans-serif; text-align:center;">
+      <div style="font-size:1.6rem;">⚠️</div>
+      <div>3D widget unavailable</div>
+      <div style="font-weight:400; opacity:0.75; font-size:.7rem; max-width:280px;">
+        ${msg.replace(/[<>&]/g, c => ({ '<':'&lt;', '>':'&gt;', '&':'&amp;' }[c]))}
+      </div>
+      <div style="font-weight:400; opacity:0.6; font-size:.65rem; max-width:280px;">
+        Close extra browser tabs or remove unused 3D widgets (Layout tab) to free up GPU contexts.
+      </div>
+    </div>`;
+}
+
 async function loadMatter() {
   if (Matter) return Matter;
   // Matter.js ships UMD only — inject as a classic <script> so it attaches to window.
@@ -778,7 +807,8 @@ export async function mountDice(widget, el, sendToServer) {
   key.position.set(3, 5, 4);
   scene.add(key);
 
-  const renderer = new T.WebGLRenderer({ alpha: true, antialias: true });
+  const renderer = createWebGLRenderer(T, el);
+  if (!renderer) throw new Error(`WebGL context unavailable for dice widget ${widget.id}`);
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   renderer.setSize(w, h);
   renderer.setClearColor(0x000000, 0);
@@ -1089,7 +1119,8 @@ export async function mountDiceTray(widget, el, sendToServer) {
   top.position.set(0, 6, 0.01);
   scene.add(top);
 
-  const renderer = new T.WebGLRenderer({ alpha: true, antialias: true });
+  const renderer = createWebGLRenderer(T, el);
+  if (!renderer) throw new Error(`WebGL context unavailable for dice-tray ${widget.id}`);
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   renderer.setSize(w, h);
   renderer.setClearColor(0x000000, 0);
@@ -1365,7 +1396,8 @@ export async function mountHotButton3D(widget, el, sendToServer, isLayoutMode) {
   key.position.set(2, 4, 3);
   scene.add(key);
 
-  const renderer = new T.WebGLRenderer({ alpha: true, antialias: true });
+  const renderer = createWebGLRenderer(T, el);
+  if (!renderer) throw new Error(`WebGL context unavailable for hot-button-3d ${widget.id}`);
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   renderer.setSize(w, h);
   renderer.setClearColor(0x000000, 0);
@@ -1479,7 +1511,8 @@ export async function mountPhysicsPit3D(widget, el, getMetric) {
   key.position.set(4, 8, 5);
   scene.add(key);
 
-  const renderer = new T.WebGLRenderer({ alpha: true, antialias: true });
+  const renderer = createWebGLRenderer(T, el);
+  if (!renderer) throw new Error(`WebGL context unavailable for physics-pit-3d ${widget.id}`);
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   renderer.setSize(w, h);
   renderer.setClearColor(0x000000, 0);
@@ -1662,7 +1695,8 @@ export async function mountModel3D(widget, el, getStateRef) {
   fill.position.set(-3, 2, -2);
   scene.add(fill);
 
-  const renderer = new T.WebGLRenderer({ alpha: true, antialias: true });
+  const renderer = createWebGLRenderer(T, el);
+  if (!renderer) throw new Error(`WebGL context unavailable for model-3d ${widget.id}`);
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   renderer.setSize(w, h);
   renderer.setClearColor(0x000000, 0);
