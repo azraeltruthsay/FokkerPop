@@ -1,6 +1,6 @@
 {
   "name": "fokkerpop",
-  "version": "0.2.106",
+  "version": "0.2.107",
   "description": "Twitch overlay for LilFokker — local-first, low-overhead",
   "type": "module",
   "scripts": {
