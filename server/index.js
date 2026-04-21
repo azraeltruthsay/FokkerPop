@@ -16,6 +16,7 @@ import settings, { ROOT }    from './settings-loader.js';
 import log                        from './logger.js';
 import { makeCtx, resolveDeep }   from './template.js';
 import { scheduleChecks, applyUpdate, getAvailable as getAvailableUpdate, setAutoInstall, setStreamingProbe, setAutoInstallHandler, onStreamingStateChange } from './update-checker.js';
+import { parseChatRollSpec, expandPercentile, canRenderInTray } from '../shared/dice.js';
 
 process.title = 'FokkerPop';
 
@@ -61,21 +62,6 @@ function fireCommand(text, event) {
 // `!r` / `!roll` are the reliable triggers. `/r` / `/roll` work for chat
 // clients that let them through (and for dashboard simulation).
 const ROLL_PREFIX_RE = /^[!\/](?:r|roll)\b\s*/i;
-const CHAT_TRAY_SIDES = new Set([4, 6, 8, 10, 12, 20]);
-function parseChatRollSpec(str) {
-  if (!str) return null;
-  const parts = str.replace(/\s+/g, '').split(/[+,]/).filter(Boolean);
-  const groups = [];
-  for (const p of parts) {
-    const m = /^(\d*)d(\d+)$/i.exec(p);
-    if (!m) return null;
-    const count = Math.max(1, Math.min(20, parseInt(m[1] || '1', 10)));
-    const sides = parseInt(m[2], 10);
-    if (sides < 2 || sides > 1000) return null;
-    groups.push({ sides, count });
-  }
-  return groups.length ? groups : null;
-}
 
 export let currentRollId = null;
 export function setRollId(id) { currentRollId = id; }
@@ -87,22 +73,10 @@ async function fireChatRoll(text, event) {
   if (!spec) return;
 
   const user = event.payload?.user || 'Chatter';
-  const canRenderInTray = spec.every(g => CHAT_TRAY_SIDES.has(g.sides) || g.sides === 100);
 
-  if (canRenderInTray) {
+  if (canRenderInTray(spec)) {
     currentRollId = Math.random().toString(36).slice(2);
-    // Expand D100 → 2 × D10 percentile (Red Tens, Blue Units)
-    const dice = spec.flatMap(g => {
-      if (g.sides === 100) {
-        const out = [];
-        for (let i = 0; i < g.count; i++) {
-          out.push({ sides: 10, count: 1, isPercentile: true, theme: 'ruby' });     // Tens
-          out.push({ sides: 10, count: 1, isPercentile: true, theme: 'sapphire' }); // Units
-        }
-        return out;
-      }
-      return [g];
-    });
+    const dice = expandPercentile(spec);
     bus.publish({
       source: 'chat-roll',
       type:   'dice-tray-roll',

@@ -33,3 +33,9 @@ jobs:
 
       - name: Run unit tests
         run: npm run test:unit
+
+      # Non-gating for now: the repo currently has known-broken audio files
+      # (v0.2.99-era failed downloads). Surfaces them in CI logs so we don't
+      # forget. Flip to gating once the audio is replaced.
+      - name: Asset integrity (advisory)
+        run: npm run test:assets || true

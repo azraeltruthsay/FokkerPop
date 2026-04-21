@@ -3,27 +3,12 @@ import bus from '../bus.js';
 import state from '../state.js';
 import { makeCtx, resolveDeep, resolve } from '../template.js';
 import { setRollId } from '../index.js';
+import { parseTraySpec, expandPercentile } from '../../shared/dice.js';
 
 /**
  * Fokker Studio Engine
  * Interprets and executes node-based logic graphs.
  */
-
-const DICE_SIDES_ALLOWED = new Set([4, 6, 8, 10, 12, 20, 100]);
-function parseDiceSpecServer(str) {
-  if (!str || typeof str !== 'string') return null;
-  const parts = str.replace(/\s+/g, '').split(/[+,]/).filter(Boolean);
-  const groups = [];
-  for (const p of parts) {
-    const m = /^(\d*)d(\d+)$/i.exec(p);
-    if (!m) return null;
-    const count = Math.max(1, Math.min(20, parseInt(m[1] || '1', 10)));
-    const sides = parseInt(m[2], 10);
-    if (!DICE_SIDES_ALLOWED.has(sides)) return null;
-    groups.push({ sides, count });
-  }
-  return groups.length ? groups : null;
-}
 
 export class FlowEngine {
   #flows = [];
@@ -118,22 +103,11 @@ export class FlowEngine {
             // Kick off a dice-tray widget roll. The overlay widget produces the
             // authentic physics-based result and publishes dice-tray.rolled
             // separately — use that as a flow trigger to branch on the result.
-            const groups = parseDiceSpecServer(data.spec) ?? [{ sides: 6, count: 2 }];
+            const groups = parseTraySpec(data.spec) ?? [{ sides: 6, count: 2 }];
             const rid = Math.random().toString(36).slice(2);
             setRollId(rid);
 
-            // Expand D100 → 2 × D10 percentile (Red Tens, Blue Units)
-            const dice = groups.flatMap(g => {
-              if (g.sides === 100) {
-                const out = [];
-                for (let i = 0; i < g.count; i++) {
-                  out.push({ sides: 10, count: 1, isPercentile: true, theme: 'ruby' });     // Tens
-                  out.push({ sides: 10, count: 1, isPercentile: true, theme: 'sapphire' }); // Units
-                }
-                return out;
-              }
-              return [g];
-            });
+            const dice = expandPercentile(groups);
 
             const payload = { dice, user: event.payload?.user, rollId: rid };
             if (data.theme) payload.theme = data.theme;

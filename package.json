@@ -1,6 +1,6 @@
 {
   "name": "fokkerpop",
-  "version": "0.2.102",
+  "version": "0.2.103",
   "description": "Twitch overlay for LilFokker — local-first, low-overhead",
   "type": "module",
   "scripts": {
@@ -8,7 +8,8 @@
     "dev": "node --watch server/index.js",
     "test": "npm run test:html && npm run test:unit",
     "test:html": "node test/html-validate.mjs",
-    "test:unit": "node --test test/semver.test.mjs",
+    "test:unit": "node --test test/semver.test.mjs test/dice.test.mjs test/template.test.mjs",
+    "test:assets": "node test/asset-integrity.mjs",
     "test:smoke": "node test/smoke.spec.mjs"
   },
   "engines": {

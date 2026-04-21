@@ -681,27 +681,78 @@ html, body {
       return false;
     };
     
-    // Core navigation logic (Inline so it works even if app.js is blocked)
+    // Core navigation logic (inline so it works even if app.js is blocked).
+    //
+    // The page-refresh handlers below (populateGallery, initStudio, etc.) are
+    // defined in app.js/studio.js — they might throw, be missing, or race the
+    // dashboard load. A failure here must NOT leave the user looking at a
+    // blank page with no hint what went wrong. We show an in-page fallback
+    // card with the error + a retry button instead.
+    const PAGE_HANDLERS = {
+      effects: () => window.populateSimulatorRedeems?.(),
+      assets:  () => window.populateGallery?.(),
+      log:     () => window.fetchSystemLogs?.(),
+      studio:  () => window.initStudio?.(),
+      layout:  () => window.renderWidgetList?.(),
+      config:  () => window.renderConfigEditors?.(),
+    };
+
+    function renderFallback(page, err) {
+      const pageEl = document.getElementById(`page-${page}`);
+      if (!pageEl) return;
+      // Preserve original page content so a successful retry restores it.
+      if (!pageEl.dataset.originalHtml) pageEl.dataset.originalHtml = pageEl.innerHTML;
+      const msg = (err?.message || String(err || 'unknown error'))
+        .replace(/[<>&]/g, c => ({ '<':'&lt;', '>':'&gt;', '&':'&amp;' }[c]));
+      pageEl.innerHTML = `
+        <div class="page-header"><div class="page-title">${page}</div></div>
+        <div class="card" style="border-color: rgba(255,107,107,0.4);">
+          <div class="card-title" style="color: var(--red);">This page failed to render</div>
+          <p style="font-size:.85rem; color:var(--text-dim); margin:8px 0 12px;">
+            An error occurred while loading <strong>${page}</strong>. The rest of the dashboard still works — use the sidebar to navigate elsewhere, or retry this page.
+          </p>
+          <pre style="font-size:.72rem; background:var(--bg); padding:10px; border-radius:6px; overflow-x:auto; color:var(--red); margin:0 0 12px;">${msg}</pre>
+          <p style="font-size:.72rem; color:var(--text-dim); margin-bottom:12px;">
+            Open DevTools (F12) → Console for the full stack trace. This is usually caused by a failed handler or a missing asset.
+          </p>
+          <button class="btn btn-primary btn-sm" onclick="window.__navigate('${page}', true)">↻ Retry</button>
+        </div>
+      `;
+    }
+
+    function restoreOriginal(pageEl) {
+      if (pageEl.dataset.originalHtml) {
+        pageEl.innerHTML = pageEl.dataset.originalHtml;
+        delete pageEl.dataset.originalHtml;
+      }
+    }
+
+    window.__navigate = function(page, isRetry = false) {
+      document.querySelectorAll('.nav-item').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+      const btn = document.querySelector(`.nav-item[data-page="${page}"]`);
+      if (btn) btn.classList.add('active');
+      const pageEl = document.getElementById(`page-${page}`);
+      if (!pageEl) return;
+      pageEl.classList.add('active');
+      // If we're retrying after a prior fallback, put the original DOM back
+      // before invoking the handler again.
+      if (isRetry) restoreOriginal(pageEl);
+
+      const handler = PAGE_HANDLERS[page];
+      if (!handler) return;
+      try {
+        handler();
+      } catch (err) {
+        console.error(`Navigation refresh failed for ${page}:`, err);
+        renderFallback(page, err);
+      }
+    };
+
     document.addEventListener('click', (e) => {
       const btn = e.target.closest('.nav-item[data-page]');
       if (!btn) return;
-      document.querySelectorAll('.nav-item').forEach(b => b.classList.remove('active'));
-      document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
-      btn.classList.add('active');
-      const page = btn.dataset.page;
-      document.getElementById(`page-${page}`)?.classList.add('active');
-
-      // Refresh page-specific content
-      try {
-        if (page === 'effects') window.populateSimulatorRedeems?.();
-        if (page === 'assets')  window.populateGallery?.();
-        if (page === 'log')     window.fetchSystemLogs?.();
-        if (page === 'studio')  window.initStudio?.();
-        if (page === 'layout')  window.renderWidgetList?.();
-        if (page === 'config')  window.renderConfigEditors?.();
-      } catch (err) {
-        console.error(`Navigation refresh failed for ${page}:`, err);
-      }
+      window.__navigate(btn.dataset.page);
     });
   </script>
 <div id="app">

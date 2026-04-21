@@ -14,12 +14,21 @@ animations, sound levels, layout drift.
    ```
    npm test
    ```
-   This runs the HTML validator and the semver unit tests. Both must be
-   green.
+   This runs the HTML validator plus unit tests for semver, dice parsing,
+   and the Studio template engine. Everything must be green.
 
-   Optionally, run the end-to-end smoke test too. It boots the server
-   and clicks every sidebar tab, asserting each page renders and that
-   the version banner stays hidden for the current release:
+3. **Run the asset integrity check:**
+   ```
+   npm run test:assets
+   ```
+   Sniffs magic bytes against file extensions. Fails on WAV/MP3 that are
+   actually HTML (failed downloads) or too small to be real media. Warns
+   on image extension/magic mismatches (e.g. PNG data in a `.gif`). Fix
+   failures before shipping; warnings are triage.
+
+4. **Optional smoke test.** Boots the server and clicks every sidebar tab,
+   asserting each page renders and that the version banner stays hidden
+   for the current release:
    ```
    npm install --no-save playwright && npx playwright install chromium
    npm run test:smoke
@@ -27,7 +36,7 @@ animations, sound levels, layout drift.
    Playwright is kept out of `package.json` so it doesn't bloat the
    shipped Windows bundle; install it on demand for release verification.
 
-3. **Manual dashboard pass** (browser at http://localhost:4747/dashboard/):
+5. **Manual dashboard pass** (browser at http://localhost:4747/dashboard/):
    - [ ] Click every sidebar item in order: Live → Chat → Test Effects →
          Goals → Assets → Layout → Config → Studio → Event Log → Setup.
          Every page must render content (not blank).
@@ -41,12 +50,12 @@ animations, sound levels, layout drift.
    - [ ] Version badge in the sidebar matches `package.json`.
    - [ ] No gold "UPDATE FAILED" banner.
 
-4. **Overlay check** (browser at http://localhost:4747/):
+6. **Overlay check** (browser at http://localhost:4747/):
    - [ ] Open with `?demo=1` — mascot animates, dice tray boots, a
          sample firework or confetti fires from the top bar.
    - [ ] No console errors.
 
-5. **Commit and tag:**
+7. **Commit and tag:**
    ```
    git add -A
    git commit -m "Release vX.Y.Z: <one-liner>"
@@ -64,6 +73,15 @@ animations, sound levels, layout drift.
 
 ## If something breaks
 
-See `test/html-validate.mjs` and `test/semver.test.mjs` — add a new
-regression test for whatever slipped through, so the gate catches it
-next time.
+Add a regression test under `test/` for whatever slipped through, so
+the gate catches it next time. The established patterns:
+
+- **Structural HTML bug** → extend `test/html-validate.mjs` or add a
+  specific assertion.
+- **Logic bug in shared code** → add a case to the matching
+  `test/*.test.mjs` file (semver, dice, template).
+- **Broken asset** → the integrity checker already covers magic bytes
+  and minimum sizes; extend it only if the failure mode is new.
+- **Runtime error in a dashboard tab** → the navigation fallback UI
+  now shows a "This page failed to render" card with the error
+  message, so the user isn't stuck on a blank page while you diagnose.
