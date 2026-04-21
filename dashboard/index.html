@@ -690,10 +690,18 @@ html, body {
       btn.classList.add('active');
       const page = btn.dataset.page;
       document.getElementById(`page-${page}`)?.classList.add('active');
-      if (window.populateSimulatorRedeems && page === 'effects') window.populateSimulatorRedeems();
-      if (window.populateGallery && page === 'assets') window.populateGallery();
-      if (window.fetchSystemLogs && page === 'log') window.fetchSystemLogs();
-      if (window.initStudio && page === 'studio') window.initStudio();
+
+      // Refresh page-specific content
+      try {
+        if (page === 'effects') window.populateSimulatorRedeems?.();
+        if (page === 'assets')  window.populateGallery?.();
+        if (page === 'log')     window.fetchSystemLogs?.();
+        if (page === 'studio')  window.initStudio?.();
+        if (page === 'layout')  window.renderWidgetList?.();
+        if (page === 'config')  window.renderConfigEditors?.();
+      } catch (err) {
+        console.error(`Navigation refresh failed for ${page}:`, err);
+      }
     });
   </script>
 <div id="app">

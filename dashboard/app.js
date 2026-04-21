@@ -630,7 +630,7 @@ window.updateWidgetField = function (id, field, value) {
   updateWidgetField._t = setTimeout(saveWidgets, 300);
 };
 
-function renderWidgetList() {
+window.renderWidgetList = function() {
   const host = document.getElementById('widget-list');
   if (!host) return;
   if (!widgets.length) { host.innerHTML = '<p style="color:var(--text-dim); font-size:.82rem;">No widgets yet. Add one from the buttons above.</p>'; return; }
@@ -1006,11 +1006,11 @@ function buildSoundSelect(cls, current, vol = 1.0) {
     </div>`;
 }
 
-function renderConfigEditors() {
+window.renderConfigEditors = function() {
   renderGoalsConfig();
   renderRedeemsConfig();
   renderCommandsConfig();
-}
+};
 
 // Goals editor dirty-tracking: while the user has unsaved edits, skip re-renders
 // triggered by server-side goals state updates (e.g. a goal completing mid-stream).
@@ -1408,7 +1408,7 @@ window.simFireGift = function() {
   window.fireEvent('sub.gifted', { user, count });
 };
 
-function populateSimulatorRedeems() {
+window.populateSimulatorRedeems = function() {
   const sel = document.getElementById('sim-redeem-select');
   if (!sel) return;
   fetch('/api/redeems').then(r => r.json()).then(redeems => {
@@ -1419,7 +1419,7 @@ function populateSimulatorRedeems() {
     }
     sel.innerHTML = options.map(o => `<option value="${esc(o)}">${esc(o)}</option>`).join('');
   });
-}
+};
 
 // ═══════════════════════════════════════════════ Setup helpers
 
