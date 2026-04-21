@@ -841,7 +841,12 @@ function setVersion(v) {
   document.querySelectorAll('.v-badge, .v-string').forEach(el => { el.textContent = cleanV; });
 
   // Safety check: Is he actually on the latest?
-  if (v && v < '0.2.49') {
+  // Numeric compare per component — lexicographic `<` on the string breaks once any
+  // component crosses 99 (e.g. "0.2.100" < "0.2.49" is true as strings).
+  const parts = String(v).replace(/^v/, '').split('.').map(n => parseInt(n, 10) || 0);
+  const [maj = 0, min = 0, patch = 0] = parts;
+  const score = maj * 1_000_000 + min * 1_000 + patch;
+  if (score < 0 * 1_000_000 + 2 * 1_000 + 49) {
     const el = document.getElementById('error-reporter');
     const msgEl = document.getElementById('error-msg');
     if (el && msgEl) {
