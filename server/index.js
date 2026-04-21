@@ -413,12 +413,21 @@ const httpServer = createServer((req, res) => {
   // Vendored libraries (three.js, matter.js, three GLTFLoader).
   // Narrow allowlist so we don't expose the rest of node_modules.
   const VENDOR = {
-    '/vendor/three.module.min.js':    'three/build/three.module.min.js',
-    '/vendor/three.core.min.js':      'three/build/three.core.min.js',
-    '/vendor/matter.min.js':          'matter-js/build/matter.min.js',
-    '/vendor/cannon-es.js':           'cannon-es/dist/cannon-es.js',
-    '/vendor/GLTFLoader.js':          'three/examples/jsm/loaders/GLTFLoader.js',
-    '/vendor/BufferGeometryUtils.js': 'three/examples/jsm/utils/BufferGeometryUtils.js',
+    '/vendor/three.module.min.js':                    'three/build/three.module.min.js',
+    '/vendor/three.core.min.js':                      'three/build/three.core.min.js',
+    '/vendor/matter.min.js':                          'matter-js/build/matter.min.js',
+    '/vendor/cannon-es.js':                           'cannon-es/dist/cannon-es.js',
+    // GLTFLoader lives at /vendor/three/loaders/ so its internal
+    // `../utils/BufferGeometryUtils.js` import resolves to a path we also
+    // serve. Its `from 'three'` bare import is resolved by the importmap in
+    // overlay.html / dashboard/index.html.
+    '/vendor/three/loaders/GLTFLoader.js':            'three/examples/jsm/loaders/GLTFLoader.js',
+    '/vendor/three/utils/BufferGeometryUtils.js':     'three/examples/jsm/utils/BufferGeometryUtils.js',
+    '/vendor/three/utils/SkeletonUtils.js':           'three/examples/jsm/utils/SkeletonUtils.js',
+    // Back-compat aliases for any downstream code that still points at the
+    // flat paths. Safe to remove once everything uses /vendor/three/...
+    '/vendor/GLTFLoader.js':                          'three/examples/jsm/loaders/GLTFLoader.js',
+    '/vendor/BufferGeometryUtils.js':                 'three/examples/jsm/utils/BufferGeometryUtils.js',
   };
   if (VENDOR[path]) {
     return serveFile(res, join(ROOT, 'node_modules', VENDOR[path]));

@@ -367,7 +367,7 @@ const glbCache = new Map(); // url -> Promise<{gltf}>
 async function loadGlb(url) {
   if (!glbCache.has(url)) {
     glbCache.set(url, (async () => {
-      const { GLTFLoader } = await import('/vendor/GLTFLoader.js');
+      const { GLTFLoader } = await import('/vendor/three/loaders/GLTFLoader.js');
       return new Promise((res, rej) => {
         new GLTFLoader().load(url, res, undefined, rej);
       });
@@ -1639,7 +1639,7 @@ const modelWidgets = new Map();
 
 export async function mountModel3D(widget, el, getStateRef) {
   const T = await loadThree();
-  const { GLTFLoader } = await import('/vendor/GLTFLoader.js');
+  const { GLTFLoader } = await import('/vendor/three/loaders/GLTFLoader.js');
   const cfg = widget.config || {};
 
   const w = cfg.width || 300;
