@@ -32,6 +32,13 @@ jobs:
       - name: Security audit
         run: npm audit --audit-level=high
 
+      # Gate: HTML validator + semver unit tests. Catches the v0.2.101-style
+      # tag-nesting bug and the string-compare version regressions before
+      # we ship them to users.
+      - name: Verify (HTML + unit tests)
+        run: npm test
+
+
       # Download the same Node version that's running this job,
       # but the Windows x64 binary, so it's bundled into the zip.
       - name: Download Node.js Windows x64 binary

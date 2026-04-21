@@ -1,0 +1,35 @@
+name: Verify
+
+# Cheap pre-release gate. Runs on every push and PR to main.
+# HTML structural check + semver unit tests — together these catch both
+# regressions that shipped in v0.2.99–101 (dashboard tabs blanked by a
+# dropped </div>, and the setVersion string-compare that flipped at
+# 3-digit version components).
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  verify:
+    name: HTML validator & unit tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Validate HTML structure
+        run: npm run test:html
+
+      - name: Run unit tests
+        run: npm run test:unit

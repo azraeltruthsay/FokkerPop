@@ -12,6 +12,7 @@ import { join, resolve } from 'node:path';
 import { spawn } from 'node:child_process';
 import { request } from 'node:https';
 import log from './logger.js';
+import { semverGt } from '../shared/semver.js';
 
 const REPO          = 'azraeltruthsay/FokkerPop';
 const LATEST_URL    = `https://api.github.com/repos/${REPO}/releases/latest`;
@@ -21,16 +22,6 @@ const USER_AGENT    = 'FokkerPop-Updater';
 let available = null;       // { version, notes, exeUrl, localPath }
 let downloading = false;
 let broadcast = null;       // set by wireUpdateChecker
-
-function semverGt(a, b) {
-  const pa = String(a).replace(/^v/, '').split('.').map(n => parseInt(n, 10) || 0);
-  const pb = String(b).replace(/^v/, '').split('.').map(n => parseInt(n, 10) || 0);
-  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
-    const x = pa[i] ?? 0, y = pb[i] ?? 0;
-    if (x !== y) return x > y;
-  }
-  return false;
-}
 
 function httpsGetJson(url) {
   return new Promise((ok, fail) => {

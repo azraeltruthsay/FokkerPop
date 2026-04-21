@@ -5,7 +5,11 @@
   "type": "module",
   "scripts": {
     "start": "node server/index.js",
-    "dev": "node --watch server/index.js"
+    "dev": "node --watch server/index.js",
+    "test": "npm run test:html && npm run test:unit",
+    "test:html": "node test/html-validate.mjs",
+    "test:unit": "node --test test/semver.test.mjs",
+    "test:smoke": "node test/smoke.spec.mjs"
   },
   "engines": {
     "node": ">=18.0.0"

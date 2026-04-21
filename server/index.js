@@ -20,7 +20,9 @@ import { scheduleChecks, applyUpdate, getAvailable as getAvailableUpdate, setAut
 process.title = 'FokkerPop';
 
 // ── Config ────────────────────────────────────────────────────────────────────
-const PORT    = settings.server?.port ?? 4747;
+// Env var wins so `PORT=4800 npm start` and smoke tests can pick a free port
+// without mutating settings.json.
+const PORT    = parseInt(process.env.PORT, 10) || settings.server?.port || 4747;
 const BIND    = '127.0.0.1';   // local only — never expose to LAN
 const VERSION = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8')).version;
 
@@ -421,6 +423,11 @@ const httpServer = createServer((req, res) => {
     return serveFile(res, join(ROOT, 'dashboard/index.html'));
   }
   if (path.startsWith('/dashboard/')) {
+    return serveFile(res, join(ROOT, path.slice(1)));
+  }
+
+  // Shared browser/node modules (semver helpers, etc.)
+  if (path.startsWith('/shared/')) {
     return serveFile(res, join(ROOT, path.slice(1)));
   }
 
