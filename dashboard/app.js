@@ -125,13 +125,17 @@ function populateGallery() {
   const $c = document.getElementById('gallery-characters');
   if (!$s || !$t || !$c) return;
 
-  $s.innerHTML = (assets.sounds || []).map(f =>
-    `<button class="btn btn-ghost btn-sm gallery-sound-btn" data-sound="${esc(f)}" style="font-size:0.7rem;">🔊 ${esc(f)}</button>`
-  ).join('');
-  $s.onclick = (e) => {
-    const btn = e.target.closest('.gallery-sound-btn');
-    if (btn) previewSound(btn.dataset.sound);
-  };
+  $s.innerHTML = (assets.sounds || []).map(f => `
+    <div class="card" style="margin:0; padding:10px; background:var(--surface2); display:flex; flex-direction:column; gap:8px;">
+      <div style="font-size:0.75rem; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="${esc(f)}">🔊 ${esc(f)}</div>
+      <div style="display:flex; align-items:center; gap:8px;">
+        <input type="range" min="0" max="1" step="0.05" value="0.5" class="input-field" style="flex:1; height:4px; padding:0; accent-color:var(--accent);" 
+          oninput="this.nextElementSibling.textContent = Math.round(this.value * 100) + '%'">
+        <span style="font-size:0.6rem; color:var(--text-dim); min-width:28px;">50%</span>
+        <button class="btn btn-primary btn-sm" onclick="testSoundWithVol('${esc(f)}', this.previousElementSibling.previousElementSibling.value)">Test</button>
+      </div>
+    </div>
+  `).join('');
 
   $t.innerHTML = (assets.stickers || []).map(f => 
     `<div title="${esc(f)}" style="width:40px; height:40px; background:var(--surface2); border:1px solid var(--border); border-radius:6px; display:flex; align-items:center; justify-content:center; overflow:hidden; cursor:help;">
@@ -971,6 +975,14 @@ window.previewSound = function(file) {
     console.warn('Preview blocked:', err.message);
     alert(`Could not play "${file}": ${err.message}`);
   });
+};
+
+window.testSoundWithVol = function(file, vol) {
+  if (!file) return;
+  const src = `/assets/sounds/${encodeURIComponent(file)}`;
+  const audio = new Audio(src);
+  audio.volume = parseFloat(vol) || 1.0;
+  audio.play().catch(err => console.warn('Preview blocked:', err.message));
 };
 
 function buildSoundSelect(cls, current, vol = 1.0) {

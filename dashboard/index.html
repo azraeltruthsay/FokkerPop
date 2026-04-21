@@ -719,6 +719,9 @@ html, body {
     <button class="nav-item" data-page="goals">
       <span class="nav-icon">🎯</span> Goals
     </button>
+    <button class="nav-item" data-page="assets">
+      <span class="nav-icon">📁</span> Assets
+    </button>
     <button class="nav-item" data-page="layout">
       <span class="nav-icon">🪟</span> Layout
     </button>
@@ -1009,77 +1012,82 @@ html, body {
           </div>
         </div>
 
-        <div style="margin-top:24px; border-top: 1px solid var(--border); padding-top:20px;">
-          <div class="effects-section-label">Simulate Custom Event (Twitch Test Bed)</div>
-          
-          <div class="simulator-grid" style="display:grid; grid-template-columns: 1fr 1fr; gap:20px;">
-            <div class="card" style="margin:0; background:var(--surface2);">
-              <div class="card-title" style="font-size:0.8rem; margin-bottom:12px;">Channel Point Redeem</div>
+      <div class="card">
+        <div class="effects-section-label">Simulate Custom Event (Twitch Test Bed)</div>
+        <div class="simulator-grid" style="display:grid; grid-template-columns: 1fr 1fr; gap:20px;">
+          <div class="card" style="margin:0; background:var(--surface2);">
+            <div class="card-title" style="font-size:0.8rem; margin-bottom:12px;">Channel Point Redeem</div>
+            <div style="display:flex; gap:8px;">
+              <select id="sim-redeem-select" class="input-field" style="flex:1;">
+                <option value="">-- No Redeems Found --</option>
+              </select>
+              <button class="btn btn-primary" onclick="simFireRedeem()">Simulate</button>
+            </div>
+          </div>
+
+          <div class="card" style="margin:0; background:var(--surface2);">
+            <div class="card-title" style="font-size:0.8rem; margin-bottom:12px;">Custom Cheer (Bits)</div>
+            <div style="display:flex; flex-direction:column; gap:8px;">
               <div style="display:flex; gap:8px;">
-                <select id="sim-redeem-select" class="input-field" style="flex:1;">
-                  <option value="">-- No Redeems Found --</option>
-                </select>
-                <button class="btn btn-primary" onclick="simFireRedeem()">Simulate</button>
+                <input id="sim-cheer-user" class="input-field" placeholder="User" value="ChatterBox" style="max-width:110px;">
+                <input id="sim-cheer-bits" class="input-field" type="number" placeholder="Bits" value="69" style="max-width:80px;">
+              </div>
+              <div style="display:flex; gap:8px;">
+                <input id="sim-cheer-msg" class="input-field" placeholder="Cheer message..." style="flex:1;">
+                <button class="btn btn-primary" onclick="simFireCheer()">Cheer</button>
               </div>
             </div>
+          </div>
 
-            <div class="card" style="margin:0; background:var(--surface2);">
-              <div class="card-title" style="font-size:0.8rem; margin-bottom:12px;">Custom Cheer (Bits)</div>
-              <div style="display:flex; flex-direction:column; gap:8px;">
-                <div style="display:flex; gap:8px;">
-                  <input id="sim-cheer-user" class="input-field" placeholder="User" value="ChatterBox" style="max-width:110px;">
-                  <input id="sim-cheer-bits" class="input-field" type="number" placeholder="Bits" value="69" style="max-width:80px;">
-                </div>
-                <div style="display:flex; gap:8px;">
-                  <input id="sim-cheer-msg" class="input-field" placeholder="Cheer message..." style="flex:1;">
-                  <button class="btn btn-primary" onclick="simFireCheer()">Cheer</button>
-                </div>
-              </div>
-            </div>
-
-            <div class="card" style="margin:0; background:var(--surface2);">
-              <div class="card-title" style="font-size:0.8rem; margin-bottom:12px;">Custom Gift Subs</div>
-              <div style="display:flex; flex-direction:column; gap:8px;">
-                <div style="display:flex; gap:8px;">
-                  <input id="sim-gift-user" class="input-field" placeholder="Gifter" value="GiftBot" style="max-width:150px;">
-                  <input id="sim-gift-count" class="input-field" type="number" placeholder="Count" value="5" style="max-width:80px;">
-                  <button class="btn btn-primary" onclick="simFireGift()">Gift</button>
-                </div>
+          <div class="card" style="margin:0; background:var(--surface2);">
+            <div class="card-title" style="font-size:0.8rem; margin-bottom:12px;">Custom Gift Subs</div>
+            <div style="display:flex; flex-direction:column; gap:8px;">
+              <div style="display:flex; gap:8px;">
+                <input id="sim-gift-user" class="input-field" placeholder="Gifter" value="GiftBot" style="max-width:150px;">
+                <input id="sim-gift-count" class="input-field" type="number" placeholder="Count" value="5" style="max-width:80px;">
+                <button class="btn btn-primary" onclick="simFireGift()">Gift</button>
               </div>
             </div>
           </div>
         </div>
       </div>
+    </div>
+
+    <!-- ════════════════════════ ASSETS PAGE -->
+    <div class="page" id="page-assets">
+      <div class="page-header"><div class="page-title">Assets & Media</div></div>
 
       <div class="card">
         <div style="display:flex; justify-content:space-between; align-items:center;">
-          <div class="card-title" style="margin:0;">Asset Gallery (Sounds & Stickers)</div>
+          <div class="card-title" style="margin:0;">Asset Gallery</div>
           <button class="btn btn-ghost btn-sm" onclick="refreshAssets()" title="Rescan the assets folder">🔄 Refresh</button>
         </div>
-        <p style="font-size:.8rem; color:var(--text-dim); margin:6px 0 12px;">Click a sound to play it, or hover over a sticker to preview. Files you add/remove in the assets folder show up after Refresh.</p>
+        <p style="font-size:.8rem; color:var(--text-dim); margin:6px 0 12px;">Files you add/remove in the assets folder show up after Refresh.</p>
         
-        <div style="display:flex; flex-direction:column; gap:20px;">
+        <div style="display:flex; flex-direction:column; gap:24px;">
           <div>
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
               <div style="font-size:0.65rem; color:var(--text-dim); text-transform:uppercase; letter-spacing:0.05em; font-weight:800;">Sound Effects</div>
               <button class="btn btn-ghost btn-sm" onclick="triggerUpload('sound')">➕ Upload Sound</button>
             </div>
-            <div id="gallery-sounds" style="display:flex; flex-wrap:wrap; gap:8px;"></div>
+            <div id="gallery-sounds" style="display:grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap:12px;"></div>
           </div>
+
           <div>
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
               <div style="font-size:0.65rem; color:var(--text-dim); text-transform:uppercase; letter-spacing:0.05em; font-weight:800;">Stickers</div>
               <button class="btn btn-ghost btn-sm" onclick="triggerUpload('sticker')">➕ Upload Sticker</button>
             </div>
-            <div id="gallery-stickers" style="display:flex; flex-wrap:wrap; gap:10px;"></div>
+            <div id="gallery-stickers" style="display:flex; flex-wrap:wrap; gap:12px;"></div>
           </div>
+
           <div>
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
               <div style="font-size:0.65rem; color:var(--text-dim); text-transform:uppercase; letter-spacing:0.05em; font-weight:800;">Mascot Animations</div>
               <button class="btn btn-ghost btn-sm" onclick="triggerUpload('character')">➕ Upload Mascot</button>
             </div>
-            <p style="font-size:.65rem; color:var(--text-dim); margin-bottom:8px;">Filename must be: <strong>idle.gif, active.gif, hype.gif, or explosion.gif</strong></p>
-            <div id="gallery-characters" style="display:flex; flex-wrap:wrap; gap:10px;"></div>
+            <p style="font-size:.65rem; color:var(--text-dim); margin-bottom:12px;">Filename must be: <strong>idle.gif, active.gif, hype.gif, or explosion.gif</strong></p>
+            <div id="gallery-characters" style="display:flex; flex-wrap:wrap; gap:16px;"></div>
           </div>
         </div>
 

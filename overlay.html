@@ -778,7 +778,16 @@ body:not(.layout-mode) .custom-widget[data-type="hot-button"]:hover {
 <div id="kaprekar-container"></div>
 
 <div id="character-wrap" class="draggable" data-placeholder="Mascot">
-  <img id="character-sprite" src="/characters/lilfokkermascot/idle.gif" onerror="this.style.display='none'">
+  <img id="character-sprite" src="/characters/lilfokkermascot/idle.gif" onerror="
+    const exts = ['.gif','.png','.webp','.jpg'];
+    const current = this.src.substring(this.src.lastIndexOf('.'));
+    const nextIdx = exts.indexOf(current) + 1;
+    if (nextIdx < exts.length) {
+      this.src = this.src.replace(current, exts[nextIdx]);
+    } else {
+      this.style.display='none';
+    }
+  ">
 </div>
 
 <!-- z-10: persistent HUD widgets -->
@@ -1183,18 +1192,19 @@ function updateCharacter(pct) {
   const img = document.getElementById('character-sprite');
   if (!img) return;
   img.style.display = 'block';
-  
+
   let state = 'idle';
   if      (pct >= 99) state = 'explosion';
   else if (pct >= 75) state = 'hype';
   else if (pct >= 25) state = 'active';
 
-  const newSrc = `/characters/lilfokkermascot/${state}.gif`;
-  if (!img.src.endsWith(newSrc)) {
-    img.src = newSrc;
-  }
-}
+  // If the current src already matches the state (regardless of extension), skip.
+  const currentFile = img.src.split('/').pop().split('.')[0];
+  if (currentFile === state) return;
 
+  // Try GIF first as default, then fallback via onerror if it fails
+  img.src = `/characters/lilfokkermascot/${state}.gif`;
+}
 function triggerCharacterReaction() {
   const img = document.getElementById('character-sprite');
   if (!img) return;
