@@ -148,6 +148,17 @@ jobs:
           unzip -q "${PKG}.zip" -d "$WORK"
           APP="$WORK/${PKG}"
 
+          # Invariant: the zip must NEVER contain user-data files. NSIS's
+          # SetOverwrite on would otherwise clobber the user's layout /
+          # goals / credentials on every update. These files are gitignored
+          # and created by the server on first boot from *.example.json.
+          for f in widgets.json state.json goals.json redeems.json commands.json flows.json settings.json; do
+            if [ -e "$APP/$f" ]; then
+              echo "FAIL: $f is in the release zip — updates would overwrite user customizations"
+              exit 1
+            fi
+          done
+
           PORT=14747 node "$APP/server/index.js" > "$WORK/smoke.log" 2>&1 &
           SERVER_PID=$!
           trap "kill $SERVER_PID 2>/dev/null || true" EXIT
