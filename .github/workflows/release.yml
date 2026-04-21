@@ -137,6 +137,54 @@ jobs:
 
           echo "PKG=${PKG}" >> "$GITHUB_ENV"
 
+      # Catch "committed to git but missing from the zip" bugs before they
+      # ship. Extracts the zip, boots the server from the extracted copy
+      # with a throwaway port, and asserts the critical routes respond.
+      # Would have caught v0.2.103-106 shipping without shared/.
+      - name: Smoke test the packaged zip
+        run: |
+          set -eu
+          WORK=$(mktemp -d)
+          unzip -q "${PKG}.zip" -d "$WORK"
+          APP="$WORK/${PKG}"
+
+          PORT=14747 node "$APP/server/index.js" > "$WORK/smoke.log" 2>&1 &
+          SERVER_PID=$!
+          trap "kill $SERVER_PID 2>/dev/null || true" EXIT
+
+          READY=""
+          for i in $(seq 1 30); do
+            if curl -sSf http://127.0.0.1:14747/dashboard/ -o /dev/null 2>&1; then
+              READY=1; break
+            fi
+            sleep 0.5
+          done
+
+          if [ -z "$READY" ]; then
+            echo "FAIL: packaged zip did not boot within 15s"
+            echo "--- server log ---"
+            cat "$WORK/smoke.log"
+            exit 1
+          fi
+
+          if grep -qE "ERR_MODULE_NOT_FOUND|Cannot find module|Error \[ERR_" "$WORK/smoke.log"; then
+            echo "FAIL: module-resolution error during server boot"
+            cat "$WORK/smoke.log"
+            exit 1
+          fi
+
+          # Explicit route checks for files that have historically been missed.
+          for path in /dashboard/ /shared/dice.js /shared/semver.js /overlay-widgets.js /vendor/three.module.min.js; do
+            if ! curl -sSf "http://127.0.0.1:14747$path" -o /dev/null 2>&1; then
+              echo "FAIL: $path is not served from the packaged zip"
+              echo "--- server log ---"
+              cat "$WORK/smoke.log"
+              exit 1
+            fi
+          done
+
+          echo "OK: packaged zip boots cleanly and serves all critical routes"
+
       - name: Create GitHub Release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
