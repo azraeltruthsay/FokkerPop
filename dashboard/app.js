@@ -119,11 +119,12 @@ function connect() {
   });
 }
 
-function populateGallery() {
+window.populateGallery = function() {
   const $s = document.getElementById('gallery-sounds');
   const $t = document.getElementById('gallery-stickers');
   const $c = document.getElementById('gallery-characters');
   if (!$s || !$t || !$c) return;
+  if (!window.assets) return;
 
   $s.innerHTML = (assets.sounds || []).map(f => `
     <div class="card" style="margin:0; padding:10px; background:var(--surface2); display:flex; flex-direction:column; gap:8px;">
@@ -149,7 +150,7 @@ function populateGallery() {
        <span style="font-size:0.5rem; color:var(--text-dim)">${esc(f)}</span>
      </div>`
   ).join('');
-}
+};
 
 window.triggerUpload = (type) => { document.getElementById('upload-' + type).click(); };
 

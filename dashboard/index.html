@@ -691,6 +691,7 @@ html, body {
       const page = btn.dataset.page;
       document.getElementById(`page-${page}`)?.classList.add('active');
       if (window.populateSimulatorRedeems && page === 'effects') window.populateSimulatorRedeems();
+      if (window.populateGallery && page === 'assets') window.populateGallery();
       if (window.fetchSystemLogs && page === 'log') window.fetchSystemLogs();
       if (window.initStudio && page === 'studio') window.initStudio();
     });
