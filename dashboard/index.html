@@ -736,6 +736,28 @@ html, body {
       }
     }
 
+    // Lazy-mount preview iframes so only the active page's overlay instance
+    // actually runs. Without this, opening the dashboard on the Live page
+    // still spawns two hidden overlays (one per preview iframe) that each
+    // claim a WebSocket, a WebGL context per 3D widget, and ~25 MB of heap.
+    // An iframe with data-src (and blank real src) loads when its page
+    // becomes active and gets set back to about:blank when it doesn't.
+    function syncPreviewIframes(activePage) {
+      document.querySelectorAll('iframe[data-src]').forEach(frame => {
+        const pageEl = frame.closest('.page');
+        if (!pageEl) return;
+        const wantsLoaded = pageEl.id === 'page-' + activePage;
+        const isLoaded    = frame.dataset.loaded === '1';
+        if (wantsLoaded && !isLoaded) {
+          frame.src = frame.dataset.src;
+          frame.dataset.loaded = '1';
+        } else if (!wantsLoaded && isLoaded) {
+          frame.src = 'about:blank';
+          frame.dataset.loaded = '0';
+        }
+      });
+    }
+
     window.__navigate = function(page, isRetry = false) {
       document.querySelectorAll('.nav-item').forEach(b => b.classList.remove('active'));
       document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
@@ -747,6 +769,8 @@ html, body {
       // If we're retrying after a prior fallback, put the original DOM back
       // before invoking the handler again.
       if (isRetry) restoreOriginal(pageEl);
+
+      syncPreviewIframes(page);
 
       const handler = PAGE_HANDLERS[page];
       if (!handler) return;
@@ -942,7 +966,7 @@ html, body {
           </label>
           <a class="btn btn-ghost btn-sm" href="/" target="_blank">Open ↗</a>
         </div>
-        <iframe id="preview-frame" src="/?demo=0" title="Overlay Preview"></iframe>
+        <iframe id="preview-frame" data-src="/?demo=0" src="about:blank" title="Overlay Preview"></iframe>
       </div>
 
       <div class="card">
@@ -1240,7 +1264,7 @@ html, body {
         </div>
 
         <div style="background:#0f0f1a; border:1px solid var(--border); border-radius:10px; overflow:hidden; background-image: repeating-conic-gradient(#16162a 0% 25%, #0f0f1a 0% 50%); background-size:24px 24px;">
-          <iframe id="layout-preview-frame" src="/?demo=0" title="Layout Editor Preview" style="display:block; width:100%; aspect-ratio:16/9; border:none;"></iframe>
+          <iframe id="layout-preview-frame" data-src="/?demo=0" src="about:blank" title="Layout Editor Preview" style="display:block; width:100%; aspect-ratio:16/9; border:none;"></iframe>
         </div>
       </div>
 
