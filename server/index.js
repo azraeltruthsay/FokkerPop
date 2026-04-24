@@ -411,7 +411,13 @@ const MIME = {
 };
 
 function serveFile(res, filePath) {
-  const safe = normalize(resolve(filePath));
+  // URL pathnames aren't auto-decoded by `new URL()` — so an incoming request
+  // like /assets/sounds/has%20space.wav arrives with the literal %20 still in
+  // it. Decode before resolving to the on-disk path so files with spaces or
+  // other URL-unsafe chars in their names actually serve.
+  let decoded;
+  try { decoded = decodeURIComponent(filePath); } catch { decoded = filePath; }
+  const safe = normalize(resolve(decoded));
   const root = normalize(resolve(ROOT));
   
   // Guard: path must be within ROOT.

@@ -138,15 +138,15 @@ window.populateGallery = function() {
     </div>
   `).join('');
 
-  $t.innerHTML = (assets.stickers || []).map(f => 
+  $t.innerHTML = (assets.stickers || []).map(f =>
     `<div title="${esc(f)}" style="width:40px; height:40px; background:var(--surface2); border:1px solid var(--border); border-radius:6px; display:flex; align-items:center; justify-content:center; overflow:hidden; cursor:help;">
-       <img src="/assets/stickers/${esc(f)}" style="max-width:80%; max-height:80%; object-fit:contain;">
+       <img src="/assets/stickers/${encodeURIComponent(f)}" style="max-width:80%; max-height:80%; object-fit:contain;">
      </div>`
   ).join('');
 
-  $c.innerHTML = (assets.characters || []).map(f => 
+  $c.innerHTML = (assets.characters || []).map(f =>
     `<div title="${esc(f)}" style="width:60px; height:60px; background:var(--surface2); border:1px solid var(--border); border-radius:8px; display:flex; flex-direction:column; align-items:center; justify-content:center; overflow:hidden; gap:4px;">
-       <img src="/characters/lilfokkermascot/${esc(f)}" style="max-width:70%; max-height:70%; object-fit:contain;">
+       <img src="/characters/lilfokkermascot/${encodeURIComponent(f)}" style="max-width:70%; max-height:70%; object-fit:contain;">
        <span style="font-size:0.5rem; color:var(--text-dim)">${esc(f)}</span>
      </div>`
   ).join('');

@@ -996,7 +996,10 @@ let globalVolume = 0.5;
 
 function playSound(file, vol = 1.0) {
   if (!file) return;
-  const path = `/assets/sounds/${file}`;
+  // encodeURIComponent so filenames with spaces or other URL-unsafe chars
+  // ('my dice sound.wav', 'yay!.mp3', etc.) round-trip cleanly. The server
+  // decodes these transparently when resolving /assets/sounds/* paths.
+  const path = `/assets/sounds/${encodeURIComponent(file)}`;
   
   // Reuse audio objects for the same file to avoid excessive memory usage
   let audio = audioCache.get(path);
