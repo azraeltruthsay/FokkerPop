@@ -9,6 +9,16 @@ async function loadThree() {
   return THREE;
 }
 
+// Clear a widget's content while preserving the 8 resize handles injected
+// by the overlay's layout-mode scaffolding. Mount functions that need a
+// clean slate call this instead of `el.innerHTML = ''` so user-initiated
+// resize still works after the widget re-mounts.
+function resetWidgetContent(el) {
+  const handles = [...el.querySelectorAll(':scope > .resize-handle')];
+  el.innerHTML = '';
+  for (const h of handles) el.appendChild(h);
+}
+
 // Try to construct a WebGLRenderer. If the browser refuses (typically WebGL
 // context limit — Chrome caps at ~16 live contexts per process, which is easy
 // to exhaust when dashboard preview iframes + the main overlay + OBS source
@@ -96,7 +106,7 @@ export async function mountPhysicsPit(widget, el, getMetric) {
   el.style.width  = w + 'px';
   el.style.height = h + 'px';
   el.style.position = 'absolute';
-  el.innerHTML = '';
+  resetWidgetContent(el);
 
   const canvas = document.createElement('canvas');
   canvas.width  = w;
@@ -795,7 +805,7 @@ export async function mountDice(widget, el, sendToServer) {
   el.style.width = w + 'px';
   el.style.height = h + 'px';
   el.style.position = 'absolute';
-  el.innerHTML = '';
+  resetWidgetContent(el);
 
   const scene = new T.Scene();
   const camera = new T.PerspectiveCamera(40, w / h, 0.1, 100);
@@ -1102,7 +1112,7 @@ export async function mountDiceTray(widget, el, sendToServer) {
   el.style.width  = w + 'px';
   el.style.height = h + 'px';
   el.style.position = 'absolute';
-  el.innerHTML = '';
+  resetWidgetContent(el);
 
   const scene = new T.Scene();
   // Steep camera tilt so top faces (where the settled number lives) are readable.
@@ -1384,7 +1394,7 @@ export async function mountHotButton3D(widget, el, sendToServer, isLayoutMode) {
   el.style.width  = w + 'px';
   el.style.height = h + 'px';
   el.style.position = 'absolute';
-  el.innerHTML = '';
+  resetWidgetContent(el);
   el.style.cursor = 'pointer';
 
   const scene = new T.Scene();
@@ -1498,7 +1508,7 @@ export async function mountPhysicsPit3D(widget, el, getMetric) {
   el.style.width  = w + 'px';
   el.style.height = h + 'px';
   el.style.position = 'absolute';
-  el.innerHTML = '';
+  resetWidgetContent(el);
 
   // ── three.js scene ─────────────────────────────────────────
   const scene = new T.Scene();
@@ -1680,7 +1690,7 @@ export async function mountModel3D(widget, el, getStateRef) {
   el.style.width  = w + 'px';
   el.style.height = h + 'px';
   el.style.position = 'absolute';
-  el.innerHTML = '';
+  resetWidgetContent(el);
 
   const scene = new T.Scene();
   const camera = new T.PerspectiveCamera(35, w / h, 0.1, 100);

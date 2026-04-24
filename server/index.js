@@ -900,6 +900,21 @@ wss.on('connection', (ws, req) => {
         state.set('overlay.positions', positions);
         broadcastState('overlay.positions', positions);
       }
+      if (msg.type === '_dashboard.save-size') {
+        const w = widgets.find(x => x.id === msg.id);
+        if (w) {
+          w.config = w.config || {};
+          w.config.width  = Math.max(1, Math.round(Number(msg.width)  || 0));
+          w.config.height = Math.max(1, Math.round(Number(msg.height) || 0));
+          try {
+            writeFileSync(join(ROOT, 'widgets.json'), JSON.stringify(widgets, null, 2));
+          } catch (err) {
+            log.error('Failed to persist widgets.json after resize:', err.message);
+          }
+          state.set('overlay.widgets', widgets);
+          broadcastState('overlay.widgets', widgets);
+        }
+      }
       return;
     }
 
@@ -948,6 +963,22 @@ wss.on('connection', (ws, req) => {
         positions[msg.id] = { x: msg.x, y: msg.y };
         state.set('overlay.positions', positions);
         broadcastState('overlay.positions', positions);
+        break;
+      }
+      case '_dashboard.save-size': {
+        const w = widgets.find(x => x.id === msg.id);
+        if (w) {
+          w.config = w.config || {};
+          w.config.width  = Math.max(1, Math.round(Number(msg.width)  || 0));
+          w.config.height = Math.max(1, Math.round(Number(msg.height) || 0));
+          try {
+            writeFileSync(join(ROOT, 'widgets.json'), JSON.stringify(widgets, null, 2));
+          } catch (err) {
+            log.error('Failed to persist widgets.json after resize:', err.message);
+          }
+          state.set('overlay.widgets', widgets);
+          broadcastState('overlay.widgets', widgets);
+        }
         break;
       }
       case '_dashboard.reset-layout':

@@ -207,6 +207,49 @@ body.layout-mode .draggable[data-placeholder]::before {
   padding: 14px;
 }
 
+/* Resize handles — 4 edges + 4 corners, visible only in layout mode.
+   Each handle's ::cursor matches its drag direction so the mouse pointer
+   tells the user exactly what dragging from that spot will do.
+   Corner handles take priority over edge handles at the intersections
+   via z-index. Kept inside the widget's bounding box so the widget's
+   saved width/height already includes them. */
+.resize-handle { display: none; }
+body.layout-mode .resize-handle {
+  display: block;
+  position: absolute;
+  z-index: 1000;
+}
+/* Edges (transparent but cursor-changing strips) */
+body.layout-mode .resize-handle--n { top: 0;    left: 16px; right: 16px; height: 8px;  cursor: ns-resize; }
+body.layout-mode .resize-handle--s { bottom: 0; left: 16px; right: 16px; height: 8px;  cursor: ns-resize; }
+body.layout-mode .resize-handle--w { left: 0;   top: 16px;  bottom: 16px; width: 8px;  cursor: ew-resize; }
+body.layout-mode .resize-handle--e { right: 0;  top: 16px;  bottom: 16px; width: 8px;  cursor: ew-resize; }
+/* Corners (16×16, visible grip texture) */
+body.layout-mode .resize-handle--nw,
+body.layout-mode .resize-handle--ne,
+body.layout-mode .resize-handle--sw,
+body.layout-mode .resize-handle--se {
+  width: 16px; height: 16px;
+  z-index: 1001;   /* above edges */
+  opacity: 0.7;
+  transition: opacity 0.15s;
+}
+body.layout-mode .resize-handle--nw { top: 0;    left: 0;    cursor: nwse-resize; }
+body.layout-mode .resize-handle--ne { top: 0;    right: 0;   cursor: nesw-resize; }
+body.layout-mode .resize-handle--sw { bottom: 0; left: 0;    cursor: nesw-resize; }
+body.layout-mode .resize-handle--se { bottom: 0; right: 0;   cursor: nwse-resize; }
+/* Only the SE corner gets the grip lines — enough visual cue without
+   cluttering every corner of every widget. */
+body.layout-mode .resize-handle--se {
+  background: linear-gradient(135deg,
+    transparent 0%, transparent 50%,
+    var(--accent) 50%, var(--accent) 60%,
+    transparent 60%, transparent 75%,
+    var(--accent) 75%, var(--accent) 85%,
+    transparent 85%);
+}
+body.layout-mode .resize-handle:hover { opacity: 1; }
+
 /* Auto-hide: widgets with .cw-hidden stay invisible until their trigger fires.
    Layout mode forces everything visible so LilFokker can still place them. */
 .custom-widget.cw-hidden { opacity: 0; pointer-events: none; transition: opacity 0.35s ease; }
@@ -1705,6 +1748,12 @@ function renderCustomWidgets() {
     if (cfg.color)     el.style.color       = cfg.color;
     if (cfg.bgColor)   el.style.background  = cfg.bgColor;
     if (cfg.fontSize)  el.style.setProperty('--cw-font', cfg.fontSize + 'px');
+    // User-resized dimensions — applied here so 2D widgets (counter, recent,
+    // event-badge, etc.) respect config.width/height too. 3D widgets set
+    // their own dimensions inside their mount functions from the same cfg
+    // fields, so this is a no-op overwrite for them.
+    if (cfg.width)  el.style.width  = cfg.width  + 'px';
+    if (cfg.height) el.style.height = cfg.height + 'px';
 
     if (w.type === 'counter' || w.type === 'recent') {
       const label = document.createElement('div');
@@ -1834,6 +1883,15 @@ function renderCustomWidgets() {
     // back out after a timeout. Drag Mode CSS overrides so it's always editable.
     if (cfg.autoHide) el.classList.add('cw-hidden');
 
+    // 4 edges + 4 corners. CSS hides them unless body has layout-mode.
+    for (const dir of ['n','s','e','w','nw','ne','sw','se']) {
+      const h = document.createElement('div');
+      h.className = 'resize-handle resize-handle--' + dir;
+      h.dataset.resizeDir = dir;
+      h.title = 'Drag to resize';
+      el.appendChild(h);
+    }
+
     host.appendChild(el);
   }
   refreshCounterWidgets();
@@ -1938,8 +1996,44 @@ function applyPositions(positions) {
 let dragTarget = null;
 let dragOffset = { x: 0, y: 0 };
 
+// ── Resize ──
+// Resize state for a single-corner (south-east) handle. Active only while the
+// user is actively dragging the grip; saves on mouseup like position does.
+const MIN_W = 80;
+const MIN_H = 40;
+let resizeTarget = null;
+let resizeStart  = null;   // { mouseX, mouseY, width, height }
+
 window.addEventListener('mousedown', (e) => {
   if (!layoutMode) return;
+
+  // Resize takes precedence — its handles live inside .draggable, so without
+  // this guard a mousedown on a handle would start a drag too. Direction
+  // lives in data-resize-dir: one of n,s,e,w,ne,nw,se,sw.
+  if (e.target.classList?.contains('resize-handle')) {
+    const target = e.target.closest('.draggable');
+    if (!target) return;
+    const rect = target.getBoundingClientRect();
+    const dir  = e.target.dataset.resizeDir || 'se';
+    resizeTarget = target;
+    resizeStart = {
+      mouseX: e.clientX,
+      mouseY: e.clientY,
+      width:  rect.width,
+      height: rect.height,
+      left:   rect.left,   // absolute px from viewport
+      top:    rect.top,
+      dir,
+      hDir:   dir.includes('e') ? +1 : dir.includes('w') ? -1 : 0,
+      vDir:   dir.includes('s') ? +1 : dir.includes('n') ? -1 : 0,
+      positionMoved: false,
+    };
+    target.style.transition = 'none';
+    e.stopPropagation();
+    e.preventDefault();
+    return;
+  }
+
   const target = e.target.closest('.draggable');
   if (!target) return;
 
@@ -1951,6 +2045,37 @@ window.addEventListener('mousedown', (e) => {
 });
 
 window.addEventListener('mousemove', (e) => {
+  if (resizeTarget) {
+    e.preventDefault();
+    const { hDir, vDir } = resizeStart;
+    const dx = e.clientX - resizeStart.mouseX;
+    const dy = e.clientY - resizeStart.mouseY;
+    const nw = Math.max(MIN_W, Math.round(resizeStart.width  + hDir * dx));
+    const nh = Math.max(MIN_H, Math.round(resizeStart.height + vDir * dy));
+    resizeTarget.style.width  = nw + 'px';
+    resizeTarget.style.height = nh + 'px';
+
+    // For W/N-facing handles the widget's top-left must shift so the
+    // opposite edge stays anchored where the user grabbed it. Position is
+    // stored as viewport-percentage (like drag saves), so we convert from
+    // the absolute px delta at save time.
+    if (hDir === -1 || vDir === -1) {
+      const container = document.body.getBoundingClientRect();
+      if (hDir === -1) {
+        const newLeftPx = resizeStart.left + (resizeStart.width - nw);
+        resizeTarget.style.left = (newLeftPx / container.width) * 100 + '%';
+        resizeTarget.style.right = 'auto';
+      }
+      if (vDir === -1) {
+        const newTopPx = resizeStart.top + (resizeStart.height - nh);
+        resizeTarget.style.top = (newTopPx / container.height) * 100 + '%';
+        resizeTarget.style.bottom = 'auto';
+      }
+      resizeStart.positionMoved = true;
+    }
+    return;
+  }
+
   if (!dragTarget) return;
   e.preventDefault();
 
@@ -1965,12 +2090,35 @@ window.addEventListener('mousemove', (e) => {
   dragTarget.style.left = `${px}%`;
   dragTarget.style.top  = `${py}%`;
   dragTarget.style.bottom = 'auto'; // reset default positioning
-  dragTarget.style.right  = 'auto'; 
+  dragTarget.style.right  = 'auto';
 });
 
 window.addEventListener('mouseup', () => {
+  if (resizeTarget) {
+    const id = resizeTarget.id;
+    const width  = parseInt(resizeTarget.style.width,  10);
+    const height = parseInt(resizeTarget.style.height, 10);
+    if (ws?.readyState === WebSocket.OPEN && Number.isFinite(width) && Number.isFinite(height)) {
+      ws.send(JSON.stringify({ type: '_dashboard.save-size', id, width, height }));
+      // If the resize anchored to the right/bottom edge, the widget's
+      // top-left moved — persist the new position too so a reload doesn't
+      // snap it back.
+      if (resizeStart?.positionMoved) {
+        const px = parseFloat(resizeTarget.style.left);
+        const py = parseFloat(resizeTarget.style.top);
+        if (Number.isFinite(px) && Number.isFinite(py)) {
+          ws.send(JSON.stringify({ type: '_dashboard.save-position', id, x: px, y: py }));
+        }
+      }
+    }
+    resizeTarget.style.transition = '';
+    resizeTarget = null;
+    resizeStart  = null;
+    return;
+  }
+
   if (!dragTarget) return;
-  
+
   const id = dragTarget.id;
   const px = parseFloat(dragTarget.style.left);
   const py = parseFloat(dragTarget.style.top);
