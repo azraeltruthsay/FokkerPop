@@ -131,8 +131,20 @@ jobs:
             ; Persist the chosen install dir so next update defaults here again.
             WriteRegStr HKCU "Software\FokkerPop" "InstallDir" "$INSTDIR"
 
-            ; Launch the app automatically after update
-            ExecShell "" "$INSTDIR\start.bat"
+            ; Start Menu shortcuts — make FokkerPop discoverable like a normal
+            ; Windows app so LilFokker doesn't need to hunt for start.bat in
+            ; Explorer every time. All three point inside $INSTDIR so they
+            ; keep working after future updates.
+            CreateDirectory "$SMPROGRAMS\FokkerPop"
+            Delete "$SMPROGRAMS\FokkerPop\*.lnk"
+            CreateShortCut "$SMPROGRAMS\FokkerPop\FokkerPop.lnk" "wscript.exe" '"$INSTDIR\launch-hidden.vbs"' "$INSTDIR\node\FokkerPop.exe" 0 SW_SHOWNORMAL "" "Start FokkerPop (hidden server + dashboard in browser)"
+            CreateShortCut "$SMPROGRAMS\FokkerPop\FokkerPop (Diagnostics).lnk" "$INSTDIR\start.bat" "" "$INSTDIR\node\FokkerPop.exe" 0 SW_SHOWNORMAL "" "Start FokkerPop with diagnostic output visible"
+            CreateShortCut "$SMPROGRAMS\FokkerPop\Stop FokkerPop.lnk" "$INSTDIR\stop.bat" "" "$INSTDIR\node\FokkerPop.exe" 0 SW_SHOWNORMAL "" "Stop the FokkerPop server"
+
+            ; Launch the app automatically after update. Go through the VBS
+            ; directly so there's no CMD flash — diagnostic checks already
+            ; passed on the install the updater just produced.
+            Exec 'wscript.exe "$INSTDIR\launch-hidden.vbs"'
           SectionEnd
           EOF
           # Interpolate bash vars into the NSI without getting hit by $ clashes.

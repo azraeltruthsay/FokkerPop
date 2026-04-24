@@ -86,6 +86,7 @@ echo  Dashboard URL: http://localhost:4747/dashboard
 echo:
 echo  To stop FokkerPop:
 echo    * Click "Stop FokkerPop" on the Setup page in the dashboard
+echo    * Or use the "Stop FokkerPop" Start Menu shortcut
 echo    * Or double-click stop.bat
 echo    * Or end "FokkerPop.exe" from Task Manager
 echo:
@@ -98,16 +99,10 @@ if not exist "launch-hidden.vbs" (
     exit /b
 )
 
-:: Launch node hidden so no console window stays open. The CMD you're
-:: looking at right now will close itself in a few seconds.
+:: Everything from here on — single-instance guard, hidden node launch,
+:: browser open — lives in launch-hidden.vbs so the Start Menu shortcut
+:: and start.bat share one code path.
 wscript.exe "launch-hidden.vbs"
-
-:: Give the server ~2 seconds to bind the port before opening the browser,
-:: otherwise the dashboard shows "Connecting..." for a noticeable moment.
-timeout /t 2 /nobreak >nul
-
-:: Open the dashboard in the user's default browser.
-start "" "http://localhost:4747/dashboard/"
 
 echo  FokkerPop is running. Closing this window now.
 timeout /t 2 /nobreak >nul
