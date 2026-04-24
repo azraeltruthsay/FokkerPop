@@ -60,6 +60,38 @@ jobs:
           VERSION="${GITHUB_REF_NAME}"
           PKG="FokkerPop-${VERSION}-windows"
 
+          # Install NSIS up front — used for both the FokkerPop.exe launcher
+          # (built next) and the FokkerPop-Updater-vX.Y.Z.exe (built later).
+          sudo apt-get update && sudo apt-get install -y nsis
+
+          # Build the tiny FokkerPop.exe launcher. Double-clicking it in
+          # Explorer runs launch-hidden.vbs (the same entry point as the
+          # Start Menu shortcut / start.bat), so LilFokker gets an EXE in
+          # the install folder he can pin to his taskbar like any app.
+          cat > launcher.nsi << EOF
+          Name "FokkerPop"
+          OutFile "FokkerPop.exe"
+          RequestExecutionLevel user
+          SilentInstall silent
+          Icon "build-assets/fokkerpop.ico"
+
+          VIProductVersion "${VERSION#v}.0"
+          VIAddVersionKey "ProductName" "FokkerPop"
+          VIAddVersionKey "FileDescription" "FokkerPop Launcher"
+          VIAddVersionKey "LegalCopyright" "FokkerPop"
+          VIAddVersionKey "FileVersion" "${VERSION#v}"
+          VIAddVersionKey "ProductVersion" "${VERSION#v}"
+
+          Section
+            ; Hand off to launch-hidden.vbs (same dir as this exe). Exec is
+            ; non-blocking so the launcher process exits in ~1 second and
+            ; only the server's FokkerPop.exe remains in Task Manager.
+            SetOutPath "\$EXEDIR"
+            Exec 'wscript.exe "\$EXEDIR\\launch-hidden.vbs"'
+          SectionEnd
+          EOF
+          makensis -V2 launcher.nsi
+
           # Create directory structure
           mkdir -p "${PKG}/node"
           mkdir -p "${PKG}/assets/stickers"
@@ -69,6 +101,12 @@ jobs:
 
           # Bundled Node runtime — named FokkerPop.exe so Task Manager shows the right name
           cp node-bin/node.exe "${PKG}/node/FokkerPop.exe"
+
+          # The launcher users double-click (separate from the node runtime).
+          cp FokkerPop.exe "${PKG}/FokkerPop.exe"
+          # Ship the ico too so the NSIS updater's Start Menu shortcuts can
+          # reuse it without shelling out to ResourceHacker.
+          cp build-assets/fokkerpop.ico "${PKG}/fokkerpop.ico"
 
           # Source files
           cp -r server dashboard shared "${PKG}/"
@@ -88,10 +126,9 @@ jobs:
 
           # Zip it up
           zip -r "${PKG}.zip" "${PKG}/"
-          
-          # Create NSIS Auto-Updater
-          sudo apt-get update && sudo apt-get install -y nsis
-          
+
+          # Create NSIS Auto-Updater (NSIS already installed above for the
+          # launcher build).
           cat > updater.nsi << 'EOF'
           Name "FokkerPop Updater __VERSION__"
           OutFile "FokkerPop-Updater-__VERSION__.exe"
@@ -134,17 +171,17 @@ jobs:
             ; Start Menu shortcuts — make FokkerPop discoverable like a normal
             ; Windows app so LilFokker doesn't need to hunt for start.bat in
             ; Explorer every time. All three point inside $INSTDIR so they
-            ; keep working after future updates.
+            ; keep working after future updates. The primary shortcut points
+            ; at FokkerPop.exe (the launcher built earlier in this workflow)
+            ; so it matches what double-clicking the exe in Explorer does.
             CreateDirectory "$SMPROGRAMS\FokkerPop"
             Delete "$SMPROGRAMS\FokkerPop\*.lnk"
-            CreateShortCut "$SMPROGRAMS\FokkerPop\FokkerPop.lnk" "wscript.exe" '"$INSTDIR\launch-hidden.vbs"' "$INSTDIR\node\FokkerPop.exe" 0 SW_SHOWNORMAL "" "Start FokkerPop (hidden server + dashboard in browser)"
-            CreateShortCut "$SMPROGRAMS\FokkerPop\FokkerPop (Diagnostics).lnk" "$INSTDIR\start.bat" "" "$INSTDIR\node\FokkerPop.exe" 0 SW_SHOWNORMAL "" "Start FokkerPop with diagnostic output visible"
-            CreateShortCut "$SMPROGRAMS\FokkerPop\Stop FokkerPop.lnk" "$INSTDIR\stop.bat" "" "$INSTDIR\node\FokkerPop.exe" 0 SW_SHOWNORMAL "" "Stop the FokkerPop server"
+            CreateShortCut "$SMPROGRAMS\FokkerPop\FokkerPop.lnk" "$INSTDIR\FokkerPop.exe" "" "$INSTDIR\FokkerPop.exe" 0 SW_SHOWNORMAL "" "Start FokkerPop (hidden server + dashboard in browser)"
+            CreateShortCut "$SMPROGRAMS\FokkerPop\FokkerPop (Diagnostics).lnk" "$INSTDIR\start.bat" "" "$INSTDIR\FokkerPop.exe" 0 SW_SHOWNORMAL "" "Start FokkerPop with diagnostic output visible"
+            CreateShortCut "$SMPROGRAMS\FokkerPop\Stop FokkerPop.lnk" "$INSTDIR\stop.bat" "" "$INSTDIR\FokkerPop.exe" 0 SW_SHOWNORMAL "" "Stop the FokkerPop server"
 
-            ; Launch the app automatically after update. Go through the VBS
-            ; directly so there's no CMD flash — diagnostic checks already
-            ; passed on the install the updater just produced.
-            Exec 'wscript.exe "$INSTDIR\launch-hidden.vbs"'
+            ; Launch the app automatically after update.
+            Exec '"$INSTDIR\FokkerPop.exe"'
           SectionEnd
           EOF
           # Interpolate bash vars into the NSI without getting hit by $ clashes.
@@ -179,7 +216,7 @@ jobs:
           # The Windows startup companions must be present; without them,
           # double-clicking start.bat on a fresh install falls back to a
           # visible CMD window (v0.2.x behavior) or fails outright.
-          for f in start.bat stop.bat launch-hidden.vbs; do
+          for f in start.bat stop.bat launch-hidden.vbs FokkerPop.exe fokkerpop.ico; do
             if [ ! -e "$APP/$f" ]; then
               echo "FAIL: $f is missing from the release zip"
               exit 1
