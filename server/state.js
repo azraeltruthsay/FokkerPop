@@ -12,8 +12,15 @@ const DEFAULTS = {
   chatters:    [],
 };
 
+// Debounced-flush window. Short enough that a user drag is persisted long
+// before any realistic kill signal arrives (NSIS updater does taskkill /F
+// ~1500 ms after detecting FokkerPop.exe), slow enough to batch the
+// once-per-second crowd-energy drain into a single disk write.
+const FLUSH_DEBOUNCE_MS = 300;
+
 class StateStore extends EventEmitter {
   #data;
+  #flushTimer = null;
 
   constructor() {
     super();
@@ -21,7 +28,9 @@ class StateStore extends EventEmitter {
       ? { ...structuredClone(DEFAULTS), ...JSON.parse(readFileSync(STATE_FILE, 'utf8')) }
       : structuredClone(DEFAULTS);
 
-    // Periodic flush every 5 minutes
+    // Belt-and-braces periodic flush. Debounced writes in set() cover the
+    // normal case; this catches the edge case where something sits in the
+    // buffer longer than expected.
     setInterval(() => this.flush(), 300_000).unref();
   }
 
@@ -39,10 +48,23 @@ class StateStore extends EventEmitter {
     node[last] = value;
     this.emit('change',        { path, value });
     this.emit(`change:${path}`, value);
+    this.#scheduleFlush();
   }
 
   increment(path, by = 1) {
     this.set(path, (this.get(path) ?? 0) + by);
+  }
+
+  // Collapse bursty set() calls into a single write. Called from set() and
+  // addChatter(); flush() itself clears any pending timer so an explicit
+  // shutdown-time flush isn't double-fired.
+  #scheduleFlush() {
+    if (this.#flushTimer) return;
+    this.#flushTimer = setTimeout(() => {
+      this.#flushTimer = null;
+      this.flush();
+    }, FLUSH_DEBOUNCE_MS);
+    this.#flushTimer.unref?.();
   }
 
   snapshot() {
@@ -50,6 +72,7 @@ class StateStore extends EventEmitter {
   }
 
   flush() {
+    if (this.#flushTimer) { clearTimeout(this.#flushTimer); this.#flushTimer = null; }
     try { writeFileSync(STATE_FILE, JSON.stringify(this.#data, null, 2)); }
     catch { /* non-fatal */ }
   }
@@ -63,6 +86,7 @@ class StateStore extends EventEmitter {
     if (list.length > 300) list.length = 300;
     this.emit('change', { path: 'chatters', value: list });
     this.emit('change:chatters', list);
+    this.#scheduleFlush();
   }
 
   resetSession() {
