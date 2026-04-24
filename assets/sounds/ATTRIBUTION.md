@@ -17,7 +17,7 @@ If you rebroadcast or distribute FokkerPop output in a form where the licensor
 must be credited (typical streaming use falls under fair use), keep this file
 in the release so the attribution travels with the sounds.
 
-## Mixkit sounds — `alert.wav`, `pop.wav`, `boom.wav`, `balloon-squeak.wav`, `balloon-deflate.wav`, `firework-alt.wav`, `firework-whistle.wav`
+## Mixkit sounds — `alert.wav`, `pop.wav`, `boom.wav`, `chime.wav`, `balloon-squeak.wav`, `balloon-deflate.wav`, `firework-alt.wav`, `firework-whistle.wav`
 
 - **Source:** [Mixkit](https://mixkit.co/free-sound-effects/)
 - **License:** [Mixkit Sound Effects Free License](https://mixkit.co/license/#sfxFree) — free for
@@ -27,6 +27,7 @@ in the release so the attribution travels with the sounds.
   - `alert.wav` — `mixkit-alert-bells-echo-765`
   - `pop.wav` — `mixkit-long-pop-2358`
   - `boom.wav` — `mixkit-fireworks-bang-in-sky-2989`
+  - `chime.wav` — `mixkit-alert-quick-chime-766`
   - `balloon-squeak.wav` — `mixkit-balloon-long-air-release-squeak-1020`
   - `balloon-deflate.wav` — `mixkit-farting-balloon-deflate-3052`
   - `firework-alt.wav` — `mixkit-clear-firework-explosions-2994`
