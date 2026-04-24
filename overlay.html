@@ -2191,6 +2191,47 @@ if (new URLSearchParams(location.search).get('demo') === '1') {
 
 // Expose for dashboard test panel
 window.FokkerPop = { dispatchEffect, alertQueue, setCrowdEnergy };
+
+// ── Resource self-report ────────────────────────────────────────────────────
+// Every 2 s, each overlay instance measures its own rendering FPS and JS heap,
+// counts its mounted widgets, and pushes the result to the server. The server
+// aggregates reports from all connected overlays and exposes them on the
+// Resources page of the dashboard. Lets Fokker see which overlay (OBS source
+// vs preview iframe vs ad-hoc tab) is eating memory, without hunting through
+// browser-subprocess sprawl in Task Manager.
+(function() {
+  let frameCount = 0;
+  let lastSample = performance.now();
+  function tick() { frameCount++; requestAnimationFrame(tick); }
+  requestAnimationFrame(tick);
+
+  setInterval(() => {
+    const now = performance.now();
+    const elapsed = Math.max(1, now - lastSample);
+    const fps = Math.round(frameCount * 1000 / elapsed);
+    frameCount = 0;
+    lastSample = now;
+
+    const mem = performance.memory;
+    const widgetTypes = {};
+    for (const w of state.widgets ?? []) {
+      widgetTypes[w.type] = (widgetTypes[w.type] ?? 0) + 1;
+    }
+
+    const report = {
+      type:       '_overlay.resource-report',
+      url:        location.pathname + location.search,
+      live:       isLive,
+      fps,
+      heap:       mem?.usedJSHeapSize ?? 0,
+      heapLimit:  mem?.jsHeapSizeLimit ?? 0,
+      widgetCount: (state.widgets ?? []).length,
+      widgetTypes,
+      viewport:   { w: window.innerWidth, h: window.innerHeight },
+    };
+    try { ws?.readyState === WebSocket.OPEN && ws.send(JSON.stringify(report)); } catch {}
+  }, 2000);
+})();
 </script>
 </body>
 </html>

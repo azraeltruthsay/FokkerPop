@@ -397,6 +397,7 @@ function applyStateUpdate(path, value) {
   if (path === 'update.available') renderUpdateBanner(value);
   if (path === 'obs.streaming') handleStreamingChange(!!value);
   if (path === 'overlay.widgets') { widgets = value || []; renderWidgetList(); }
+  if (path === 'resources') window.renderResources?.(value);
 }
 
 let prevStreaming = false;
@@ -1567,6 +1568,112 @@ window.renderReleaseNotes = async function() {
     host.innerHTML = renderMarkdown(md);
   } catch (err) {
     host.innerHTML = `<p style="color:var(--red);">Couldn't load release notes: ${esc(err?.message ?? err)}</p>`;
+  }
+};
+
+// ═══════════════════════════════════════════════ Resources page
+
+function fmtBytes(n) {
+  if (!Number.isFinite(n) || n <= 0) return '—';
+  const units = ['B', 'KB', 'MB', 'GB'];
+  let v = n, i = 0;
+  while (v >= 1024 && i < units.length - 1) { v /= 1024; i++; }
+  return `${v.toFixed(v < 10 ? 1 : 0)} ${units[i]}`;
+}
+function fmtUptime(sec) {
+  if (!Number.isFinite(sec) || sec < 0) return '—';
+  const h = Math.floor(sec / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  const s = sec % 60;
+  if (h) return `${h}h ${m}m ${s}s`;
+  if (m) return `${m}m ${s}s`;
+  return `${s}s`;
+}
+function describeOverlayUrl(url, live) {
+  // "?live=1" → OBS source; "?demo=0" → dashboard preview iframe; else ad-hoc tab.
+  if (live)                return 'OBS browser source';
+  if (/\?demo=0\b/.test(url ?? '')) return 'Dashboard preview iframe';
+  if (/\?demo=1\b/.test(url ?? '')) return 'Demo tab';
+  return 'Ad-hoc overlay tab';
+}
+
+// Keep the last-broadcast payload so the Retry/Refresh button can re-render
+// without waiting for the next 2 s sample.
+let _lastResources = null;
+
+window.renderResources = function(payload) {
+  if (payload) _lastResources = payload;
+  const data = _lastResources;
+  if (!data) return;
+
+  const s = data.server || {};
+  const conn = data.connections || {};
+  const overlays = Array.isArray(data.overlays) ? data.overlays : [];
+
+  // Aggregate: server RSS + each overlay's reported heap.
+  const totalOverlayHeap = overlays.reduce((acc, o) => acc + (Number(o.heap) || 0), 0);
+  const aggregate = (Number(s.rss) || 0) + totalOverlayHeap;
+  const avgFps = overlays.length
+    ? Math.round(overlays.reduce((a, o) => a + (Number(o.fps) || 0), 0) / overlays.length)
+    : null;
+
+  const summary = document.getElementById('resources-summary');
+  if (summary) {
+    summary.innerHTML = `
+      <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap:16px;">
+        <div><div style="font-size:.65rem; letter-spacing:.08em; color:var(--text-dim); text-transform:uppercase;">Total footprint</div><div style="font-size:1.5rem; font-weight:800; color:var(--accent);">${fmtBytes(aggregate)}</div><div style="font-size:.7rem; color:var(--text-dim);">server + ${overlays.length} overlay${overlays.length === 1 ? '' : 's'}</div></div>
+        <div><div style="font-size:.65rem; letter-spacing:.08em; color:var(--text-dim); text-transform:uppercase;">Server CPU</div><div style="font-size:1.5rem; font-weight:800; color:${s.cpuPct > 50 ? 'var(--red)' : s.cpuPct > 15 ? 'var(--orange)' : 'var(--green)'}">${Number.isFinite(s.cpuPct) ? s.cpuPct + '%' : '—'}</div><div style="font-size:.7rem; color:var(--text-dim);">across ${overlays.length + conn.dashboards} clients</div></div>
+        <div><div style="font-size:.65rem; letter-spacing:.08em; color:var(--text-dim); text-transform:uppercase;">Avg overlay FPS</div><div style="font-size:1.5rem; font-weight:800; color:${avgFps === null ? 'var(--text-dim)' : avgFps < 30 ? 'var(--red)' : avgFps < 55 ? 'var(--orange)' : 'var(--green)'}">${avgFps ?? '—'}</div><div style="font-size:.7rem; color:var(--text-dim);">${overlays.length ? 'live sample' : 'no overlays connected'}</div></div>
+        <div><div style="font-size:.65rem; letter-spacing:.08em; color:var(--text-dim); text-transform:uppercase;">Events / sec</div><div style="font-size:1.5rem; font-weight:800;">${Number.isFinite(s.eventsPerSec) ? s.eventsPerSec : '—'}</div><div style="font-size:.7rem; color:var(--text-dim);">bus throughput</div></div>
+      </div>
+    `;
+  }
+
+  const serverEl = document.getElementById('resources-server');
+  if (serverEl) {
+    serverEl.innerHTML = `
+      <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap:12px; font-size:.82rem;">
+        <div><span style="color:var(--text-dim); font-size:.7rem; display:block;">RSS (process)</span><strong>${fmtBytes(s.rss)}</strong></div>
+        <div><span style="color:var(--text-dim); font-size:.7rem; display:block;">JS heap used</span><strong>${fmtBytes(s.heapUsed)}</strong> / ${fmtBytes(s.heapTotal)}</div>
+        <div><span style="color:var(--text-dim); font-size:.7rem; display:block;">External</span><strong>${fmtBytes(s.external)}</strong></div>
+        <div><span style="color:var(--text-dim); font-size:.7rem; display:block;">CPU %</span><strong>${Number.isFinite(s.cpuPct) ? s.cpuPct : '—'}</strong></div>
+        <div><span style="color:var(--text-dim); font-size:.7rem; display:block;">Uptime</span><strong>${fmtUptime(s.uptimeSec)}</strong></div>
+        <div><span style="color:var(--text-dim); font-size:.7rem; display:block;">Node / platform</span><strong>${esc(s.nodeVersion ?? '—')}</strong> <span style="color:var(--text-dim); font-size:.7rem;">${esc(s.platform ?? '')}</span></div>
+        <div><span style="color:var(--text-dim); font-size:.7rem; display:block;">PID</span><strong>${s.pid ?? '—'}</strong></div>
+        <div><span style="color:var(--text-dim); font-size:.7rem; display:block;">Version</span><strong>v${esc(s.version ?? '—')}</strong></div>
+      </div>
+    `;
+  }
+
+  const overlayCount = document.getElementById('resources-overlay-count');
+  if (overlayCount) overlayCount.textContent = `${overlays.length} connected · ${conn.dashboards ?? 0} dashboard${conn.dashboards === 1 ? '' : 's'}`;
+
+  const overlaysEl = document.getElementById('resources-overlays');
+  if (overlaysEl) {
+    if (!overlays.length) {
+      overlaysEl.innerHTML = `<p style="color:var(--text-dim); font-size:.82rem; margin:0;">No overlays are currently reporting. Open an overlay tab or point an OBS browser source at http://localhost:4747/?live=1 to see it here.</p>`;
+    } else {
+      overlaysEl.innerHTML = overlays.map(o => {
+        const types = Object.entries(o.widgetTypes || {}).map(([t, n]) => `${n}× ${t}`).join(', ') || '(none)';
+        const heapRatio = o.heapLimit ? Math.round((o.heap / o.heapLimit) * 100) : null;
+        const fpsColor = o.fps < 30 ? 'var(--red)' : o.fps < 55 ? 'var(--orange)' : 'var(--green)';
+        return `
+          <div class="card" style="margin:0 0 10px; background:var(--surface2); padding:12px 14px;">
+            <div style="display:flex; justify-content:space-between; align-items:baseline; gap:10px; flex-wrap:wrap;">
+              <div style="font-weight:700; font-size:.88rem;">${esc(describeOverlayUrl(o.url, o.live))}</div>
+              <div style="font-size:.7rem; color:var(--text-dim); font-family:ui-monospace,monospace;">${esc(o.url || '/')}</div>
+            </div>
+            <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap:10px; margin-top:8px; font-size:.78rem;">
+              <div><span style="color:var(--text-dim); font-size:.68rem; display:block;">FPS</span><strong style="color:${fpsColor};">${o.fps}</strong></div>
+              <div><span style="color:var(--text-dim); font-size:.68rem; display:block;">Heap</span><strong>${fmtBytes(o.heap)}</strong>${heapRatio !== null ? ` <span style="color:var(--text-dim); font-size:.68rem;">(${heapRatio}%)</span>` : ''}</div>
+              <div><span style="color:var(--text-dim); font-size:.68rem; display:block;">Widgets</span><strong>${o.widgetCount}</strong></div>
+              <div><span style="color:var(--text-dim); font-size:.68rem; display:block;">Viewport</span><strong>${o.viewport ? o.viewport.w + '×' + o.viewport.h : '—'}</strong></div>
+            </div>
+            <div style="margin-top:8px; font-size:.72rem; color:var(--text-dim);">Widgets: ${esc(types)}</div>
+          </div>
+        `;
+      }).join('');
+    }
   }
 };
 

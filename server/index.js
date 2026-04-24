@@ -190,9 +190,71 @@ setInterval(() => {
   }
 }, 1000);
 
+// ── Resource accounting ──────────────────────────────────────────────────────
+// Rolling counters sampled every RESOURCE_SAMPLE_MS and broadcast to dashboards
+// on the `resources` state path, so the Resources page shows live server-side
+// numbers (RSS, heap, CPU%, events/sec) plus whatever each overlay reports.
+const RESOURCE_SAMPLE_MS = 2000;
+let eventCounter = 0;
+let lastCpuSample = process.cpuUsage();
+let lastCpuAt    = Date.now();
+// Keyed by WebSocket. Each entry is the latest payload an overlay sent via
+// _overlay.resource-report — FPS, heap, widget inventory. Removed on close.
+const overlayResourceReports = new Map();
+
+function sampleResources() {
+  const mem = process.memoryUsage();
+  const cpu = process.cpuUsage(lastCpuSample);
+  const now = Date.now();
+  const elapsedMs = Math.max(1, now - lastCpuAt);
+  // process.cpuUsage returns microseconds; normalize to % of one CPU core
+  // over the elapsed wall-clock window. >100% is possible on a multi-core
+  // box under real load.
+  const cpuPct = Math.min(999, ((cpu.user + cpu.system) / 1000) / elapsedMs * 100);
+  lastCpuSample = process.cpuUsage();
+  lastCpuAt = now;
+
+  const eventsPerSec = eventCounter / (RESOURCE_SAMPLE_MS / 1000);
+  eventCounter = 0;
+
+  // Convert overlay reports into a plain array so JSON serialization works.
+  // Anything that stopped reporting for > 3 sample intervals is stale and
+  // dropped so the dashboard doesn't show ghost entries.
+  const staleCutoff = now - RESOURCE_SAMPLE_MS * 3;
+  const overlayReports = [];
+  for (const [ws, report] of overlayResourceReports.entries()) {
+    if (report.receivedAt < staleCutoff) { overlayResourceReports.delete(ws); continue; }
+    overlayReports.push(report);
+  }
+
+  broadcastState('resources', {
+    ts: now,
+    server: {
+      uptimeSec:  Math.round(process.uptime()),
+      rss:        mem.rss,
+      heapUsed:   mem.heapUsed,
+      heapTotal:  mem.heapTotal,
+      external:   mem.external,
+      cpuPct:     Math.round(cpuPct * 10) / 10,
+      eventsPerSec: Math.round(eventsPerSec * 10) / 10,
+      pid:        process.pid,
+      version:    VERSION,
+      nodeVersion: process.version,
+      platform:   process.platform,
+    },
+    connections: {
+      overlays:   overlays.size,
+      dashboards: dashboards.size,
+    },
+    overlays: overlayReports,
+  });
+}
+setInterval(sampleResources, RESOURCE_SAMPLE_MS);
+
 // ── Event → state + effects ───────────────────────────────────────────────────
 bus.on('*', async (event) => {
   if (isShuttingDown) return;
+  eventCounter++;
   lastEventTs = Date.now();
   log.info(`event type=${event.type} source=${event.source ?? 'unknown'}`);
 
@@ -916,6 +978,22 @@ wss.on('connection', (ws, req) => {
         state.set('overlay.positions', positions);
         broadcastState('overlay.positions', positions);
       }
+      if (msg.type === '_overlay.resource-report') {
+        // Overlay-side self-report: FPS, heap, widget inventory. Stored by ws
+        // connection so we can attribute metrics per-overlay-instance in the
+        // dashboard Resources page.
+        overlayResourceReports.set(ws, {
+          receivedAt: Date.now(),
+          url:        String(msg.url || ''),
+          fps:        Number(msg.fps) || 0,
+          heap:       Number(msg.heap) || 0,
+          heapLimit:  Number(msg.heapLimit) || 0,
+          widgetCount: Number(msg.widgetCount) || 0,
+          widgetTypes: msg.widgetTypes && typeof msg.widgetTypes === 'object' ? msg.widgetTypes : {},
+          viewport:   msg.viewport && typeof msg.viewport === 'object' ? msg.viewport : null,
+          live:       !!msg.live,
+        });
+      }
       if (msg.type === '_dashboard.save-size') {
         const w = widgets.find(x => x.id === msg.id);
         if (w) {
@@ -1022,8 +1100,8 @@ wss.on('connection', (ws, req) => {
     }
   });
 
-  ws.on('close', () => { overlays.delete(ws); dashboards.delete(ws); });
-  ws.on('error', () => { overlays.delete(ws); dashboards.delete(ws); });
+  ws.on('close', () => { overlays.delete(ws); dashboards.delete(ws); overlayResourceReports.delete(ws); });
+  ws.on('error', () => { overlays.delete(ws); dashboards.delete(ws); overlayResourceReports.delete(ws); });
 
   send(ws, { type: 'ping' });
 });

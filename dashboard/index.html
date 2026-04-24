@@ -702,6 +702,7 @@ html, body {
       studio:          () => window.initStudio?.(),
       layout:          () => window.renderWidgetList?.(),
       config:          () => window.renderConfigEditors?.(),
+      resources:       () => window.renderResources?.(),
       'release-notes': () => window.renderReleaseNotes?.(),
     };
 
@@ -804,6 +805,9 @@ html, body {
     </button>
     <button class="nav-item" data-page="setup">
       <span class="nav-icon">⚙️</span> Setup
+    </button>
+    <button class="nav-item" data-page="resources">
+      <span class="nav-icon">📊</span> Resources
     </button>
     <button class="nav-item" data-page="release-notes">
       <span class="nav-icon">📰</span> Release Notes
@@ -1548,6 +1552,34 @@ html, body {
         </p>
       </div>
 
+    </div>
+
+    <!-- ════════════════════════ RESOURCES PAGE -->
+    <div class="page" id="page-resources">
+      <div class="page-header">
+        <div class="page-title">Resources</div>
+        <div style="font-size:.72rem; color:var(--text-dim);">Updates every 2 s</div>
+      </div>
+
+      <div id="resources-summary" class="card">
+        <p style="color:var(--text-dim); font-size:.82rem; margin:0;">Waiting for the first sample…</p>
+      </div>
+
+      <div class="card">
+        <div class="card-title">Server</div>
+        <div id="resources-server"></div>
+      </div>
+
+      <div class="card">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+          <div class="card-title" style="margin:0;">Connected overlays</div>
+          <div id="resources-overlay-count" style="font-size:.72rem; color:var(--text-dim);">—</div>
+        </div>
+        <p style="font-size:.75rem; color:var(--text-dim); margin:0 0 10px;">
+          Each row is one live overlay instance — the OBS browser source (<code>?live=1</code>), the dashboard preview iframe (<code>?demo=0</code>), and any ad-hoc browser tabs showing <code>http://localhost:4747/</code>.
+        </p>
+        <div id="resources-overlays"></div>
+      </div>
     </div>
 
     <!-- ════════════════════════ RELEASE NOTES PAGE -->
