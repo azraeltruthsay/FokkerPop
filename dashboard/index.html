@@ -935,7 +935,11 @@ html, body {
 
       <div id="preview-wrap">
         <div class="preview-label">Live Preview</div>
-        <div class="preview-actions">
+        <div class="preview-actions" style="display:flex; gap:14px; align-items:center;">
+          <label style="display:inline-flex; gap:6px; align-items:center; font-size:.72rem; color:var(--text-dim); cursor:pointer;" title="Show the widget's configured label ('COUNT', 'LATEST', etc.) above its value">
+            <input type="checkbox" id="pv-widget-labels" checked onchange="window.fokkerLabelToggle?.('effects', 'widget', this.checked)">
+            Widget labels
+          </label>
           <a class="btn btn-ghost btn-sm" href="/" target="_blank">Open ↗</a>
         </div>
         <iframe id="preview-frame" src="/?demo=0" title="Overlay Preview"></iframe>
@@ -1221,6 +1225,20 @@ html, body {
         <p style="font-size:.74rem; color:var(--text-dim); margin:0 0 12px; opacity:.75;">
           Tip: dragging here, in the Pop-out Editor, and using OBS → right-click source → Interact all write to the same saved positions.
         </p>
+
+        <div style="display:flex; gap:18px; align-items:center; font-size:.74rem; color:var(--text-dim); margin:0 0 10px;">
+          <span style="font-weight:800; letter-spacing:.08em; text-transform:uppercase; color:var(--text);">Preview</span>
+          <label style="display:inline-flex; gap:6px; align-items:center; cursor:pointer;" title="The uppercase type name overlaid on each widget in drag mode (COUNTER, DICE-TRAY, etc.)">
+            <input type="checkbox" id="lp-type-labels" checked onchange="window.fokkerLabelToggle?.('layout', 'type', this.checked)">
+            Type placeholders
+          </label>
+          <label style="display:inline-flex; gap:6px; align-items:center; cursor:pointer;" title="The widget's configured label ('COUNT', 'LATEST', etc.) shown above its value">
+            <input type="checkbox" id="lp-widget-labels" checked onchange="window.fokkerLabelToggle?.('layout', 'widget', this.checked)">
+            Widget labels
+          </label>
+          <span style="opacity:.6;">(preview-only, OBS overlay always shows widget labels)</span>
+        </div>
+
         <div style="background:#0f0f1a; border:1px solid var(--border); border-radius:10px; overflow:hidden; background-image: repeating-conic-gradient(#16162a 0% 25%, #0f0f1a 0% 50%); background-size:24px 24px;">
           <iframe id="layout-preview-frame" src="/?demo=0" title="Layout Editor Preview" style="display:block; width:100%; aspect-ratio:16/9; border:none;"></iframe>
         </div>

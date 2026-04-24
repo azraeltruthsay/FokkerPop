@@ -207,6 +207,15 @@ body.layout-mode .draggable[data-placeholder]::before {
   padding: 14px;
 }
 
+/* Parent dashboard can toggle these via postMessage when the overlay is
+   loaded inside a preview iframe. `hide-type-labels` strips the
+   layout-mode "COUNTER"/"DICE-TRAY"/etc. placeholder text; `hide-widget-labels`
+   strips the widget's own configured label row (.cw-label). Both are
+   preview-only conveniences — they never affect OBS's live overlay since
+   nothing sends those messages to the ?live=1 URL. */
+body.hide-type-labels.layout-mode .draggable[data-placeholder]::before { display: none !important; }
+body.hide-widget-labels .cw-label { display: none !important; }
+
 /* Resize handles — 4 edges + 4 corners, visible only in layout mode.
    Each handle's ::cursor matches its drag direction so the mouse pointer
    tells the user exactly what dragging from that spot will do.
@@ -2191,6 +2200,20 @@ if (new URLSearchParams(location.search).get('demo') === '1') {
 
 // Expose for dashboard test panel
 window.FokkerPop = { dispatchEffect, alertQueue, setCrowdEnergy };
+
+// ── Preview-iframe label toggles ────────────────────────────────────────────
+// Parent dashboards send { type: 'fokker.label-visibility', typeLabels: bool,
+// widgetLabels: bool } when Fokker flips the toggles on Layout / Test Effects.
+// We just map to CSS classes on body — the rules themselves are in the style
+// block above. Also announces readiness so the parent can send initial state
+// without racing iframe onload.
+window.addEventListener('message', (e) => {
+  const msg = e?.data;
+  if (!msg || msg.type !== 'fokker.label-visibility') return;
+  document.body.classList.toggle('hide-type-labels',   msg.typeLabels   === false);
+  document.body.classList.toggle('hide-widget-labels', msg.widgetLabels === false);
+});
+try { parent?.postMessage({ type: 'fokker.overlay-ready' }, '*'); } catch {}
 
 // ── Resource self-report ────────────────────────────────────────────────────
 // Every 2 s, each overlay instance measures its own rendering FPS and JS heap,

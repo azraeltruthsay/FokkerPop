@@ -1571,6 +1571,87 @@ window.renderReleaseNotes = async function() {
   }
 };
 
+// ═══════════════════════════════════════════════ Preview-iframe label toggles
+
+const LABEL_PREFS_KEY = 'fokker.labelPrefs';
+
+function loadLabelPrefs() {
+  try { return JSON.parse(localStorage.getItem(LABEL_PREFS_KEY)) || {}; } catch { return {}; }
+}
+function saveLabelPrefs(p) {
+  try { localStorage.setItem(LABEL_PREFS_KEY, JSON.stringify(p)); } catch {}
+}
+
+// Default both toggles ON (i.e. labels visible) — matches legacy behaviour.
+function prefsFor(scope) {
+  const all = loadLabelPrefs();
+  const p = all[scope] || {};
+  return { type: p.type !== false, widget: p.widget !== false };
+}
+
+function pushPrefsToIframe(iframeId, prefs) {
+  const frame = document.getElementById(iframeId);
+  if (!frame?.contentWindow) return;
+  try {
+    frame.contentWindow.postMessage({
+      type:         'fokker.label-visibility',
+      typeLabels:   !!prefs.type,
+      widgetLabels: !!prefs.widget,
+    }, '*');
+  } catch {}
+}
+
+// Scope is 'layout' or 'effects' — each has its own iframe + its own prefs.
+// kind is 'type' or 'widget'.
+window.fokkerLabelToggle = function(scope, kind, visible) {
+  const all = loadLabelPrefs();
+  all[scope] = all[scope] || {};
+  all[scope][kind] = !!visible;
+  saveLabelPrefs(all);
+  const iframeId = scope === 'layout' ? 'layout-preview-frame' : 'preview-frame';
+  pushPrefsToIframe(iframeId, prefsFor(scope));
+};
+
+// Restore saved prefs into the checkboxes on load, then push to both iframes.
+// Also re-push any time the overlay signals it's ready (e.g. after an iframe
+// reload), so the toggles survive the natural re-mounts the overlay does when
+// widgets.json broadcasts arrive.
+(function initLabelPrefs() {
+  const restore = () => {
+    const layout = prefsFor('layout');
+    const effects = prefsFor('effects');
+    const $lt = document.getElementById('lp-type-labels');
+    const $lw = document.getElementById('lp-widget-labels');
+    const $ew = document.getElementById('pv-widget-labels');
+    if ($lt) $lt.checked = layout.type;
+    if ($lw) $lw.checked = layout.widget;
+    if ($ew) $ew.checked = effects.widget;
+    pushPrefsToIframe('layout-preview-frame', layout);
+    pushPrefsToIframe('preview-frame', effects);
+  };
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', restore);
+  } else {
+    restore();
+  }
+
+  // The iframes both sit inside pages that only get activated later — push
+  // again on iframe load and on the overlay's "ready" handshake.
+  ['layout-preview-frame', 'preview-frame'].forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.addEventListener('load', () => {
+      pushPrefsToIframe(id, prefsFor(id === 'layout-preview-frame' ? 'layout' : 'effects'));
+    });
+  });
+  window.addEventListener('message', (e) => {
+    if (e?.data?.type !== 'fokker.overlay-ready') return;
+    // We don't know which iframe sent it, so just push to both. Cheap.
+    pushPrefsToIframe('layout-preview-frame', prefsFor('layout'));
+    pushPrefsToIframe('preview-frame', prefsFor('effects'));
+  });
+})();
+
 // ═══════════════════════════════════════════════ Shutdown
 
 window.shutdownFokkerPop = function() {
