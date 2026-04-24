@@ -1507,5 +1507,68 @@ function esc(s) {
   return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
+// Tiny markdown renderer — just enough for the auto-generated CHANGELOG.md
+// (headings, bold, inline code, bullets, horizontal rules, blank-line paras).
+// Keeps the dashboard dep-free. Escapes HTML before applying markdown.
+function renderMarkdown(src) {
+  const lines = esc(src).split('\n');
+  const out = [];
+  let inList = false;
+  let paragraph = [];
+
+  const flushPara = () => {
+    if (paragraph.length) {
+      out.push('<p>' + paragraph.join(' ') + '</p>');
+      paragraph = [];
+    }
+  };
+  const closeList = () => {
+    if (inList) { out.push('</ul>'); inList = false; }
+  };
+  const inline = (t) => t
+    .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+    .replace(/`([^`]+)`/g, '<code>$1</code>');
+
+  for (const raw of lines) {
+    const line = raw.trimEnd();
+    if (line === '') { flushPara(); closeList(); continue; }
+    if (/^---+$/.test(line))    { flushPara(); closeList(); out.push('<hr>'); continue; }
+    let m;
+    if ((m = /^(#{1,6})\s+(.*)$/.exec(line))) {
+      flushPara(); closeList();
+      out.push(`<h${m[1].length}>${inline(m[2])}</h${m[1].length}>`);
+      continue;
+    }
+    if ((m = /^[-*]\s+(.*)$/.exec(line))) {
+      flushPara();
+      if (!inList) { out.push('<ul>'); inList = true; }
+      out.push('<li>' + inline(m[1]) + '</li>');
+      continue;
+    }
+    // continuation of a paragraph
+    if (inList) closeList();
+    paragraph.push(inline(line));
+  }
+  flushPara(); closeList();
+  return out.join('\n');
+}
+
+window.renderReleaseNotes = async function() {
+  const host = document.getElementById('release-notes-body');
+  if (!host) return;
+  host.innerHTML = '<p style="color:var(--text-dim);">Loading…</p>';
+  try {
+    const res = await fetch('/api/release-notes', { cache: 'no-cache' });
+    if (!res.ok) {
+      host.innerHTML = `<p style="color:var(--red);">Couldn't load release notes: HTTP ${res.status}</p>`;
+      return;
+    }
+    const md = await res.text();
+    host.innerHTML = renderMarkdown(md);
+  } catch (err) {
+    host.innerHTML = `<p style="color:var(--red);">Couldn't load release notes: ${esc(err?.message ?? err)}</p>`;
+  }
+};
+
 // ═══════════════════════════════════════════════ Boot
 connect();

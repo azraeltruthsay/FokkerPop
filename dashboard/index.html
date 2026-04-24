@@ -696,12 +696,13 @@ html, body {
     // blank page with no hint what went wrong. We show an in-page fallback
     // card with the error + a retry button instead.
     const PAGE_HANDLERS = {
-      effects: () => window.populateSimulatorRedeems?.(),
-      assets:  () => window.populateGallery?.(),
-      log:     () => window.fetchSystemLogs?.(),
-      studio:  () => window.initStudio?.(),
-      layout:  () => window.renderWidgetList?.(),
-      config:  () => window.renderConfigEditors?.(),
+      effects:         () => window.populateSimulatorRedeems?.(),
+      assets:          () => window.populateGallery?.(),
+      log:             () => window.fetchSystemLogs?.(),
+      studio:          () => window.initStudio?.(),
+      layout:          () => window.renderWidgetList?.(),
+      config:          () => window.renderConfigEditors?.(),
+      'release-notes': () => window.renderReleaseNotes?.(),
     };
 
     function renderFallback(page, err) {
@@ -803,6 +804,9 @@ html, body {
     </button>
     <button class="nav-item" data-page="setup">
       <span class="nav-icon">⚙️</span> Setup
+    </button>
+    <button class="nav-item" data-page="release-notes">
+      <span class="nav-icon">📰</span> Release Notes
     </button>
 
     <div class="sidebar-spacer"></div>
@@ -1544,6 +1548,23 @@ html, body {
         </p>
       </div>
 
+    </div>
+
+    <!-- ════════════════════════ RELEASE NOTES PAGE -->
+    <div class="page" id="page-release-notes">
+      <div class="page-header">
+        <div class="page-title">Release Notes</div>
+        <button class="btn btn-ghost btn-sm" onclick="window.renderReleaseNotes?.()" title="Reload from server">🔄 Refresh</button>
+      </div>
+
+      <div class="card">
+        <p style="font-size:.8rem; color:var(--text-dim); margin:0 0 12px;">
+          What's new in FokkerPop. Auto-generated from git commit messages at release time, so the latest version's install always ships its own changelog and everything before it.
+        </p>
+        <div id="release-notes-body" style="line-height:1.5; font-size:.88rem;">
+          <p style="color:var(--text-dim);">Loading…</p>
+        </div>
+      </div>
     </div>
 
   </main>

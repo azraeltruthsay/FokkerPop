@@ -446,6 +446,22 @@ const httpServer = createServer((req, res) => {
     return res.end(JSON.stringify(state.snapshot()));
   }
 
+  // Release notes — CHANGELOG.md is regenerated at release time from git
+  // commit messages, then shipped in the zip. Served as plain markdown so
+  // the dashboard can parse and render it client-side.
+  if (path === '/api/release-notes' && req.method === 'GET') {
+    const changelogPath = join(ROOT, 'CHANGELOG.md');
+    if (!existsSync(changelogPath)) {
+      res.writeHead(404, { 'Content-Type': 'text/plain' });
+      return res.end('CHANGELOG.md not found — this install may be a dev checkout without a generated changelog.');
+    }
+    res.writeHead(200, {
+      'Content-Type': 'text/markdown; charset=utf-8',
+      'Cache-Control': 'no-cache',
+    });
+    return res.end(readFileSync(changelogPath));
+  }
+
   if (path === '/api/goals' && req.method === 'GET') {
     res.writeHead(200, { 'Content-Type': 'application/json' });
     return res.end(JSON.stringify(state.get('goals') ?? []));

@@ -50,6 +50,11 @@ jobs:
           # Extract just node.exe from the nested folder
           unzip -j node-win.zip "*/node.exe" -d node-bin/
 
+      # Regenerate CHANGELOG.md from git log so the shipped zip always
+      # contains the notes for this exact release (plus the previous 24).
+      - name: Generate CHANGELOG.md
+        run: node scripts/gen-changelog.mjs
+
       - name: Assemble release package
         run: |
           VERSION="${GITHUB_REF_NAME}"
@@ -69,7 +74,7 @@ jobs:
           cp -r server dashboard shared "${PKG}/"
           cp overlay.html overlay-widgets.js package.json package-lock.json \
              settings.example.json goals.example.json redeems.example.json flows.example.json commands.example.json widgets.example.json \
-             start.bat README.md \
+             start.bat README.md CHANGELOG.md \
              "${PKG}/"
 
           # Copy asset files from repo if they exist
@@ -185,7 +190,7 @@ jobs:
           fi
 
           # Explicit route checks for files that have historically been missed.
-          for path in /dashboard/ /shared/dice.js /shared/semver.js /overlay-widgets.js /vendor/three.module.min.js; do
+          for path in /dashboard/ /shared/dice.js /shared/semver.js /overlay-widgets.js /vendor/three.module.min.js /api/release-notes; do
             if ! curl -sSf "http://127.0.0.1:14747$path" -o /dev/null 2>&1; then
               echo "FAIL: $path is not served from the packaged zip"
               echo "--- server log ---"
