@@ -1,6 +1,22 @@
-# FokkerPop
+<p align="center">
+  <img src="dashboard/fps-logo.webp" alt="FP Studios" width="440">
+</p>
 
-A Twitch overlay app built for streamer **LilFokker** — spiritual successor to PolyPop. Everything runs locally on your PC, nothing goes to the cloud.
+<h1 align="center">FokkerPop</h1>
+
+<p align="center">
+  <em>A Twitch overlay app built for streamer <strong>LilFokker</strong> — spiritual successor to PolyPop.</em><br>
+  Everything runs locally on your PC. Nothing goes to the cloud.
+</p>
+
+<p align="center">
+  <a href="../../releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/azraeltruthsay/FokkerPop?label=latest&color=9147FF"></a>
+  <a href="../../releases"><img alt="Downloads" src="https://img.shields.io/github/downloads/azraeltruthsay/FokkerPop/total?color=9147FF"></a>
+  <a href="../../issues"><img alt="Open issues" src="https://img.shields.io/github/issues/azraeltruthsay/FokkerPop?color=9147FF"></a>
+</p>
+
+<hr>
+
 
 ## Features
 
