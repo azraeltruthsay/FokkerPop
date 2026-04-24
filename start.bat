@@ -78,20 +78,38 @@ echo  ==========================================
 echo    FokkerPop : Starting up...
 echo  ==========================================
 echo:
-echo  [!] IMPORTANT: DO NOT CLICK INSIDE THIS BLACK WINDOW.
-echo      If you do, Windows might "pause" the server.
-echo      If things stop working, click here and press ENTER.
+echo  The server will run hidden in the background.
+echo  Your dashboard will open automatically in a moment.
 echo:
 echo  Overlay URL:   http://localhost:4747
 echo  Dashboard URL: http://localhost:4747/dashboard
 echo:
-echo  The dashboard should open in your browser automatically.
-echo  Keep this window open in the background while streaming.
+echo  To stop FokkerPop:
+echo    * Click "Stop FokkerPop" on the Setup page in the dashboard
+echo    * Or double-click stop.bat
+echo    * Or end "FokkerPop.exe" from Task Manager
 echo:
 
-"%NODE%" server/index.js
-echo.
-echo  FokkerPop stopped. This window will close automatically.
-echo  (Press any key now to close immediately.)
-timeout /t 6
+:: Check VBS wrapper exists (should always be present in a release)
+if not exist "launch-hidden.vbs" (
+    echo  ERROR: launch-hidden.vbs is missing.
+    echo  The install appears incomplete. Re-extract the release zip.
+    pause
+    exit /b
+)
+
+:: Launch node hidden so no console window stays open. The CMD you're
+:: looking at right now will close itself in a few seconds.
+wscript.exe "launch-hidden.vbs"
+
+:: Give the server ~2 seconds to bind the port before opening the browser,
+:: otherwise the dashboard shows "Connecting..." for a noticeable moment.
+timeout /t 2 /nobreak >nul
+
+:: Open the dashboard in the user's default browser.
+start "" "http://localhost:4747/dashboard/"
+
+echo  FokkerPop is running. Closing this window now.
+timeout /t 2 /nobreak >nul
+endlocal
 

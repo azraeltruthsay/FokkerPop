@@ -1571,6 +1571,28 @@ window.renderReleaseNotes = async function() {
   }
 };
 
+// ═══════════════════════════════════════════════ Shutdown
+
+window.shutdownFokkerPop = function() {
+  const streaming = appState?.obs?.streaming;
+  const confirmMsg = streaming
+    ? "OBS is currently STREAMING. Stopping FokkerPop will cut the overlay mid-stream. Are you sure?"
+    : "Stop the FokkerPop server? You'll need to run start.bat again to bring it back.";
+  if (!confirm(confirmMsg)) return;
+
+  dashSend({ type: '_dashboard.shutdown' });
+
+  // Immediate UI feedback — the server's _system.shutdown broadcast will
+  // arrive a moment later and the WebSocket will close.
+  const el = document.getElementById('error-reporter');
+  const msgEl = document.getElementById('error-msg');
+  if (el && msgEl) {
+    msgEl.innerHTML = '⏻ FokkerPop is shutting down. Run <code>start.bat</code> (or double-click the FokkerPop icon) to start it again.';
+    el.style.background = 'var(--text-dim)';
+    el.style.display = 'block';
+  }
+};
+
 // ═══════════════════════════════════════════════ Resources page
 
 function fmtBytes(n) {

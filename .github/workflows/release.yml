@@ -74,7 +74,7 @@ jobs:
           cp -r server dashboard shared "${PKG}/"
           cp overlay.html overlay-widgets.js package.json package-lock.json \
              settings.example.json goals.example.json redeems.example.json flows.example.json commands.example.json widgets.example.json \
-             start.bat README.md CHANGELOG.md \
+             start.bat stop.bat launch-hidden.vbs README.md CHANGELOG.md \
              "${PKG}/"
 
           # Copy asset files from repo if they exist
@@ -160,6 +160,16 @@ jobs:
           for f in widgets.json state.json goals.json redeems.json commands.json flows.json settings.json; do
             if [ -e "$APP/$f" ]; then
               echo "FAIL: $f is in the release zip — updates would overwrite user customizations"
+              exit 1
+            fi
+          done
+
+          # The Windows startup companions must be present; without them,
+          # double-clicking start.bat on a fresh install falls back to a
+          # visible CMD window (v0.2.x behavior) or fails outright.
+          for f in start.bat stop.bat launch-hidden.vbs; do
+            if [ ! -e "$APP/$f" ]; then
+              echo "FAIL: $f is missing from the release zip"
               exit 1
             fi
           done

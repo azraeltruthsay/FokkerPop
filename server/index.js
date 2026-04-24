@@ -508,6 +508,16 @@ const httpServer = createServer((req, res) => {
     return res.end(JSON.stringify(state.snapshot()));
   }
 
+  // Graceful shutdown from stop.bat / external scripts. Bound to 127.0.0.1
+  // by the listen() call, so only local processes can trigger it.
+  if (path === '/api/shutdown' && req.method === 'POST') {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end('{"ok":true}');
+    log.info('Shutdown requested via /api/shutdown.');
+    setTimeout(() => shutdown('http-shutdown'), 50);
+    return;
+  }
+
   // Release notes — CHANGELOG.md is regenerated at release time from git
   // commit messages, then shipped in the zip. Served as plain markdown so
   // the dashboard can parse and render it client-side.
@@ -1096,6 +1106,13 @@ wss.on('connection', (ws, req) => {
           log.error('Update apply failed:', err.message);
           broadcast(dashboards, { type: 'update.apply-error', message: err.message });
         }
+        break;
+      case '_dashboard.shutdown':
+        // User clicked "Stop FokkerPop" in the dashboard. Same graceful path
+        // the SIGINT/SIGTERM handlers use — broadcasts _system.shutdown so
+        // open overlays clear their effect queues before the server dies.
+        log.info('Shutdown requested from dashboard.');
+        setTimeout(() => shutdown('dashboard-request'), 50);
         break;
     }
   });
