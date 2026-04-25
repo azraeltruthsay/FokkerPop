@@ -68,7 +68,12 @@ function fireCommand(text, event) {
   // tutorial somewhere, viewers don't end up triggering it on Fokker's stream
   // for free. Free commands opt in with "allow": "anyone".
   const allow = cmd.allow ?? 'broadcaster';
-  if (!userMatchesAllow(event, allow)) return;
+  if (!userMatchesAllow(event, allow)) {
+    // Visible at default log level so a "why isn't !bub working?" diagnosis
+    // takes 5 seconds of log scrolling instead of a code dive.
+    log.info(`Chat command ${text.trim()} blocked: needs "allow":"${allow}", user "${event.payload?.user || 'unknown'}" doesn't qualify.`);
+    return;
+  }
 
   const now = Date.now();
   const last = commandCooldowns.get(text) ?? 0;

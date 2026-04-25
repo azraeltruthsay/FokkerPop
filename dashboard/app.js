@@ -996,6 +996,7 @@ function buildSoundSelect(cls, current, vol = 1.0) {
       <div style="display:flex; gap:6px;">
         <select class="input-field ${cls}" style="flex:1;">
           <option value="">-- No Sound --</option>
+          <option value="*" ${current === '*' ? 'selected' : ''}>🎲 Random (any uploaded sound)</option>
           ${sounds.map(s => `<option value="${esc(s)}" ${s === current ? 'selected' : ''}>${esc(s)}</option>`).join('')}
         </select>
         <button class="btn btn-ghost btn-sm" onclick="previewSound(this.previousElementSibling.value)" title="Play Sample">▶️</button>
@@ -1088,31 +1089,87 @@ function renderRedeemsConfig() {
   }
 }
 
+function buildAllowSelect(cls, current) {
+  const tiers = [
+    ['broadcaster', 'Broadcaster only (Fokker)'],
+    ['mod',         'Mods + broadcaster'],
+    ['vip',         'VIPs + mods + broadcaster'],
+    ['subscriber',  'Subs + VIPs + mods + broadcaster'],
+    ['anyone',      'Anyone in chat (free)'],
+  ];
+  const sel = current ?? 'broadcaster';
+  return `
+    <select class="input-field ${cls}" style="flex:1; min-width:180px;" title="Who can fire this command from chat">
+      ${tiers.map(([v, l]) => `<option value="${v}" ${v === sel ? 'selected' : ''}>${l}</option>`).join('')}
+    </select>`;
+}
+
+function commandRowHtml(trigger, def, redeemList) {
+  const isRedeem = !!def.redeem;
+  // sound:'*' or array means "random pool"; preserve as a sentinel value the
+  // dropdown handles separately (see buildSoundSelect random option below).
+  const soundVal = Array.isArray(def.sound) ? '*' : (def.sound ?? '');
+  return `
+    <div class="card" style="margin-bottom:10px;padding:12px;background:var(--surface2);">
+      <div class="input-row">
+        <input class="input-field c-trigger" placeholder="!command" value="${esc(trigger ?? '!new')}" style="max-width:140px;">
+        <input class="input-field c-cooldown" type="number" placeholder="Cooldown (s)" value="${def.cooldown ?? 10}" style="max-width:120px;" title="Seconds between fires (0 = no cooldown)">
+        ${buildAllowSelect('c-allow', def.allow)}
+      </div>
+      <div class="input-row" style="margin-top:10px; align-items:flex-start; flex-wrap:wrap;">
+        <label style="display:inline-flex; align-items:center; gap:6px; font-size:.78rem; color:var(--text-dim);">
+          <input type="radio" name="c-mode-${trigger ?? Math.random()}" class="c-mode" value="effect"  ${!isRedeem ? 'checked' : ''}> Fire effect
+        </label>
+        <label style="display:inline-flex; align-items:center; gap:6px; font-size:.78rem; color:var(--text-dim);">
+          <input type="radio" name="c-mode-${trigger ?? Math.random()}" class="c-mode" value="redeem" ${isRedeem ? 'checked' : ''}> Alias a redeem
+        </label>
+        <button class="btn btn-ghost btn-sm" onclick="this.closest('.card').remove()" style="color:var(--red); margin-left:auto;">Delete</button>
+      </div>
+      <div class="c-effect-row" style="margin-top:10px; display:${isRedeem ? 'none' : 'flex'}; gap:8px; align-items:flex-start; flex-wrap:wrap;">
+        ${buildEffectSelect('c-effect', def.effect)}
+        ${buildSoundSelect('c-sound', soundVal, def.vol ?? 1.0)}
+      </div>
+      <div class="c-redeem-row" style="margin-top:10px; display:${isRedeem ? 'flex' : 'none'}; gap:8px; align-items:center;">
+        <select class="input-field c-redeem" style="flex:1;" title="The exact rewardTitle from your Twitch channel point rewards">
+          <option value="">-- Select redeem --</option>
+          ${redeemList.map(name => `<option value="${esc(name)}" ${name === def.redeem ? 'selected' : ''}>${esc(name)}</option>`).join('')}
+        </select>
+        <span style="font-size:.7rem; color:var(--text-dim);">Triggers same effects + flows as a real redemption (no points charged).</span>
+      </div>
+    </div>
+  `;
+}
+
+// Toggle which row is visible based on the mode radio.
+window.cmdToggleMode = function(card) {
+  const mode = card.querySelector('.c-mode:checked')?.value || 'effect';
+  card.querySelector('.c-effect-row').style.display = mode === 'effect' ? 'flex' : 'none';
+  card.querySelector('.c-redeem-row').style.display = mode === 'redeem' ? 'flex' : 'none';
+};
+
 window.renderCommandsConfig = function() {
   const cContainer = document.getElementById('config-commands-container');
-  if (cContainer) {
-    fetch('/api/commands').then(r => r.json()).then(commands => {
-      cContainer.innerHTML = Object.entries(commands).filter(([k]) => k !== '_comment').map(([trigger, def]) => `
-        <div class="card" style="margin-bottom:10px;padding:12px;background:var(--surface2);">
-          <div class="input-row">
-            <input class="input-field c-trigger" placeholder="!command" value="${esc(trigger)}" style="max-width:140px;">
-            ${buildEffectSelect('c-effect', def.effect)}
-          </div>
-          <div class="input-row" style="margin-top:10px; align-items:flex-start;">
-            <input class="input-field c-cooldown" type="number" placeholder="Cooldown (s)" value="${def.cooldown ?? 5}" style="max-width:100px;">
-            ${buildSoundSelect('c-sound', def.sound, def.vol ?? 1.0)}
-            <button class="btn btn-ghost btn-sm" onclick="this.closest('.card').remove()" style="color:var(--red); margin-top:5px;">Delete</button>
-          </div>
-        </div>
-      `).join('');
+  if (!cContainer) return;
+  Promise.all([
+    fetch('/api/commands').then(r => r.json()),
+    fetch('/api/redeems').then(r => r.json()).catch(() => ({})),
+  ]).then(([commands, redeems]) => {
+    const redeemList = Object.keys(redeems).filter(k => !k.startsWith('_'));
+    cContainer.innerHTML = Object.entries(commands)
+      .filter(([k]) => !k.startsWith('_'))
+      .map(([trigger, def]) => commandRowHtml(trigger, def, redeemList))
+      .join('');
+    // Wire mode-toggle radios
+    cContainer.querySelectorAll('.card').forEach(card => {
+      card.querySelectorAll('.c-mode').forEach(r => r.addEventListener('change', () => cmdToggleMode(card)));
     });
-  }
+  });
 };
 
 function buildEffectSelect(cls, current) {
-  const effects = ['balloon', 'firework', 'firework-salvo', 'confetti', 'sticker-rain', 'crowd-explosion', 'alert-banner'];
+  const effects = ['balloon', 'firework', 'firework-salvo', 'confetti', 'sticker-rain', 'crowd-explosion', 'alert-banner', 'play-sound'];
   return `
-    <select class="input-field ${cls}" style="flex:1;">
+    <select class="input-field ${cls}" style="flex:1; min-width:160px;">
       <option value="">-- Select Effect --</option>
       ${effects.map(e => `<option value="${e}" ${e === current ? 'selected' : ''}>Effect: ${e}</option>`).join('')}
     </select>`;
@@ -1120,37 +1177,38 @@ function buildEffectSelect(cls, current) {
 
 window.addCommandConfig = function() {
   const container = document.getElementById('config-commands-container');
-  const div = document.createElement('div');
-  div.className = 'card';
-  div.style.cssText = 'margin-bottom:10px;padding:12px;background:var(--surface2);';
-  div.innerHTML = `
-    <div class="input-row">
-      <input class="input-field c-trigger" placeholder="!command" value="!new" style="max-width:140px;">
-      ${buildEffectSelect('c-effect', 'firework')}
-    </div>
-    <div class="input-row" style="margin-top:10px; align-items:flex-start;">
-      <input class="input-field c-cooldown" type="number" placeholder="Cooldown (s)" value="10" style="max-width:100px;">
-      ${buildSoundSelect('c-sound', '', 1.0)}
-      <button class="btn btn-ghost btn-sm" onclick="this.closest('.card').remove()" style="color:var(--red); margin-top:5px;">Delete</button>
-    </div>`;
-  container.appendChild(div);
+  fetch('/api/redeems').then(r => r.json()).catch(() => ({})).then(redeems => {
+    const redeemList = Object.keys(redeems).filter(k => !k.startsWith('_'));
+    const wrapper = document.createElement('div');
+    wrapper.innerHTML = commandRowHtml('!new', { effect: 'firework-salvo', cooldown: 10 }, redeemList);
+    const card = wrapper.firstElementChild;
+    container.appendChild(card);
+    card.querySelectorAll('.c-mode').forEach(r => r.addEventListener('change', () => cmdToggleMode(card)));
+  });
 };
 
 window.saveCommandsConfig = function() {
   const cmds = {};
   document.querySelectorAll('#config-commands-container .card').forEach(card => {
     const trigger = card.querySelector('.c-trigger').value.toLowerCase().trim();
-    const effect  = card.querySelector('.c-effect').value;
+    if (!trigger) return;
     const cooldown = parseInt(card.querySelector('.c-cooldown').value);
-    const sound   = card.querySelector('.c-sound').value;
-    const vol     = parseFloat(card.querySelector('.c-sound-vol').value);
-    if (trigger) {
-      cmds[trigger] = { effect, cooldown: isNaN(cooldown) ? 10 : cooldown };
+    const allow    = card.querySelector('.c-allow').value || 'broadcaster';
+    const mode     = card.querySelector('.c-mode:checked')?.value || 'effect';
+    const entry    = { cooldown: isNaN(cooldown) ? 10 : cooldown, allow };
+    if (mode === 'redeem') {
+      const redeem = card.querySelector('.c-redeem').value;
+      if (redeem) entry.redeem = redeem;
+    } else {
+      entry.effect = card.querySelector('.c-effect').value;
+      const sound  = card.querySelector('.c-sound').value;
       if (sound) {
-        cmds[trigger].sound = sound;
-        cmds[trigger].vol   = vol;
+        entry.sound = sound;
+        const vol  = parseFloat(card.querySelector('.c-sound-vol').value);
+        if (!isNaN(vol)) entry.vol = vol;
       }
     }
+    cmds[trigger] = entry;
   });
 
   fetch('/api/commands', {
