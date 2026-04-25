@@ -961,7 +961,10 @@ export function triggerDice(widgets, eventType) {
   for (const w of widgets) {
     if (w.type !== 'dice') continue;
     const cfg = w.config || {};
-    if (cfg.triggerEvent && cfg.triggerEvent !== eventType) continue;
+    // Gate-by-default: an unset triggerEvent used to fire on EVERY event
+    // (chat, sub, cheer, anything that hit the bus). Now requires an
+    // explicit opt-in — set cfg.triggerEvent in the Layout tab.
+    if (!cfg.triggerEvent || cfg.triggerEvent !== eventType) continue;
     const entry = diceWidgets.get(w.id);
     entry?.rollDie?.();
   }
@@ -1369,7 +1372,9 @@ export function triggerDiceTray(widgets, event) {
   for (const w of widgets) {
     if (w.type !== 'dice-tray') continue;
     const cfg = w.config || {};
-    if (cfg.triggerEvent && cfg.triggerEvent !== eventType) continue;
+    // Same gate-by-default as triggerDice — used to fire on every event when
+    // triggerEvent was unset. Now requires explicit opt-in via the Layout tab.
+    if (!cfg.triggerEvent || cfg.triggerEvent !== eventType) continue;
     const entry = diceTrays.get(w.id);
     if (!entry) {
       console.warn('[dice-tray] no mounted entry for widget', w.id, '— widget still loading or mount failed?');

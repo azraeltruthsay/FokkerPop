@@ -87,19 +87,6 @@
     }
   },
   {
-    "id": "w-dice-d20",
-    "type": "dice",
-    "x": 76, "y": 30,
-    "config": {
-      "visible": true,
-      "autoHide": true,
-      "sides": 20,
-      "triggerEvent": "redeem",
-      "width": 220,
-      "height": 220
-    }
-  },
-  {
     "id": "w-dice-2d6",
     "type": "dice-tray",
     "x": 70, "y": 60,
