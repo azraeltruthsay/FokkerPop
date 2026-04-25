@@ -417,6 +417,7 @@ function applyStateUpdate(path, value) {
   if (path === 'obs.streaming') handleStreamingChange(!!value);
   if (path === 'overlay.widgets') { widgets = value || []; renderWidgetList(); }
   if (path === 'resources') window.renderResources?.(value);
+  if (path === 'overlay.elementVisibility') updateGhostCount(value || {});
 }
 
 let prevStreaming = false;
@@ -544,6 +545,16 @@ window.addWidget = function (type) {
   if (type === 'model-3d')    base.config = { visible: true, modelUrl: '', rotationSpeed: 0.005, scale: 1, reactiveScale: '', width: 300, height: 300 };
   widgets.push(base);
   saveWidgets().then(renderWidgetList);
+  // Auto-enable Drag Mode so the new widget's resize/delete handles are
+  // immediately visible. Without this, a freshly-added widget looks like
+  // it's missing controls — they're attached, just CSS-gated to layout
+  // mode. Toggling here flips both the dashboard checkboxes (for visual
+  // consistency) and the server-side state (which broadcasts to overlays).
+  for (const id of ['layout-mode-cb', 'layout-mode-cb-2']) {
+    const cb = document.getElementById(id);
+    if (cb && !cb.checked) { cb.checked = true; }
+  }
+  dashSend({ type: '_dashboard.layout-mode', active: true });
 };
 
 window.deleteWidget = function (id) {
@@ -875,6 +886,7 @@ function setVersion(v) {
 }
 
 function refreshAll() {
+  updateGhostCount(appState['overlay.elementVisibility'] || {});
   renderSession(appState.session);
   renderCrowd(appState.crowd?.energy ?? 0);
   renderGoals(appState.goals ?? []);
@@ -1004,7 +1016,10 @@ window.testSoundWithVol = function(file, vol) {
   if (!file) return;
   const src = `/assets/sounds/${encodeURIComponent(file)}`;
   const audio = new Audio(src);
-  audio.volume = parseFloat(vol) || 1.0;
+  // ?? not || so slider-at-zero actually mutes instead of falling through to
+  // the 1.0 default. Clamp to [0,1] to be defensive against bad input.
+  const v = parseFloat(vol);
+  audio.volume = Number.isFinite(v) ? Math.max(0, Math.min(1, v)) : 1.0;
   audio.play().catch(err => console.warn('Preview blocked:', err.message));
 };
 
@@ -1659,11 +1674,24 @@ function saveLabelPrefs(p) {
   try { localStorage.setItem(LABEL_PREFS_KEY, JSON.stringify(p)); } catch {}
 }
 
-// Default both toggles ON (i.e. labels visible) — matches legacy behaviour.
+// Append a "(N hidden)" hint next to the Show Hidden Ghosts checkbox so it's
+// obvious whether the toggle does anything for the user's current state.
+function updateGhostCount(map) {
+  const el = document.getElementById('lp-ghosts-count');
+  if (!el) return;
+  const n = Object.values(map || {}).filter(v => v === false).length;
+  el.textContent = n ? `(${n} hidden)` : '(nothing hidden yet)';
+}
+
+// Default all toggles ON (legacy behaviour: labels + ghosts visible).
 function prefsFor(scope) {
   const all = loadLabelPrefs();
   const p = all[scope] || {};
-  return { type: p.type !== false, widget: p.widget !== false };
+  return {
+    type:   p.type   !== false,
+    widget: p.widget !== false,
+    ghosts: p.ghosts !== false,
+  };
 }
 
 function pushPrefsToIframe(iframeId, prefs) {
@@ -1674,6 +1702,7 @@ function pushPrefsToIframe(iframeId, prefs) {
       type:         'fokker.label-visibility',
       typeLabels:   !!prefs.type,
       widgetLabels: !!prefs.widget,
+      showGhosts:   !!prefs.ghosts,
     }, '*');
   } catch {}
 }
@@ -1699,9 +1728,11 @@ window.fokkerLabelToggle = function(scope, kind, visible) {
     const effects = prefsFor('effects');
     const $lt = document.getElementById('lp-type-labels');
     const $lw = document.getElementById('lp-widget-labels');
+    const $lg = document.getElementById('lp-show-ghosts');
     const $ew = document.getElementById('pv-widget-labels');
     if ($lt) $lt.checked = layout.type;
     if ($lw) $lw.checked = layout.widget;
+    if ($lg) $lg.checked = layout.ghosts;
     if ($ew) $ew.checked = effects.widget;
     pushPrefsToIframe('layout-preview-frame', layout);
     pushPrefsToIframe('preview-frame', effects);

@@ -17,6 +17,12 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          # Full history so scripts/gen-changelog.mjs can read every prior
+          # Release commit message. Default fetch-depth: 1 only sees the
+          # current tag, which produced a CHANGELOG with a single entry on
+          # every previous release.
+          fetch-depth: 0
 
       - name: Setup Node.js
         uses: actions/setup-node@v4

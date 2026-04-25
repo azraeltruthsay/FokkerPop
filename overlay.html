@@ -234,6 +234,13 @@ body.layout-mode .element-hidden {
   outline-color: var(--red, #FF6B6B) !important;
   outline-style: dotted !important;
 }
+/* Parent dashboard sets `body.no-ghosts` via postMessage when the user
+   wants a truly-minimal Layout Mode view — hidden elements stay
+   completely invisible (no ghost, no restore badge). They're still
+   restorable via the Layout page's "Show hidden ghosts" toggle. */
+body.layout-mode.no-ghosts .element-hidden {
+  display: none !important;
+}
 body.layout-mode .element-hidden::after {
   content: 'HIDDEN — click × to restore';
   position: absolute;
@@ -2437,6 +2444,11 @@ window.addEventListener('message', (e) => {
   if (!msg || msg.type !== 'fokker.label-visibility') return;
   document.body.classList.toggle('hide-type-labels',   msg.typeLabels   === false);
   document.body.classList.toggle('hide-widget-labels', msg.widgetLabels === false);
+  // showGhosts:false → strip hidden-element ghosts from Layout Mode entirely.
+  // Default true so existing behavior is unchanged unless Fokker opts out.
+  if (msg.showGhosts !== undefined) {
+    document.body.classList.toggle('no-ghosts', msg.showGhosts === false);
+  }
 });
 try { parent?.postMessage({ type: 'fokker.overlay-ready' }, '*'); } catch {}
 

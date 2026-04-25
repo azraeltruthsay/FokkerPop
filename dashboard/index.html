@@ -1260,6 +1260,10 @@ html, body {
             <input type="checkbox" id="lp-widget-labels" checked onchange="window.fokkerLabelToggle?.('layout', 'widget', this.checked)">
             Widget labels
           </label>
+          <label style="display:inline-flex; gap:6px; align-items:center; cursor:pointer;" title="When OFF, elements you've hidden via the × badge stay completely invisible in Layout Mode too — no red ghost. Restore by toggling this back ON. Count below shows how many elements would be affected.">
+            <input type="checkbox" id="lp-show-ghosts" checked onchange="window.fokkerLabelToggle?.('layout', 'ghosts', this.checked)">
+            Show hidden ghosts <span id="lp-ghosts-count" style="color:var(--text-dim); font-weight:400;"></span>
+          </label>
           <span style="opacity:.6;">(preview-only, OBS overlay always shows widget labels)</span>
         </div>
 

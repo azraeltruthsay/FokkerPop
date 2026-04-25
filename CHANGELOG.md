@@ -1,6 +1,1008 @@
 # FokkerPop Changelog
 
-_Auto-generated from the last 24 Release commits. Newest first._
+_Auto-generated from the last 25 Release commits. Newest first._
+
+## v0.3.21 — 2026-04-24
+
+**Origin gating, path-traversal fix, update-flush.**
+
+Closes the highest-severity findings from the security + operational
+review. None of these are exploitable in the typical "Fokker streaming
+on his own machine" workflow, but they were latent foot-guns that
+matter for a tool that binds to localhost on a viewer-facing PC.
+
+Security fixes:
+
+  1. WebSocket Origin gate. Any website the streamer visited could
+     `new WebSocket("ws://127.0.0.1:4747")`, register as a dashboard,
+     and trigger _dashboard.shutdown / _dashboard.update-apply /
+     _dashboard.save-position / _dashboard.element-visibility / etc.
+     verifyClient now requires Origin to match the server's own host
+     (the dashboard, the overlay, and OBS browser sources all set it
+     correctly to http://localhost:PORT or http://127.0.0.1:PORT).
+
+  2. HTTP cross-origin write protection. POST/PUT/PATCH/DELETE on
+     /api/* require the same Origin match. Stops simple-CORS POSTs
+     from a malicious page to /api/upload (file write), /api/widgets
+     (config overwrite), /api/shutdown (kill the server), etc. GETs
+     stay open — browser SOP already protects response confidentiality
+     for read endpoints.
+
+  3. Path traversal guard tightened. The previous startsWith check
+     didn't enforce a separator boundary, so a sibling directory like
+     "<ROOT>-backup" would match. Switched to path.relative() — any
+     result starting with '..' or that's absolute means outside ROOT.
+
+stop.bat updated to send Origin so its graceful curl path still works
+under the new HTTP gate. (If it doesn't, the existing taskkill /F
+fallback still handles shutdown — no regression.)
+
+Operational fixes:
+
+  4. applyUpdate now calls state.flush() before spawning the NSIS
+     updater. The 150ms-then-process.exit window meant any debounced
+     state writes (widget drags within the last 300ms before "Install
+     Now") were lost. Both call sites — the dashboard's
+     _dashboard.update-apply WS message and the auto-install-on-stream-
+     end handler — go through the new flush.
+
+  5. state.flush() no longer fully-silently swallows write errors.
+     The first failure of a session prints a one-shot console error
+     so a permission flip / antivirus lock / disk-full doesn't go
+     undiagnosed for an entire stream. Subsequent failures stay quiet
+     to avoid spam.
+
+Verified with a probe matrix:
+  - Same-origin POST → 200
+  - Cross-origin POST → 403 BLOCKED
+  - GET (no Origin)  → 200
+  - WS bad Origin    → 403 REJECTED
+  - WS good Origin   → CONNECTED
+  - Path traversal   → 404 (relative() guard catches)
+
+Followups noted in the audit but not in this release:
+  - H1 update signature/hash verification (needs publishing infra change)
+  - H2 template-eval sandbox (needs hand-written evaluator; mitigated
+    significantly by C1/H4 above since only the trusted dashboard can
+    write redeems/flows now)
+  - Op#10 rollId race for concurrent !roll (needs Map<rollId, user>)
+
+---
+
+## v0.3.20 — 2026-04-24
+
+**Auto-refresh state.json.bak on boot.**
+
+Cleans up the stray state.json.bak that v0.3.18 leaked into the
+release zip (and any other stale .bak from prior runs). On every
+server boot, after loading state.json, copy it over state.json.bak
+unconditionally. Two effects:
+
+  1. The dev-leak .bak from v0.3.18 (containing my local positions
+     like "test-widget" and "another") gets overwritten with the
+     user's actual current state on the first v0.3.20 boot. No more
+     risk of falling back to garbage if state.json ever gets
+     corrupted.
+  2. Recovery worst-case is bounded: if state.json corrupts mid-
+     session, .bak is at most "state at boot" stale, never months-old
+     stale.
+
+The flush() write path is unchanged (also still copies state.json →
+.bak before each write), so .bak continues to track within ~300 ms
+of the latest in-memory state. The boot-time copy is purely belt-and-
+braces against stale-from-prior-version data.
+
+---
+
+## v0.3.19 — 2026-04-24
+
+**Hotfix — gitignore state.json.bak, tighten zip-smoke.**
+
+v0.3.18 accidentally committed a state.json.bak file because the v0.3.17
+atomic-write change creates one and my local probe ran during the commit
+window. Without this hotfix, that .bak (containing my dev-tree state)
+would ship in the v0.3.18 release zip, get installed on every user's
+machine, and overwrite their actual recovery backup.
+
+Fix:
+  - .gitignore now lists state.json.bak and state.json.tmp alongside
+    state.json itself.
+  - The release.yml zip-smoke invariant gains both files to its
+    "user-data must NEVER be in the zip" check, so this class of
+    leak fails the build before publishing.
+  - Removed state.json.bak from the repo (git rm --cached).
+
+Anyone who happened to install v0.3.18 in the ~minutes between
+release and this hotfix should run the v0.3.19 updater to clean up
+the stray .bak file (NSIS won't auto-delete it, but it's harmless on
+disk — just stale).
+
+---
+
+## v0.3.18 — 2026-04-24
+
+**Version renders server-side; Check for Updates; Stop overlay.**
+
+Three small but visible UX gaps on the Setup / Live tab.
+
+Version display correctness — every place that shows the FokkerPop
+version (sidebar badge, Setup About card) used to start as the
+literal placeholder "v..." and rely on a JS round-trip after the
+WebSocket connected to swap in the real number. If the WS hadn't
+connected yet, or the browser had a stale tab, viewers saw "v..." or
+the wrong number. The server now substitutes ${VERSION} into the HTML
+when it serves /dashboard/, so first paint already shows the correct
+number, no JS or WS dependency. Cache-Control: no-cache so the
+substitution stays current across updates.
+
+Manual "Check for Updates" button on the Setup page. Wires to a new
+_dashboard.check-update WS handler which calls the existing
+update-checker checkForUpdate() function. The dashboard listens for
+update.available / update.checked-at / update.check-error state
+broadcasts via a new fokker-update-state CustomEvent and updates the
+Status text inline. 15-second timeout with a clear error message.
+
+Stop FokkerPop now produces actual feedback. When the dashboard
+receives _system.shutdown:
+  - The auto-reconnect loop checks window.__fokkerStopped and bails
+    instead of pinging a dead server every 1-3 seconds forever.
+  - A full-screen overlay appears explaining the server is stopped,
+    listing the three ways to restart (Start Menu shortcut /
+    FokkerPop.exe / start.bat). Backdrop-blur so the dashboard
+    underneath is dimmed but readable.
+  - A 2-second polling probe against /api/state silently waits for
+    the server to come back. When it does, the dashboard reloads
+    automatically.
+
+Wording on the Stop card itself updated to mention the Start Menu
+shortcut and FokkerPop.exe alongside start.bat — three valid restart
+paths now that v0.3.0 / v0.3.4 shipped them.
+
+Verified: server-rendered v-badge matches package.json; Setup tab
+has Check for Updates button; clicking it reports "you're up to
+date" via the new state-event flow.
+
+---
+
+## v0.3.17 — 2026-04-24
+
+**Reset Session preserves layout; configurable sticker pool.**
+
+The "Reset Session Stats" button on the Live tab was wiping the
+entire overlay layout — every widget position, the resize-saved
+dimensions, the per-element hidden flags. Root cause:
+state.resetSession() replaces this.#data with structuredClone(DEFAULTS),
+and DEFAULTS has no `overlay` key. Goals were the only branch
+explicitly preserved.
+
+Most likely sequence behind the v0.3.15 "the update reset his
+layout" report: Fokker had hit Reset Session some time before the
+update (it's labelled like a stat-zero button), the next debounced
+flush wrote the wiped layout to state.json, and the next server
+boot (whether after an update or any restart) loaded the empty
+positions and broadcast them to the overlay. The update wasn't the
+cause; it just made the prior wipe visible.
+
+Fix:
+  - resetSession now also preserves this.#data.overlay (positions,
+    widgets, elementVisibility, layoutMode). Schedules a flush so
+    the cleared session/leaderboard/crowd state hits disk in 300 ms
+    instead of waiting for the periodic interval.
+  - Confirm dialog added to the Reset Session Stats button. Spells
+    out exactly what gets cleared and what's preserved so a
+    misclick doesn't cost a stream's layout work.
+
+Defense in depth — atomic writes + rolling backup:
+  - flush() now writes to state.json.tmp then atomically renames to
+    state.json. Even a kill mid-write leaves state.json fully old
+    or fully new — never partially overwritten.
+  - Before the rename, the previous state.json is copied to
+    state.json.bak. On the next boot, if state.json is missing,
+    empty, or unparseable, #loadInitial() falls back to the .bak.
+  - The initial load logic was inlined; it's now #loadInitial()
+    which iterates [state.json, state.json.bak] and returns the
+    first that parses successfully.
+
+Sticker Rain — configurable pool. The rain previously always used
+"all uploaded stickers + emoji fallback". Now the spawn payload
+takes an optional `pool`:
+  - null / "*"            → all uploaded + emoji (default)
+  - "emoji"               → emoji only
+  - "uploads"             → uploaded image stickers only
+  - "prefix-"             → uploaded stickers whose filename starts
+                            with that prefix (group-by-name pattern)
+  - ["a.png","b.png","🎉"] → exactly these (filenames + raw emoji)
+
+Configure on a per-redeem or per-flow basis by adding `pool` to the
+spawnEffect payload:
+
+  "Holiday Rain": {
+    "effect": "sticker-rain",
+    "duration": 6000,
+    "pool": "holiday-"
+  }
+
+Verified: session-reset run against a state.json with seeded
+positions left positions intact AND zeroed session counters; sticker
+pool resolution returns the right counts for each of the five
+selector modes.
+
+---
+
+## v0.3.16 — 2026-04-24
+
+**Commands editor exposes allow/redeem/random sound.**
+
+Three follow-ups to the v0.3.13/14 chat-command work, all so Fokker
+can manage commands from Config → Commands without ever opening
+commands.json in a text editor.
+
+UI additions to each row:
+
+  - Allow dropdown (Broadcaster only / Mods+ / VIPs+ / Subs+ / Anyone)
+    with a clear label so the safer default is obvious. Surfaces what
+    was previously a default-deny invisible behavior.
+  - Mode radio (Fire effect | Alias a redeem) toggles between the
+    two row layouts. Effect mode shows the existing effect+sound
+    selectors; Redeem mode shows a dropdown populated from the
+    broadcaster's actual redeems.json so there's no typo risk on the
+    rewardTitle.
+  - "🎲 Random (any uploaded sound)" option in every sound dropdown,
+    mapping to sound:"*" — same wildcard the server already
+    understands (v0.3.13). Pair with effect:'play-sound' for
+    soundboard / out-of-context-style commands.
+
+play-sound added to the effect dropdown so Fokker can pick it
+without typing.
+
+Server-side: when a command is rejected by the allow gate, log it at
+INFO instead of silently returning. "Why isn't !bub working" now
+takes a look at server.log instead of a code dive — the log line
+names the trigger, the user, and the required tier. Cuts the
+diagnostic loop from "stare at code" to "scroll log".
+
+renderCommandsConfig now fetches /api/redeems alongside
+/api/commands so the redeem dropdown is always populated against the
+current real redeem set.
+
+Verified with a Playwright probe: all 4 of Fokker's existing
+commands render with the allow dropdown defaulted to broadcaster,
+mode radio set to "Fire effect", redeem dropdown present (hidden
+until mode flips), random-sound option present in the sound select.
+
+Practical consequence: Fokker can fix !bub and !pop in two clicks
+each — Config → Commands → set allow to "Anyone" → Save. No
+file editing required.
+
+---
+
+## v0.3.15 — 2026-04-24
+
+**Mascot ships as .gif so it overwrites existing placeholders.**
+
+The v0.3.14 mascot replacement landed as .webp, banking on the
+overlay's extension-fallback chain (.gif → .png → .webp → .jpg) to
+find the new file. That works for fresh installs, but it broke the
+update path — NSIS only OVERWRITES files, never DELETES — so existing
+installs kept the stale yellow-star idle.gif on disk and the overlay
+found that one first.
+
+Also missed: the state-swap code at overlay.html:1363 hardcodes
+${state}.gif, not the fallback chain. Even if a viewer's overlay
+loaded the .webp mascot at boot, the first energy-state change would
+swap to the .gif (still the star).
+
+Fix: convert the four mascot states from .webp back to .gif
+(static, 256-color, alpha-on-transparent). Same source image,
+correct extension. NSIS extraction now overwrites Fokker's stale
+star idle.gif/active.gif/hype.gif/explosion.gif with the real
+mascot — no manual cleanup required, no need to teach the updater
+about deletions.
+
+Asset-integrity stays clean (4 valid GIF files; the only remaining
+failures are the unfilled audio placeholders).
+
+---
+
+## v0.3.14 — 2026-04-24
+
+**Command permission gates + FokkerPop mascot replaces star.**
+
+Two themed changes that ship together — both follow up on yesterday's
+v0.3.12/13 chat-command + redeem-alias work and the v0.3.7 branding
+pass.
+
+Permission gates on chat commands:
+
+  - New `allow` field on commands.json entries: "anyone",
+    "subscriber", "vip", "mod" (each tier implicitly grants the
+    higher ones — mod includes vip+sub).
+  - Default-deny: commands without an explicit `allow` are now
+    broadcaster-only. This is the safer default — any !command Fokker
+    pastes from the example file or copies from a tutorial doesn't
+    accidentally hand viewers a free trigger that would otherwise
+    cost channel points.
+  - The chat event payload already carries Twitch's badges array
+    (eventsub.js:47), so the gate reads `badges.set_id` directly.
+  - Dashboard simulator events (`source: 'dashboard'`) are treated
+    as broadcaster — Fokker can always test his own commands from
+    the Test Effects page.
+  - Updated commands.example.json: !bub and !pop demonstrate
+    "allow":"anyone" (free for viewers); !coin and !yay show
+    subscriber / vip gating; !ooc and !bigbub default to broadcaster
+    so they don't bypass channel point costs by accident.
+
+Existing commands (without `allow` set) become broadcaster-only on
+this release. Fokker needs to add `"allow": "anyone"` to !bub and
+!pop in his commands.json to keep them free for viewers.
+
+Mascot upgrade:
+
+  - characters/lilfokkermascot/{idle,active,hype,explosion}.gif were
+    placeholder yellow stars (PNG-as-GIF, asset-integrity flagged
+    them as warnings since v0.2.106). Replaced with the real
+    LilFokker mascot (extracted from build-assets/fokkerpop.ico's
+    256×256 layer — same image as the launcher icon and the
+    sidebar-logo mascot face).
+  - Saved as .webp so the existing extension-fallback chain
+    (.gif → .png → .webp → .jpg, added in v0.2.99) finds them.
+  - Added image/webp to the server MIME table so browsers get the
+    right content-type instead of application/octet-stream.
+
+Asset integrity: 4 PNG-as-GIF warnings cleared; only the 4 broken
+audio placeholders (ding/follow/sub/yay) remain.
+
+Side: command cooldown logic switched from `|| 5` to `?? 5` in
+v0.3.13 so cooldown:0 actually means immediate-refire. Same deal
+applies to the permission gate — fail-closed is only triggered by
+genuinely unknown allow values.
+
+Verified with a probe matrix: 8 permission scenarios all match
+expected behavior; mascot files serve correctly at the 4 state URLs.
+
+---
+
+## v0.3.13 — 2026-04-24
+
+**Random-sound effects + play-sound (!ooc-style commands).**
+
+Adds the building blocks Fokker needs to turn !ooc into a soundboard
+that picks a random clip from his uploaded library — and lets him
+optionally constrain the pool when he wants tighter curation.
+
+Two pieces:
+
+1. Wildcard / list resolution in the sound payload field. Anywhere a
+   sound is configured (commands.json, redeems.json, Studio playSound
+   action), the value can now be:
+     * "filename.wav"         — fixed (existing)
+     * "*"                    — pick any uploaded sound from
+                                assets/sounds/
+     * ["a.wav","b.wav",...]  — pick from this exact list,
+                                filtered to ones still on disk
+
+   Resolution happens server-side in broadcastEffect, so by the time
+   a payload reaches an overlay it carries a real filename. The same
+   fallback to alert.wav kicks in if a list is empty after disk
+   filtering.
+
+2. New "play-sound" effect type. Sound-only — no banner, no balloon,
+   no other visual side effect. Pair with sound:"*" for the
+   classic out-of-context-button pattern:
+
+     "!ooc": { "effect": "play-sound", "sound": "*", "cooldown": 5 }
+
+   The overlay's dispatchEffect already plays p.sound in its prelude,
+   so the play-sound case is just a no-op visual that prevents the
+   "unknown effect" path from firing.
+
+Side fix: command cooldown was using `cmd.cooldown || 5`, which
+treated cooldown:0 as "use default 5s" instead of "no cooldown".
+Switched to ?? so 0 actually means immediate refire (useful for
+soundboards and testing).
+
+Verified: !ooctest fired 6× produced varied picks across the full
+sound library; !subset configured with sound:["coin.wav","dice1.wav"]
+fired 4× only ever produced coin.wav (it picked the first option
+each time in this random sample, but never wandered outside the
+allowlist).
+
+---
+
+## v0.3.12 — 2026-04-24
+
+**Chat commands can alias channel-point redeems.**
+
+Fokker tried to wire `!bub` to the BUBLOON redeem so chat-typed
+commands and channel-point redemptions would behave identically — same
+balloons, same flows, same Studio effects. The previous command schema
+only supported direct effect firing (effect/count/sound/cooldown),
+which forced him to duplicate the redeem's config in commands.json
+and watch them drift apart over time.
+
+Adds a `redeem` field to commands.json entries:
+
+  "!bub": { "redeem": "BUBLOOONS!!", "cooldown": 10 }
+
+When a user types !bub in chat, the server publishes a synthetic
+'redeem' bus event with rewardTitle: "BUBLOOONS!!" and source:
+'chat-command'. Everything downstream — redeems.json effect array,
+Studio flows triggered on type:'redeem' with that rewardTitle, the
+state.set('session.redeemCount') counter — fires identically to a
+real channel-point redemption. Single source of truth for the
+visual + audio + flow logic; the chat command is just an alias.
+
+If the named redeem doesn't exist in redeems.json, a clear warning
+goes to the log naming the offending command and the missing key
+(rewardTitle case + punctuation must match exactly).
+
+Legacy commands with `effect:` keep working — both modes coexist in
+fireCommand(). The example file demonstrates both:
+
+  "!yay":    { "effect": "confetti", "sound": "yay.wav", "cooldown": 15 },
+  "!bigbub": { "redeem": "BUBLOOONS!!", "cooldown": 10 }
+
+Verified: simulated `!testbub` over the chat event path emits
+event type=redeem source=chat-command and the balloon effect dispatch
+matches the redeem's count (10), not the legacy direct config (5).
+
+---
+
+## v0.3.11 — 2026-04-24
+
+**Layout-mode chrome no longer leaks to OBS.**
+
+Diagnosing the "the game seemed to shrink down" report — Fokker had
+Layout Mode toggled on while streaming, which made every layout-mode
+artifact paint over his game capture in the OBS source. Specifically:
+
+  - Auto-hide built-ins (timer, leaderboard, goals, combo) become
+    visible at full opacity with a 160×60 minimum bounding box, so
+    previously-clear regions over the game suddenly carry opaque
+    placeholder boxes.
+  - Dashed outlines, type-name placeholder chips, resize handles,
+    × delete badges all render on top of the game.
+
+Net effect: more pixels of the game surface are covered, which
+reads as "the game shrank to make room." The game itself never
+moves; FokkerPop never resizes anything outside its browser-source
+dimensions.
+
+Fix: live overlays (?live=1, the URL OBS uses) now ignore the
+overlay.layoutMode state entirely. The body never gets the
+layout-mode class, so none of the layout-mode CSS rules apply and
+the OBS source stays production-clean even if Fokker forgets to
+toggle Layout Mode off before going live.
+
+Drag/resize/hide editing still works as before — the dashboard
+preview iframes (Test Effects + Layout) and any plain /?demo=0 tab
+he opens for editing all receive the layout-mode state and react
+to it. Position changes from those edit surfaces broadcast to the
+live OBS overlay just like always; only the editor chrome itself
+is suppressed on the live URL.
+
+Verified with a probe: with layoutMode broadcast as true, the
+?live=1 overlay's body class is empty, .delete-handle is
+display:none, and no .draggable carries an outline. The ?demo=0
+overlay simultaneously shows all editor chrome.
+
+---
+
+## v0.3.10 — 2026-04-24
+
+**Sticker Rain uses uploads; layout-mode shape matches live.**
+
+Two visible fixes plus a small infrastructure piece for asset
+hot-reload.
+
+Sticker Rain — was hardcoded to a 16-emoji array, ignoring everything
+LilFokker had uploaded under assets/stickers/. Now:
+
+  - On overlay boot the overlay GETs /api/assets and caches the
+    sticker filename list.
+  - spawnStickerRain mixes the uploaded stickers (rendered as <img>
+    inside the .sticker container, sized via width/height in rem
+    instead of font-size) with the emoji fallback list, so streams
+    that have a few uploads still get visual variety.
+  - When a sticker file is missing entirely, the rain falls back to
+    pure emoji (preserves prior behavior on a fresh install).
+
+Layout-mode shape parity — the data-placeholder text (COUNTER /
+DICE-TRAY / MASCOT / etc.) used to render as ::before content INSIDE
+the widget with 14 px of padding. That visibly inflated each widget
+in layout mode, so a counter that read 60×30 in live read ~120×60
+in layout. Now ::before is positioned: absolute, top: -22px — it
+sits as a small purple chip ABOVE the widget, occupying zero space
+inside it. Same change applies the layout-mode outline-offset from
+4 → 0 so the dashed outline hugs the widget's actual edge instead
+of floating 4 px outside.
+
+Net result: positions and dimensions a streamer arranges in Layout
+mode match what viewers see in OBS to within a couple of pixels.
+
+Asset hot-reload — when a new file lands via /api/upload, the
+server now broadcasts {type:'assets-updated', kind} to every
+connected overlay AND dashboard. Overlays use it to refresh their
+sticker pool without needing a full reload; dashboards can hook in
+later for the same purpose (gallery refresh, etc.).
+
+---
+
+## v0.3.9 — 2026-04-24
+
+**Hide/restore any overlay element from Layout mode.**
+
+Layout mode now puts a small red × badge in the top-right corner of
+every draggable element — built-in (mascot, crowd meter, combo,
+goals, leaderboard, timer) and custom (counter, dice tray, model 3D,
+physics pit, etc.). Click it to remove that element from the live
+overlay; the slot stays in Layout mode as a red-dotted ghost with a
+green + badge so Fokker can bring it back.
+
+Wiring:
+
+  - overlay.html injects a `.delete-handle` into every `.draggable`
+    on DOMContentLoaded. renderCustomWidgets and renderGoals also
+    call the same injectDeleteHandle helper after rebuilding their
+    DOM, so widget remounts and goal rerenders don't strand the
+    badge.
+  - resetWidgetContent (overlay-widgets.js) now preserves both
+    .resize-handle AND .delete-handle through the el.innerHTML wipe
+    that 3D widget mount functions do — same bug class as v0.2.110
+    where resize handles were being eaten on re-mount.
+  - Click on the badge sends `_dashboard.element-visibility` over
+    the existing WS, with visible:false to hide and visible:true
+    to restore.
+  - Server stores the per-id map under overlay.elementVisibility.
+    visible:true entries are deleted from the map on save so
+    state.json only contains the explicitly-hidden ids — keeps the
+    file compact and easy to inspect.
+  - State broadcasts to all overlays (OBS source, dashboard preview
+    iframes); each applies/removes the .element-hidden class via the
+    new applyElementVisibility() handler.
+  - The handler is wired in BOTH the overlay-path branch AND the
+    dashboard switch in server/index.js — the badge sits in overlay
+    DOM so the message comes from the overlay's WS, which is the
+    bug I caught in the first probe (handler was only in dashboard
+    path; overlay-sent messages fell through silently).
+
+CSS makes the hidden state self-explanatory: live overlay
+display:none, layout mode shows the element ghosted at 32% opacity
+with a red dotted outline and a "HIDDEN — click × to restore"
+center badge. The × badge itself flips to a green + on hidden
+elements.
+
+State persists via the v0.3.6 debounced 300 ms flush, so hidden
+elements survive any restart, including taskkill /F from the NSIS
+updater.
+
+---
+
+## v0.3.8 — 2026-04-24
+
+**README hero with the FP Studios logo.**
+
+Landing on github.com/azraeltruthsay/FokkerPop now opens with the
+real FP Studios wordmark centered at the top instead of a plain "#
+FokkerPop" heading. Three small release badges underneath (latest
+release, total downloads, open issues) for at-a-glance repo health.
+
+Logo reused from dashboard/fps-logo.webp — no duplicate committed;
+GitHub renders it inline from the existing path. Purple (#9147FF)
+accents on the badges match the app's theme, so the repo page, the
+launcher icon, and the running dashboard read as the same product
+visually.
+
+---
+
+## v0.3.7 — 2026-04-24
+
+**Official FokkerPop branding + chime.wav.**
+
+LilFokker dropped real brand art. Replacing my purple-circle-F
+stand-in across the app:
+
+  - build-assets/fokkerpop.ico — now the mascot (ginger-bearded
+    pilot with propeller beanie + goggles, winking) on the purple
+    burst background. Multi-res .ico (16/32/48/64/128/256) generated
+    from FPS_Icon.webp, center-padded to square so the rounded
+    corners survive every size. Flows through to FokkerPop.exe (via
+    the launcher NSIS build) and the Start Menu shortcuts the
+    updater creates.
+
+  - dashboard/fps-logo.webp — served at /dashboard/fps-logo.webp
+    via the existing static route. Replaces the bare "FokkerPop" H1
+    at the top of the dashboard sidebar with the "FP Studios"
+    wordmark. Sizing: max-width 180px, centered, with the version
+    badge and nav items untouched below.
+
+Also fills one of the last broken-audio slots:
+
+  - assets/sounds/chime.wav — was a 14-byte ASCII placeholder since
+    the v0.2.99 era. Replaced with mixkit-alert-quick-chime-766
+    (same Mixkit license already declared in ATTRIBUTION.md).
+    confetti / default-misses that called playSound('chime.wav')
+    now actually play a chime.
+
+npm run test:assets now reports 4 failures, down from 5: ding.wav,
+follow.wav, sub.wav, and yay.wav are still placeholders/broken.
+Those can be filled next time Fokker drops more audio.
+
+---
+
+## v0.3.6 — 2026-04-23
+
+**State writes hit disk within 300 ms, surviving hard kills.**
+
+Fokker reported that layout positions reset on every server reboot —
+specifically, after running the NSIS updater or otherwise restarting.
+Root cause: StateStore.set() only mutated the in-memory copy and
+relied on a 5-minute periodic flush (plus one on graceful shutdown)
+to persist state.json. But:
+
+  - The NSIS updater uses `taskkill /F /IM FokkerPop.exe` to release
+    the node.exe lock before overwriting files. /F is a hard kill;
+    node's SIGTERM / process.on('exit') graceful-shutdown path does
+    not get to run, so state never flushes.
+  - Same applies to any other force-kill, crash, or stop.bat fallback
+    that couldn't reach /api/shutdown first.
+
+Net effect: anything a user did in the 5 minutes before their last
+ungraceful termination — drag a widget, resize one, change a goal,
+save widget config — stayed only in RAM and was lost.
+
+Fix: StateStore.set() (and addChatter()) now schedule a 300 ms
+debounced flush. Bursts (the 1-per-second crowd.energy drain, rapid
+leaderboard updates during a cheer storm) collapse into a single
+write. A single user action like a drag-to-position is on disk ~300
+ms after mouseup — fast enough that the NSIS updater's 1500 ms
+taskkill window can't race it.
+
+flush() itself clears the pending timer so explicit shutdown flushes
+don't double-fire. The original 5-minute setInterval stays as belt-
+and-braces.
+
+Verified: booted server with a fresh state.json, sent
+_dashboard.save-position via WebSocket, waited 1 s, then `kill -9`
+on the server process. state.json on disk contained the saved
+position. Previous behavior under the same test lost the write.
+
+---
+
+## v0.3.5 — 2026-04-23
+
+**Asset filenames with spaces round-trip cleanly.**
+
+Two spots on both ends of the pipe were string-concatenating raw
+filenames into URL paths without percent-encoding. Once any uploaded
+asset had a space (or any other URL-unsafe char) in its name, sound
+playback and the dashboard gallery silently 404'd.
+
+Fixes:
+
+  - overlay.html playSound() — now encodeURIComponent(file) when
+    building the /assets/sounds/... path. This is the critical one;
+    it's the single function every audio path eventually reaches
+    (default effect sounds, dice-tray roll sounds, Studio playSound
+    actions, chat command sounds).
+
+  - dashboard/app.js populateGallery() — the Asset Gallery's
+    <img src> lines for stickers and mascot characters now encode
+    the filename too. Without this, gallery previews broke visibly
+    on upload of any space-named image.
+
+  - server/index.js serveFile() — decodeURIComponent the incoming
+    path before resolving to disk. `new URL().pathname` leaves
+    percent-encoding intact, so a request for
+    /assets/sounds/has%20space.wav was being resolved against the
+    literal filename "has%20space.wav" which doesn't exist.
+    Decoding once at the serveFile boundary covers every static
+    route consistently (/assets, /characters, /shared, /dashboard,
+    /vendor), and paths without %-encoding are unchanged by
+    decodeURIComponent, so it's safe for all existing files.
+
+Upload path was already fine — the server stores filenames verbatim
+on disk and spaces in HTTP header values are allowed by RFC 7230.
+So any existing asset Fokker has already uploaded with a space works
+on this release without further action.
+
+Verified with a Playwright probe: upload "has space.wav" and
+"yay!.wav" via /api/upload, request them back via the URL-encoded
+path — both 200 OK, right byte count. Browser-side playSound()
+builds the correct /assets/sounds/has%20space.wav URL and the
+server returns the audio data.
+
+---
+
+## v0.3.4 — 2026-04-23
+
+**Ship a real FokkerPop.exe launcher in the zip.**
+
+Answers Fokker's "is there an EXE I can run?" directly. The install
+folder now contains a tiny FokkerPop.exe at root that he can
+double-click from Explorer, drag to the desktop, or pin to the
+taskbar like any normal Windows app.
+
+Implementation:
+
+- build-assets/fokkerpop.ico — 6-size (16/32/48/64/128/256) Windows
+  icon: purple circle (#9147FF, matching the dashboard's accent) with
+  a white "F" in the center. Generated via ImageMagick from Liberation
+  Sans Bold.
+
+- Release workflow builds FokkerPop.exe via a one-section NSIS script
+  before the zip is assembled. The launcher is configured
+  SilentInstall silent (no install UI appears at all), dispatches
+  wscript launch-hidden.vbs, and exits. Version info block populated
+  from the git tag so the Properties dialog shows the right
+  "Product version" / "File version".
+
+- FokkerPop.exe + fokkerpop.ico are copied into the zip root. The
+  zip-smoke gate asserts both are present, so shipping a build without
+  them fails the release before upload.
+
+- NSIS updater's Start Menu shortcuts now point at FokkerPop.exe
+  instead of wscript directly. Double-clicking the Start Menu entry
+  and double-clicking the exe in Explorer now do the exact same thing
+  through the exact same code path.
+
+- Post-install auto-launch also goes through FokkerPop.exe now, so
+  the single-instance guard + browser-open logic runs via one route
+  only.
+
+Both install paths converge: zip-extract users now have a visible
+FokkerPop.exe to double-click; NSIS-updater users have matching Start
+Menu shortcuts with the same icon. The launcher binary is separate
+from node\FokkerPop.exe (the renamed node runtime) — during launch
+there's a ~1-second overlap where Task Manager shows two FokkerPop.exe
+processes, then the launcher exits and only the server remains.
+
+Icon size: 370 KB. Could be further optimized but this is a one-time
+install asset so not worth squeezing.
+
+---
+
+## v0.3.3 — 2026-04-23
+
+**Lazy-mount preview iframes.**
+
+The Resources page in v0.2.112 made it visible that opening the
+dashboard always spawned two hidden overlay instances — one per
+preview iframe (Test Effects + Layout) — regardless of which tab the
+user was actually looking at. Each one claimed a WebSocket, 2 WebGL
+contexts (one for the default dice-tray + one for model-3d), and
+~25 MB of heap.
+
+Now:
+
+  - Both iframes boot at about:blank (no WebSocket, no WebGL, no node
+    on the server side).
+  - The nav chokepoint (__navigate) calls syncPreviewIframes(page):
+      * if the newly-active page owns the iframe and it isn't loaded,
+        set src = dataset.src → iframe boots its overlay
+      * if another page is active, any loaded iframe gets src =
+        'about:blank' → overlay shuts down, server notices the
+        disconnect, the Resources page drops the entry
+  - data-loaded="0"/"1" tracks the intended state so repeated
+    navigates are idempotent.
+
+Probe confirms the connection count: 0 overlays while on Live, 1
+while on Test Effects, 1 while on Layout (different one), 0 again
+after switching back to Live. Previously this held at 2 continuously
+for the lifetime of the dashboard.
+
+Side benefit: WebGL context pressure (the bug from v0.2.106) is now
+one context per 3D widget * 1 preview iframe instead of * 2. Easier
+on machines with integrated GPUs.
+
+---
+
+## v0.3.2 — 2026-04-23
+
+**Start Menu shortcuts and single-instance guard.**
+
+Fokker's answer to "how do I start the app?" is now just "open the
+Start Menu and type FokkerPop" — no more hunting for start.bat in
+Explorer, and no more worrying about whether it's already running.
+
+NSIS updater now creates three Start Menu entries in a FokkerPop
+folder every time it runs (delete + recreate, so future changes
+propagate cleanly):
+
+  - FokkerPop  — wscript.exe launch-hidden.vbs. Normal day-to-day
+    entry point. No CMD flash at all.
+  - FokkerPop (Diagnostics)  — start.bat. Same behavior as 0.3.1 for
+    troubleshooting — keeps the CMD open to show diagnostic output
+    until the hidden launch completes.
+  - Stop FokkerPop  — stop.bat. Companion for stopping without
+    opening the dashboard first.
+
+All three use node\FokkerPop.exe as their icon source so they're
+visually grouped in Start Menu results.
+
+launch-hidden.vbs rewritten as the single source of truth for the
+launch sequence — start.bat now just delegates to it after diagnostic
+checks pass. Also adds a single-instance guard via WMI:
+
+  Set procs = wmi.ExecQuery(
+    "Select ProcessId from Win32_Process Where Name = 'FokkerPop.exe'")
+  If procs.Count > 0 Then ... skip server launch ...
+
+So double-clicking any FokkerPop shortcut when the server is already
+running just opens a new dashboard tab instead of spawning a doomed
+second node process that silently loses the port race.
+
+NSIS also now runs launch-hidden.vbs directly after install instead
+of start.bat — the updater already did the file copy cleanly, so the
+diagnostic checks are redundant and the CMD flash is avoidable.
+
+---
+
+## v0.3.1 — 2026-04-23
+
+**Toggle widget/type labels in Layout & Test previews.**
+
+Adds two toggles for the preview iframes so Fokker can see his overlay
+the way a viewer will, without having to remember OBS's live URL
+swap.
+
+Layout tab gets both toggles:
+  - "Type placeholders" — the uppercase COUNTER / DICE-TRAY / MODEL-3D
+    etc. overlays that layout-mode stamps on each widget via
+    ::before content: attr(data-placeholder). Useful while placing
+    widgets, clutter once they're placed.
+  - "Widget labels" — the .cw-label row ("SUBS TODAY", "LATEST", etc.)
+    that sits above each widget's value.
+
+Test Effects tab gets only the widget-labels toggle (type placeholders
+only render when layout-mode is on, which Test Effects isn't).
+
+Wiring:
+  - overlay.html adds two body-level CSS classes
+    (`hide-type-labels`, `hide-widget-labels`) with !important rules
+    that short-circuit the existing selectors.
+  - Parent dashboard sends `fokker.label-visibility` postMessage to the
+    iframe; overlay toggles classes accordingly.
+  - Overlay emits `fokker.overlay-ready` on script-boot so the parent
+    can reapply prefs after an iframe reload without racing onload.
+  - Prefs stored per-scope ('layout' / 'effects') in localStorage at
+    key `fokker.labelPrefs`, so they survive reloads.
+  - Preview-only by design — the OBS live URL (`?live=1`) never
+    receives these messages from any dashboard, so viewers still see
+    widget labels exactly as configured.
+
+Probe confirms: flipping the Layout tab's type checkbox off changes
+the preview iframe's body class and kills the ::before display
+live; flipping widget-labels off hides every .cw-label in the iframe.
+localStorage entry persists.
+
+---
+
+## v0.3.0 — 2026-04-23
+
+**Hide the CMD, add Stop button, own named process.**
+
+Minor bump — this is a visible shift in how FokkerPop behaves at
+startup. Fokker's existing widgets/goals/flows/credentials are
+preserved (gitignored user-data invariant still holds), but the launch
+experience changes noticeably enough to warrant the jump from 0.2.x.
+
+What's new:
+
+launch-hidden.vbs — WScript wrapper that Runs `node\FokkerPop.exe
+server/index.js` with window style 0 (SW_HIDE) and detach mode, so no
+CMD or console window appears at all. Validates that the node exe and
+entry script exist first and shows a MessageBox if not.
+
+start.bat — after the existing diagnostic checks pass, now dispatches
+the VBS wrapper, waits 2 seconds for the port to bind, opens the
+dashboard in the default browser, and exits itself. Net effect:
+Fokker double-clicks the icon, sees the dashboard, no persistent CMD.
+
+stop.bat — double-click companion. Tries POST /api/shutdown first for
+graceful flush, falls back to taskkill /F /IM FokkerPop.exe /T so it
+works even if the server is hung.
+
+Server-side graceful stop:
+  - POST /api/shutdown HTTP endpoint, bound to 127.0.0.1 by the
+    existing listen() so only local processes reach it.
+  - _dashboard.shutdown WebSocket message for the in-app button.
+  - Both route through the existing shutdown() function that broadcasts
+    _system.shutdown, flushes state.json, disconnects Twitch/OBS, and
+    httpServer.close() → process.exit(0).
+
+Dashboard:
+  - New red "Stop FokkerPop" card at the bottom of the Setup page with
+    a confirm dialog (different wording if OBS is currently streaming
+    so Fokker doesn't accidentally cut mid-stream).
+  - On click, fires _dashboard.shutdown and shows an in-banner message
+    explaining how to restart.
+
+Packaging:
+  - Release workflow copies start.bat + stop.bat + launch-hidden.vbs
+    into the Windows zip (previously start.bat only).
+  - Zip-smoke gate now asserts all three are present.
+
+Task Manager attribution: because node is still named FokkerPop.exe
+(renamed in the NSIS packaging step since v0.2.x), the process shows
+up cleanly under that name. Combined with the Resources page from
+v0.2.112, Fokker can now track usage without hunting through Edge
+subprocesses.
+
+---
+
+## v0.2.112 — 2026-04-23
+
+**Resources page — live server + per-overlay metrics.**
+
+Fokker asked for a way to see FokkerPop's resource usage without
+hunting for the right subprocess in Edge's Task Manager sprawl. New
+Resources tab in the dashboard shows:
+
+Summary row (colour-coded):
+  - Total footprint (server RSS + sum of overlay heap samples)
+  - Server CPU %
+  - Avg overlay FPS
+  - Events/sec through the bus
+
+Server card:
+  - RSS, heap used/total, external, CPU%, uptime
+  - Node version, platform, PID, FokkerPop version
+
+Per-overlay cards, one per connected overlay:
+  - Auto-classified ("OBS browser source" for ?live=1, "Dashboard
+    preview iframe" for ?demo=0, "Ad-hoc overlay tab" otherwise)
+  - FPS (coloured red < 30, orange < 55, green otherwise)
+  - JS heap used + %-of-limit
+  - Widget count + breakdown by type (e.g. "1× counter, 1× physics-pit,
+    1× dice-tray, 1× model-3d")
+  - Viewport dimensions
+
+Wiring:
+  - server/index.js samples every 2 s via setInterval, measures
+    process.memoryUsage() and a process.cpuUsage() delta, and
+    broadcasts on a new `resources` state path. Cleans up
+    overlayResourceReports on ws close/error, drops stale entries
+    after 3 missed samples.
+  - overlay.html self-reports every 2 s over the existing WS with an
+    _overlay.resource-report message carrying FPS (rAF-sampled heap,
+    widget inventory, viewport, and ?live=1 flag.
+  - dashboard/app.js renderResources() keeps the last payload so
+    switching to the tab is instant; incremental updates arrive via
+    the existing handleState path.
+
+Probe confirms: dashboard + 1 overlay tab produces 3 overlay cards
+(main + Test Effects preview iframe + Layout preview iframe),
+~100 MB total footprint, 60 fps across the board.
+
+---
+
+## v0.2.111 — 2026-04-23
+
+**Release Notes tab, auto-generated from git history.**
+
+New "Release Notes" entry in the dashboard sidebar. Clicking it fetches
+/api/release-notes (served from CHANGELOG.md in the install root) and
+renders it inline — headings, bold, bullets, code, horizontal rules —
+with a tiny zero-dep markdown parser in app.js.
+
+Generation pipeline:
+
+- scripts/gen-changelog.mjs scans the git log for `Release v<semver>:`
+  commits, takes the most recent 25 unique versions, and emits a
+  structured CHANGELOG.md (title, date, body, separator per entry).
+  Strips trailing Co-Authored-By lines.
+- The release workflow runs the script right before packaging, so every
+  published zip includes up-to-date notes for itself and the previous
+  ~24 releases.
+- CHANGELOG.md is now part of the shipped zip (cp line updated in
+  release.yml), and /api/release-notes is added to the zip-smoke HTTP
+  assertions so packaging regressions get caught at the gate.
+
+Initial CHANGELOG.md committed covers v0.2.87 → v0.2.110 (24 entries,
+16 KB). Future releases extend it automatically.
+
+---
 
 ## v0.2.110 — 2026-04-23
 
@@ -36,314 +1038,3 @@ Verified via Playwright: 8 handles attach to every widget (counter,
 physics-pit, dice-tray, model-3d), E-edge cursor is ew-resize, E-drag
 of +60px persists 480x280, W-drag of -50px correctly grows width and
 shifts position left so the right edge stays pinned.
-
----
-
-## v0.2.109 — 2026-04-20
-
-**Pin user-data protection as a release-zip invariant.**
-
-Layout and other user customizations already survive updates because
-widgets.json, state.json, goals.json, redeems.json, commands.json,
-flows.json, and settings.json are all gitignored — so they never enter
-the release zip, and NSIS's SetOverwrite can't clobber them.
-
-But "already works" isn't "stays working." Adding an explicit assertion
-to the zip-smoke step in release.yml: if any of those seven files ever
-slip into a packaged zip, the release fails before it gets published,
-protecting users from silently losing their Layout / Goals / Twitch
-credentials on update.
-
-Verified: v0.2.107 zip contains none of the seven. Layout is safe.
-
----
-
-## v0.2.108 — 2026-04-20
-
-**CI gates release on real-zip boot smoke.**
-
-The release workflow now extracts the freshly-built Windows zip, boots
-the server from the extracted copy with a throwaway port, and asserts
-that /dashboard/, /shared/dice.js, /shared/semver.js, /overlay-widgets.js,
-and /vendor/three.module.min.js all respond before the zip gets uploaded.
-
-This catches the class of bug that shipped v0.2.103–106: files committed
-in git but missing from the packaged artifact. verify.yml's html + unit
-tests run against the dev tree, which always has shared/; only a test
-against the zip itself can notice when packaging drops a directory.
-
-Verified locally against the v0.2.107 zip — all 5 routes respond, server
-boots without module-resolution errors.
-
----
-
-## v0.2.107 — 2026-04-20
-
-**Include shared/ in Windows release zip.**
-
-v0.2.103 introduced shared/dice.js (imported by server/index.js and
-server/pipeline/flow-engine.js) and v0.2.102 introduced shared/semver.js
-(imported by server/update-checker.js and the dashboard). Both files are
-committed in git, but the release workflow's packaging step copied only
-server/ and dashboard/ — it never added shared/ to the Windows zip.
-
-Result: every install of v0.2.103 through v0.2.106 crashes on boot with
-ERR_MODULE_NOT_FOUND for ../shared/dice.js because the directory simply
-isn't there. Confirmed by inspecting the published v0.2.106 zip: 1487
-entries, zero under shared/.
-
-Fix is the one-word addition to release.yml:
-  cp -r server dashboard "${PKG}/"
-→ cp -r server dashboard shared "${PKG}/"
-
-Verified locally that shared/dice.js and shared/semver.js are tracked in
-git (shipped in commits 84260b7 and cc38a35 respectively).
-
----
-
-## v0.2.106 — 2026-04-20
-
-**Graceful WebGL context-exhaustion handling.**
-
-Root cause of the "dice doesn't work" symptom: Chrome caps live WebGL
-contexts at ~16 per process. Dashboard preview iframes (Test Effects,
-Layout) + the main overlay tab + an OBS browser source each run multiple
-3D widgets (dice-tray, model-3d, physics-pit-3d, hot-button-3d), which
-cumulatively exhaust the pool. When `new T.WebGLRenderer(...)` threw for
-model-3d, the uncaught rejection cascaded and the user saw dice-tray's
-"no mounted entry" warning when they clicked Roll 2d6.
-
-Two fixes:
-
-1. overlay.html now wraps every widget mount in `.catch` — physics-pit,
-   dice, model-3d, physics-pit-3d, dice-tray (already had one),
-   hot-button-3d. Each failure logs with the widget type + id so it's
-   obvious which widget died and why. No more cascading uncaught
-   rejections.
-
-2. overlay-widgets.js introduces createWebGLRenderer(T, el): a shared
-   helper that catches the context-creation throw and renders a clear
-   "3D widget unavailable" placeholder card in the widget slot, with
-   the real error message and a prompt to close tabs / remove unused
-   3D widgets. The five mount sites (mountDice, mountDiceTray,
-   mountHotButton3D, mountPhysicsPit3D, mountModel3D) all use it.
-   When the helper returns null, the mount throws a named error that
-   the .catch in overlay.html surfaces to console.
-
-Net effect for the user: one widget failing no longer kills the others.
-If model-3d can't get a context, it renders a clear explanation card,
-and the dice-tray gets its context and works normally.
-
----
-
-## v0.2.105 — 2026-04-20
-
-**Fix three.js bare-specifier import failure.**
-
-/vendor/GLTFLoader.js does `import … from 'three'` (bare specifier). Browsers
-can't resolve bare specifiers without an import map, so the module failed to
-load — any code path that touched GLTFLoader silently broke, which notably
-includes:
-
-- model-3d widgets (GLB scenes)
-- dice-tray themes with GLB meshUrls
-- anywhere else downstream that lazy-imports GLTFLoader
-
-Fix is three small changes:
-
-1. Add `<script type="importmap">` to overlay.html and dashboard/index.html
-   mapping `"three"` → `/vendor/three.module.min.js` so bare imports resolve.
-
-2. Restructure the vendor allowlist so GLTFLoader's internal relative
-   `../utils/BufferGeometryUtils.js` import resolves correctly:
-     /vendor/three/loaders/GLTFLoader.js
-     /vendor/three/utils/BufferGeometryUtils.js
-     /vendor/three/utils/SkeletonUtils.js
-   Flat /vendor/GLTFLoader.js and /vendor/BufferGeometryUtils.js aliases
-   are kept for back-compat.
-
-3. Update overlay-widgets.js's two dynamic imports to point at the new
-   /vendor/three/loaders/GLTFLoader.js path.
-
-Verified via a Playwright probe: before this change, overlay load logged
-`Failed to resolve module specifier "three"`. After the change, the error
-is gone and the dice tray still rolls cleanly for both the `dice-tray-roll`
-event and the redeem → rollDiceTray flow path.
-
----
-
-## v0.2.103 — 2026-04-20
-
-**Completion of the Fokkerpop Quality Protocol.**
-
-- Unified validation suite: HTML, Semver, Assets, Logic, and Smoke tests.
-- Robust navigation fallback system in the Dashboard.
-- Automated release gating.
-
----
-
-## v0.2.104 — 2026-04-20
-
-**Fix broken audio assets, add bubloon/firework SFX.**
-
-Replaces the 3 corrupt primary sound files that were failing silent
-playback since the v0.2.99 era, plus lays in audio for future flows:
-
-- alert.wav  → mixkit-alert-bells-echo-765 (was a 301 KB HTML download)
-- pop.wav    → mixkit-long-pop-2358        (was a 301 KB HTML download)
-- boom.wav   → mixkit-fireworks-bang-in-sky-2989 (was 301 KB HTML)
-- balloon-squeak.wav  (new) — for a planned bubloon action
-- balloon-deflate.wav (new) — ditto
-- firework-alt.wav     (new) — alternate firework texture
-- firework-whistle.wav (new) — whistle firework variant
-
-All six are Mixkit sounds under the Mixkit Sound Effects Free License
-(commercial + personal use, attribution not required). Originals are
-listed in assets/sounds/ATTRIBUTION.md for traceability.
-
-Still broken (user is sourcing replacements): chime.wav, ding.wav,
-follow.wav, sub.wav, yay.wav. The asset integrity check remains
-advisory in CI until those are replaced.
-
-Also: tmp_assets/ is now gitignored so staged-but-uncommitted audio
-drops don't accidentally get committed to the repo.
-
----
-
-## v0.2.102 — 2026-04-20
-
-**Restore dashboard tabs and fix false UPDATE FAILED banner.**
-
-- dashboard/index.html: the Assets-tab extraction in v0.2.99 dropped the
-  closing </div> for the Visual Effects/Alerts/Custom Alert card, leaving
-  #page-effects structurally unclosed. Every subsequent page (Assets,
-  Goals, Layout, Config, Studio, Log, Setup) was nested inside it, so
-  sidebar clicks toggled .active on hidden descendants and nothing
-  rendered. Added the missing close tag so each .page is a sibling again.
-
-- dashboard/app.js: setVersion()'s "are you on the latest?" guard used a
-  string compare (v < '0.2.49'), which flipped once any component crossed
-  99 — "0.2.100" < "0.2.49" is true lexicographically. Replaced with a
-  numeric per-component compare so 0.2.100+ stops triggering the false
-  "UPDATE FAILED" banner. (server/update-checker.js already used parseInt,
-  so downloads were fine; this was purely a dashboard false alarm.)
-
----
-
-## v0.2.101 — 2026-04-20
-
-**Fix Dashboard navigation and blank tabs.**
-
-- Exposed renderWidgetList, renderConfigEditors, and populateSimulatorRedeems to the window object.
-- Updated navigation logic with try-catch blocks to prevent single-page errors from breaking the entire dashboard.
-- Ensured Layout and Config pages refresh their content immediately on tab selection.
-
----
-
-## v0.2.100 — 2026-04-20
-
-**Fix Assets tab blank issue.**
-
-- Fixed Assets tab by exposing populateGallery to window and calling it in the navigation logic.
-- Added safety check to populateGallery to handle async asset loading.
-- Centralized all media management in the new tab with improved sound testing UI.
-
----
-
-## v0.2.99 — 2026-04-20
-
-**Assets Tab and Mascot Visuals.**
-
-- Dedicated Assets tab: Centralized media management with its own navigation entry.
-- Enhanced Sound Testing: Gallery sounds now have per-item volume sliders and Test buttons.
-- Mascot Visual Fixes: Replaced broken HTML-as-GIF files with valid star placeholders.
-- Robust Asset Loading: Added intelligent extension fallback (.gif -> .png -> .webp -> .jpg) for mascots.
-
----
-
-## v0.2.98 — 2026-04-20
-
-**Mascot layout placeholder.**
-
-- Added data-placeholder to character-wrap so the mascot is visible and grabbable in Dashboard Layout mode even if the image hasn't loaded.
-
----
-
-## v0.2.97 — 2026-04-20
-
-**Dice sync and percentile improvements.**
-
-- Multi-Overlay Sync: Implemented Roll ID system to gate dice results, ensuring only the first result from multiple active overlays is processed.
-- D100 Percentile: Updated d100 rolls to use Red (Ruby) Tens and Blue (Sapphire) Units. Results are now correctly summed as percentiles (1-100) and visually synced.
-- Automated Chat Replies: FokkerPop now authoritatively replies to Twitch chat for tray-based rolls.
-- Precision Settle: Tightened physics thresholds and increased dwell time for better accuracy on rounder dice like the D20.
-- Bug Fixes: Fixed isTest propagation and expanded d100 support to Studio flows.
-
----
-
-## v0.2.96 — 2026-04-19
-
-**Roll for Pairs redeem. Rolls 2D6 and reacts to any matching pair (not just boxcars or snake eyes) — a balloon burst + yay.wav on a pair, a single chiming balloon on a miss. Pair probability is 6/36 (~17%), landing between the 1-in-36 boxcars/snake-eyes redeems and the 1-in-20 D20 crits. Implemented with a template-evaluated match node (field expression: {{ payload.dice[0].result === payload.dice[1].result ? 'pair' : 'none' }}) which doubles as a working example of the Studio engine's full JS expression support.**
-
-
----
-
-## v0.2.95 — 2026-04-19
-
-**Roll 6s! and Roll 1s! are now proper 2D6 rolls — Roll 6s! looks for boxcars (sum=12), Roll 1s! looks for snake eyes (sum=2). Plural reward titles now actually reflect plural dice. Misses still take the default branch so every roll gets a reaction.**
-
-
----
-
-## v0.2.94 — 2026-04-19
-
-**Consolation branches on the dice-result flows. Roll 6s!, Roll 1s!, and D20 Roll of Fate's result flows now switch from a pass-or-die filter to a match node with a default port, so a miss gets its own effect instead of silence. Roll 6s! miss → short sticker-rain + ding; Roll 1s! miss → a couple of chiming balloons; Roll for Luck rolls 2–19 → three balloons + chime, while crit (20) and fumble (1) keep their original payoffs.**
-
-
----
-
-## v0.2.93 — 2026-04-19
-
-**Glass-box the sound and the dice redeems. Studio's spawnEffect action now has a structured Sound dropdown + volume slider that write into payload.sound / payload.vol, so Fokker no longer has to edit raw JSON to change an effect's sound. rollDiceTray gains an optional Tag field that travels all the way through the bus (dice-tray-roll → widget → overlay → dice-tray.rolled), so follow-up flows can filter on payload.tag to react only to their own rolls. Roll 6s!, Roll 1s!, and Roll for Luck redeems are now Studio-handled with real 3D dice-tray rolls instead of static fireworks/confetti: each redeem fires a rollDiceTray with a distinct tag, and a paired result flow reacts on the settled sum.**
-
-
----
-
-## v0.2.92 — 2026-04-19
-
-**Ship three real dice-roll sounds (dice1/dice2/dice3.wav) sourced from SoundBible under CC-BY 3.0, with attribution recorded in assets/sounds/ATTRIBUTION.md. Dice widget + dice-tray widget now expose a "roll sound" dropdown in the dashboard so Fokker can pick any file under assets/sounds/ without editing JSON, and the default fallback moves from coin.wav to dice1.wav since we now actually have proper dice audio.**
-
-
----
-
-## v0.2.91 — 2026-04-19
-
-**Dice size default bumped from 0.45 → 0.55 (about 50% bigger on-screen area) — the old value was sized for a demo and read as pinched once the new materials and UV remap landed. Custom-colour theme: the theme dropdown now offers "custom" alongside the seven canvas presets, and picking it reveals face-colour + number-colour pickers plus metalness / roughness sliders so Fokker can dial in any palette without shipping a full image theme. Custom theme still gets the etched bump map and clearcoat.**
-
-
----
-
-## v0.2.90 — 2026-04-19
-
-**Dial back dice clearcoat a notch — clearcoat strength 0.75 → 0.45 and clearcoatRoughness 0.18 → 0.3 so the polished-resin sheen reads as subtle rather than showroom-fresh.**
-
-
----
-
-## v0.2.89 — 2026-04-19
-
-**Realistic dice — polished, engraved, and properly sized. Materials upgrade to MeshPhysicalMaterial with clearcoat + a PMREM-prefiltered procedural environment map so gold, silver, and obsidian themes pick up real metallic highlights instead of flat shading. Per-face UV remapping centers each face's texture on the face's actual geometry, and the glyph font scales adaptively by face shape (D20 triangle, D6 square, D12 pentagon, D10 kite), so numbers no longer look tiny on triangular faces or bulge on kites. A grayscale bump map carves the numerals (and pips) into the surface as true recessed engraving — paired with the clearcoat it reads as classic etched-and-inked resin dice.**
-
-
----
-
-## v0.2.88 — 2026-04-19
-
-**Dice tray readability + chat rolling. Camera tilts steeper toward the top face so settled numbers are actually visible, face textures doubled to 256px with bolder outlined glyphs and underlined 6/9, and a post-settle text overlay spells out the sum even when a die lands at a weird angle. Custom Dice Roll picker is now "X of Y" — pick a count (1–5) and a type (D4/D6/D8/D10/D12/D20/D100), where D100 rolls as 2× D10 percentile. Chat dice roller ships: viewers typing !r / !roll / /r / /roll <spec> (e.g. 2d6, 1d20+2d6, 1d100) roll on the 3D tray when the sides are renderable; otherwise the server rolls and posts the result back to Twitch chat.**
-
-
----
-
-## v0.2.87 — 2026-04-19
-
-**Hotfix — three.js 3D widgets were silently failing to mount because three.module.min.js's sibling three.core.min.js wasn't in the vendor allowlist, so the import 404'd and every dice / physics-pit-3d / model-3d / hot-button-3d widget dropped. Also upgrades the D20 Roll of Fate flow to roll on the 3D dice tray and adds a companion crit/fail flow triggered off dice-tray.rolled.**
