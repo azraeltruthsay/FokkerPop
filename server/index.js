@@ -46,9 +46,35 @@ function fireCommand(text, event) {
   const now = Date.now();
   const last = commandCooldowns.get(text) ?? 0;
   if (now - last < (cmd.cooldown || 5) * 1000) return;
-
   commandCooldowns.set(text, now);
-  broadcastEffect(cmd.effect, { ...cmd }, event.isTest);
+
+  // Mode 1: trigger a redeem flow by name. Publishes the same kind of
+  // 'redeem' event a real channel-point redemption would, so anything
+  // wired to the redeem (redeems.json effects, Studio flows triggered
+  // on type:'redeem' with that rewardTitle) fires identically. Lets
+  // LilFokker make a chat command a true alias for a redeem instead
+  // of duplicating the effect config.
+  if (cmd.redeem) {
+    if (!redeems[cmd.redeem]) {
+      log.warn(`Chat command "${text.trim()}" references unknown redeem "${cmd.redeem}". Check redeems.json for the exact title (case + punctuation count).`);
+      return;
+    }
+    bus.publish({
+      source: 'chat-command',
+      type:   'redeem',
+      payload: {
+        user:        event.payload?.user,
+        rewardTitle: cmd.redeem,
+      },
+      isTest: event.isTest,
+    });
+    return;
+  }
+
+  // Mode 2 (legacy): fire an effect directly. Existing commands keep working.
+  if (cmd.effect) {
+    broadcastEffect(cmd.effect, { ...cmd }, event.isTest);
+  }
 }
 
 // Chat dice roller. Responds to `!r`, `!roll`, `/r`, `/roll` followed by a

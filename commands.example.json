@@ -1,8 +1,11 @@
 {
-  "!pop": { "effect": "firework-salvo", "count": 2, "sound": "boom.wav", "cooldown": 10 },
-  "!bub": { "effect": "balloon",        "count": 5, "sound": "pop.wav",  "cooldown": 10 },
-  "!coin": { "effect": "balloon",       "count": 1, "sound": "coin.wav", "emoji": "🪙", "cooldown": 5 },
-  "!yay":  { "effect": "confetti",      "sound": "yay.wav", "cooldown": 15 },
-  
+  "!pop":   { "effect": "firework-salvo", "count": 2, "sound": "boom.wav", "cooldown": 10 },
+  "!bub":   { "effect": "balloon",        "count": 5, "sound": "pop.wav",  "cooldown": 10 },
+  "!coin":  { "effect": "balloon",        "count": 1, "sound": "coin.wav", "emoji": "🪙", "cooldown": 5 },
+  "!yay":   { "effect": "confetti",       "sound": "yay.wav", "cooldown": 15 },
+
+  "_comment_redeem_alias": "Use 'redeem' instead of 'effect' to make a chat command fire the same flow a real channel-point redemption would. The value must EXACTLY match the rewardTitle key in redeems.json (case, spaces, exclamation marks all count).",
+  "!bigbub": { "redeem": "BUBLOOONS!!", "cooldown": 10 },
+
   "_comment": "Add more chat commands here. Key = the exact command starting with !."
 }
