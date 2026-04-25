@@ -71,6 +71,31 @@ animations, sound levels, layout drift.
 - Update a clean test install via the Auto-Updater EXE — confirm it
   overwrites cleanly, restarts, and the new version badge shows.
 
+## Importing from PolyPop
+
+If a streamer is migrating from PolyPop and wants their existing channel-point
+redeems brought over:
+
+```
+node scripts/import-polypop.mjs path/to/project.pop --out-dir .
+```
+
+Produces three files (alongside, not overwriting, the real config):
+
+- `redeems.from-polypop.json` — channel-point redeem titles mapped to FokkerPop
+  effects via name heuristics (`Roll → dice-tray-roll`, `Bub/Pop → balloon`,
+  etc.). Review each and merge into `redeems.json`.
+- `commands.from-polypop.json` — `!chat` aliases for each redeem,
+  broadcaster-only by default. Merge into `commands.json` and set
+  `"allow":"anyone"` on the ones viewers can fire.
+- `audio-files.txt` — names of Audio Clip sources the .pop referenced. Drop
+  matching files into `assets/sounds/` from PolyPop's
+  `%USERPROFILE%\Documents\PolyPop\Sounds\` folder.
+
+Limits: scenes, 3D models, animations, and PolyPop's Action Sequence graph
+don't map onto FokkerPop's data model. The importer covers what's 1:1
+(redeem titles + audio file hints) and leaves the rest.
+
 ## If something breaks
 
 Add a regression test under `test/` for whatever slipped through, so
