@@ -1761,6 +1761,10 @@ function dispatchEffect(effect, p) {
   if (heavyEffects.includes(effect)) triggerCharacterReaction();
 
   switch (effect) {
+    case 'play-sound':       /* the sound was already played by dispatchEffect's
+                                  prelude — this case exists so the effect type
+                                  is "real" and doesn't fall through to a no-op
+                                  console warn. Used by !ooc and similar. */ break;
     case 'kaprekar-routine': spawnKaprekar(p); break;
     case 'dice-roll':       spawnDiceRoll(p.result, p.sides ?? 20, p.user); break;
     case 'start-timer':     startTimer(p.seconds ?? 60, p.label); break;

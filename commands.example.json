@@ -7,5 +7,8 @@
   "_comment_redeem_alias": "Use 'redeem' instead of 'effect' to make a chat command fire the same flow a real channel-point redemption would. The value must EXACTLY match the rewardTitle key in redeems.json (case, spaces, exclamation marks all count).",
   "!bigbub": { "redeem": "BUBLOOONS!!", "cooldown": 10 },
 
+  "_comment_random_sound": "sound:'*' picks any uploaded sound from assets/sounds/. sound:['a.wav','b.wav'] picks from that exact list. Pair with effect:'play-sound' to skip the visual entirely (useful for soundboards / 'out of context' style commands).",
+  "!ooc": { "effect": "play-sound", "sound": "*", "cooldown": 5 },
+
   "_comment": "Add more chat commands here. Key = the exact command starting with !."
 }

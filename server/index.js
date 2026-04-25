@@ -45,7 +45,8 @@ function fireCommand(text, event) {
 
   const now = Date.now();
   const last = commandCooldowns.get(text) ?? 0;
-  if (now - last < (cmd.cooldown || 5) * 1000) return;
+  // ?? not || so cooldown:0 means "no cooldown" instead of "use default 5s".
+  if (now - last < (cmd.cooldown ?? 5) * 1000) return;
   commandCooldowns.set(text, now);
 
   // Mode 1: trigger a redeem flow by name. Publishes the same kind of
@@ -180,6 +181,23 @@ rebuildSoundSet();
 const FALLBACK_SOUND = 'alert.wav';
 
 function broadcastEffect(effect, payload = {}, isTest = false) {
+  // Random-sound resolution.
+  //   sound: "*"           → pick any uploaded sound
+  //   sound: ["a","b","c"] → pick from this exact list (filtered to ones on disk)
+  // After this block payload.sound is a real filename or undefined.
+  if (payload?.sound === '*' || Array.isArray(payload?.sound)) {
+    const pool = Array.isArray(payload.sound)
+      ? payload.sound.filter(s => availableSounds.has(s))
+      : [...availableSounds];
+    if (pool.length) {
+      const pick = pool[Math.floor(Math.random() * pool.length)];
+      payload = { ...payload, sound: pick };
+      log.debug(`Random sound for "${effect}": ${pool.length} candidate(s) → ${pick}`);
+    } else {
+      log.warn(`Effect "${effect}" requested random sound but no candidates exist on disk.`);
+      payload = { ...payload, sound: undefined };
+    }
+  }
   if (payload?.sound && !availableSounds.has(payload.sound)) {
     log.debug(`Sound "${payload.sound}" not found on disk — substituting ${FALLBACK_SOUND}.`);
     payload = { ...payload, sound: availableSounds.has(FALLBACK_SOUND) ? FALLBACK_SOUND : undefined };
