@@ -929,9 +929,10 @@ wss.on('connection', (ws, req) => {
         send(ws, { type: 'state', path: 'leaderboard',  value: state.get('leaderboard')   });
         send(ws, { type: 'state', path: 'session',      value: state.get('session')        });
         send(ws, { type: 'state', path: 'chatters',     value: state.get('chatters') ?? [] });
-        send(ws, { type: 'state', path: 'overlay.positions',  value: state.get('overlay.positions') });
-        send(ws, { type: 'state', path: 'overlay.layoutMode', value: layoutMode });
-        send(ws, { type: 'state', path: 'overlay.widgets',    value: widgets });
+        send(ws, { type: 'state', path: 'overlay.positions',         value: state.get('overlay.positions') });
+        send(ws, { type: 'state', path: 'overlay.elementVisibility', value: state.get('overlay.elementVisibility') ?? {} });
+        send(ws, { type: 'state', path: 'overlay.layoutMode',        value: layoutMode });
+        send(ws, { type: 'state', path: 'overlay.widgets',           value: widgets });
       }
       return;
     }
@@ -993,6 +994,15 @@ wss.on('connection', (ws, req) => {
         positions[msg.id] = { x: msg.x, y: msg.y };
         state.set('overlay.positions', positions);
         broadcastState('overlay.positions', positions);
+      }
+      if (msg.type === '_dashboard.element-visibility') {
+        if (typeof msg.id === 'string' && msg.id) {
+          const map = { ...(state.get('overlay.elementVisibility') ?? {}) };
+          if (msg.visible === false) map[msg.id] = false;
+          else                       delete map[msg.id];
+          state.set('overlay.elementVisibility', map);
+          broadcastState('overlay.elementVisibility', map);
+        }
       }
       if (msg.type === '_overlay.resource-report') {
         // Overlay-side self-report: FPS, heap, widget inventory. Stored by ws
@@ -1073,6 +1083,21 @@ wss.on('connection', (ws, req) => {
         positions[msg.id] = { x: msg.x, y: msg.y };
         state.set('overlay.positions', positions);
         broadcastState('overlay.positions', positions);
+        break;
+      }
+      case '_dashboard.element-visibility': {
+        // Per-element hide/show. Stored as { [id]: false } for elements the
+        // user has explicitly hidden; visible-true is implicit (the absence
+        // of an entry) so the file stays compact and easy to inspect.
+        if (typeof msg.id !== 'string' || !msg.id) break;
+        const map = { ...(state.get('overlay.elementVisibility') ?? {}) };
+        if (msg.visible === false) {
+          map[msg.id] = false;
+        } else {
+          delete map[msg.id];
+        }
+        state.set('overlay.elementVisibility', map);
+        broadcastState('overlay.elementVisibility', map);
         break;
       }
       case '_dashboard.save-size': {

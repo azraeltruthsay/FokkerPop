@@ -14,9 +14,12 @@ async function loadThree() {
 // clean slate call this instead of `el.innerHTML = ''` so user-initiated
 // resize still works after the widget re-mounts.
 function resetWidgetContent(el) {
-  const handles = [...el.querySelectorAll(':scope > .resize-handle')];
+  // Preserve any layout-mode chrome the overlay attached: 8 resize grips and
+  // the per-element × hide/restore badge. Anything else inside the widget is
+  // owned by the mount function and gets rebuilt fresh.
+  const preserve = [...el.querySelectorAll(':scope > .resize-handle, :scope > .delete-handle')];
   el.innerHTML = '';
-  for (const h of handles) el.appendChild(h);
+  for (const h of preserve) el.appendChild(h);
 }
 
 // Try to construct a WebGLRenderer. If the browser refuses (typically WebGL

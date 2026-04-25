@@ -216,6 +216,71 @@ body.layout-mode .draggable[data-placeholder]::before {
 body.hide-type-labels.layout-mode .draggable[data-placeholder]::before { display: none !important; }
 body.hide-widget-labels .cw-label { display: none !important; }
 
+/* Per-element hide/show. Default (live overlay): hidden elements are
+   display:none. In layout mode they're shown ghosted with a red dotted
+   outline + "HIDDEN — click × to restore" badge so Fokker can find them
+   and bring them back. */
+.element-hidden { display: none !important; }
+body.layout-mode .element-hidden {
+  display: block !important;
+  opacity: 0.32 !important;
+  outline-color: var(--red, #FF6B6B) !important;
+  outline-style: dotted !important;
+}
+body.layout-mode .element-hidden::after {
+  content: 'HIDDEN — click × to restore';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: rgba(255,107,107,0.92);
+  color: #fff;
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+  z-index: 1003;
+  pointer-events: none;
+  letter-spacing: 0.05em;
+}
+
+/* Delete badge — only visible in layout mode. Sits outside the element's
+   top-right corner so it doesn't overlap the NE resize handle. */
+.delete-handle { display: none; }
+body.layout-mode .delete-handle {
+  display: flex;
+  position: absolute;
+  top: -10px;
+  right: -10px;
+  width: 22px;
+  height: 22px;
+  background: var(--red, #FF6B6B);
+  color: #fff;
+  border-radius: 50%;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  z-index: 1004;
+  font-weight: 900;
+  font-size: 16px;
+  line-height: 1;
+  border: 2px solid #0b0b12;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.55);
+  user-select: none;
+  font-family: system-ui, sans-serif;
+}
+body.layout-mode .delete-handle:hover { transform: scale(1.15); transition: transform 0.1s; }
+/* On hidden elements, the badge changes to a green "+" so the affordance
+   is clearly "click to bring it back". */
+body.layout-mode .element-hidden .delete-handle {
+  background: var(--green, #6BCB77);
+  z-index: 1005;
+}
+body.layout-mode .element-hidden .delete-handle::before { content: '+'; }
+body.layout-mode .element-hidden .delete-handle { font-size: 0; }
+body.layout-mode .element-hidden .delete-handle::before { font-size: 18px; line-height: 1; }
+
 /* Resize handles — 4 edges + 4 corners, visible only in layout mode.
    Each handle's ::cursor matches its drag direction so the mouse pointer
    tells the user exactly what dragging from that spot will do.
@@ -1322,7 +1387,11 @@ const goalEls = new Map();
 function renderGoals(goals) {
   if (!goals?.length) return;
   const active = goals.filter(g => g.active);
+  // Preserve the layout-mode delete badge (and any other persistent overlays)
+  // so re-rendering goals doesn't kill the × control.
+  const handle = $goals.querySelector(':scope > .delete-handle');
   $goals.innerHTML = '';
+  if (handle) $goals.appendChild(handle);
   goalEls.clear();
   for (const g of active) {
     const el = document.createElement('div');
@@ -1694,6 +1763,9 @@ function handleState(path, value) {
     case 'overlay.positions':
       applyPositions(value);
       break;
+    case 'overlay.elementVisibility':
+      applyElementVisibility(value || {});
+      break;
     case 'crowd.energy':
       state.crowdEnergy = value;
       setCrowdEnergy(value);
@@ -1903,6 +1975,8 @@ function renderCustomWidgets() {
       h.title = 'Drag to resize';
       el.appendChild(h);
     }
+    // Hide-element badge (× to hide, + to restore) — also CSS-gated to layout mode.
+    injectDeleteHandle(el);
 
     host.appendChild(el);
   }
@@ -2019,9 +2093,18 @@ let resizeStart  = null;   // { mouseX, mouseY, width, height }
 window.addEventListener('mousedown', (e) => {
   if (!layoutMode) return;
 
-  // Resize takes precedence — its handles live inside .draggable, so without
-  // this guard a mousedown on a handle would start a drag too. Direction
-  // lives in data-resize-dir: one of n,s,e,w,ne,nw,se,sw.
+  // Delete badge takes priority over both drag and resize. We only call
+  // stopPropagation/preventDefault here; the visibility flip happens in
+  // the click handler below, which only fires once mouseup completes.
+  if (e.target.classList?.contains('delete-handle')) {
+    e.stopPropagation();
+    e.preventDefault();
+    return;
+  }
+
+  // Resize takes precedence over drag — its handles live inside .draggable,
+  // so without this guard a mousedown on a handle would start a drag too.
+  // Direction lives in data-resize-dir: one of n,s,e,w,ne,nw,se,sw.
   if (e.target.classList?.contains('resize-handle')) {
     const target = e.target.closest('.draggable');
     if (!target) return;
@@ -2143,6 +2226,66 @@ window.addEventListener('mouseup', () => {
   dragTarget.style.transition = '';
   dragTarget = null;
 });
+
+// ── Per-element hide/show ───────────────────────────────────────────────────
+// Click the red × badge in layout mode to hide an element from the live
+// overlay; click the green + on its ghost to bring it back. Server stores
+// the map under overlay.elementVisibility and broadcasts on change.
+function injectDeleteHandle(el) {
+  if (!el || el.querySelector(':scope > .delete-handle')) return;
+  const btn = document.createElement('div');
+  btn.className = 'delete-handle';
+  btn.title = 'Hide this element from your overlay (click again on the ghost in Layout mode to bring it back)';
+  btn.textContent = '×';
+  el.appendChild(btn);
+}
+
+// Inject on every existing draggable at boot. Custom widgets get their
+// handles via renderCustomWidgets too, but this catches the built-ins
+// (mascot, timer, leaderboard, goals, combo, crowd meter) which are
+// hardcoded in HTML and never go through that pass.
+function injectAllDeleteHandles() {
+  document.querySelectorAll('.draggable').forEach(injectDeleteHandle);
+}
+
+function applyElementVisibility(map) {
+  // Strip element-hidden from anything not currently flagged as hidden
+  // (handles the un-hide case).
+  document.querySelectorAll('.element-hidden').forEach(el => {
+    if (map[el.id] !== false) el.classList.remove('element-hidden');
+  });
+  // Apply to anything in the map with visible:false.
+  for (const [id, visible] of Object.entries(map)) {
+    if (visible === false) {
+      document.getElementById(id)?.classList.add('element-hidden');
+    }
+  }
+}
+
+window.addEventListener('click', (e) => {
+  if (!layoutMode) return;
+  if (!e.target.classList?.contains('delete-handle')) return;
+  const target = e.target.closest('.draggable');
+  if (!target?.id) return;
+  const isCurrentlyHidden = target.classList.contains('element-hidden');
+  // Send the new desired state. Server treats `visible:true` as "remove from
+  // map" so the persisted file stays clean of explicit-true entries.
+  if (ws?.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({
+      type: '_dashboard.element-visibility',
+      id:   target.id,
+      visible: isCurrentlyHidden,
+    }));
+  }
+});
+
+// Boot-time injection. Run once after DOM is ready; renderCustomWidgets
+// also calls injectDeleteHandle for each custom widget it creates.
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', injectAllDeleteHandles, { once: true });
+} else {
+  injectAllDeleteHandles();
+}
 
 // (applyPositions defined earlier in the custom-widgets block.)
 
