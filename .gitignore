@@ -1,6 +1,8 @@
 node_modules/
 settings.json
 state.json
+state.json.bak
+state.json.tmp
 goals.json
 redeems.json
 commands.json
