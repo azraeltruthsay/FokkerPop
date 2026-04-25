@@ -23,6 +23,7 @@ const FLUSH_DEBOUNCE_MS = 300;
 class StateStore extends EventEmitter {
   #data;
   #flushTimer = null;
+  #warnedAboutFlush = false;
 
   constructor() {
     super();
@@ -112,7 +113,15 @@ class StateStore extends EventEmitter {
       // write and the rename, state.json itself is never partial.
       writeFileSync(STATE_FILE_TMP, json);
       renameSync(STATE_FILE_TMP, STATE_FILE);
-    } catch { /* non-fatal */ }
+    } catch (err) {
+      // Surface the FIRST flush failure of the session so a permission /
+      // antivirus / disk-full issue isn't completely silent. Subsequent
+      // failures stay quiet to avoid log spam.
+      if (!this.#warnedAboutFlush) {
+        this.#warnedAboutFlush = true;
+        try { console.error(`[state] flush failed (further errors suppressed): ${err.message}`); } catch {}
+      }
+    }
   }
 
   addChatter(user) {

@@ -496,10 +496,13 @@ function serveFile(res, filePath) {
   try { decoded = decodeURIComponent(filePath); } catch { decoded = filePath; }
   const safe = normalize(resolve(decoded));
   const root = normalize(resolve(ROOT));
-  
-  // Guard: path must be within ROOT.
-  // We use lowercase comparison for startsWith to handle Windows casing quirks.
-  if (!safe.toLowerCase().startsWith(root.toLowerCase())) {
+
+  // Guard: path must be within ROOT. The previous startsWith guard didn't
+  // enforce a separator boundary, so e.g. a sibling directory
+  // `<ROOT>-backup` would lower-case-match `<ROOT>`. Use the path module's
+  // relative() — if the result starts with .. or is absolute, it's outside.
+  const rel = relative(root, safe);
+  if (rel === '..' || rel.startsWith('..' + sep) || isAbsolute(rel)) {
     res.writeHead(403); res.end('Forbidden'); return;
   }
 
@@ -521,6 +524,20 @@ const httpServer = createServer((req, res) => {
     path = url.pathname;
   } catch {
     res.writeHead(400); res.end('Bad request'); return;
+  }
+
+  // Cross-origin write protection. State-mutating verbs (POST/PUT/PATCH/DELETE)
+  // require an Origin header from the same host the server is listening on.
+  // Stops a website the user is browsing from POSTing to /api/upload,
+  // /api/widgets, /api/shutdown, etc. via a "simple" CORS request that
+  // doesn't trigger preflight. GETs are intentionally not gated — read
+  // endpoints already rely on browser SOP for response confidentiality.
+  if (req.method !== 'GET' && req.method !== 'HEAD' && req.method !== 'OPTIONS') {
+    if (!isAllowedOrigin(req.headers.origin, req.headers.host)) {
+      log.warn(`HTTP ${req.method} ${path} rejected: bad Origin ${req.headers.origin || '(none)'} from ${req.socket.remoteAddress}`);
+      res.writeHead(403, { 'Content-Type': 'text/plain' });
+      return res.end('Forbidden — Origin must match the server host.');
+    }
   }
 
   // Redirect /dashboard -> /dashboard/ (ensures relative assets like app.js work)
@@ -985,12 +1002,40 @@ async function handleOAuthCallback(params, res) {
   }
 }
 
+// Block cross-origin WebSocket connections. The IP check below blocks remote
+// callers, but anything running locally — a website the streamer is visiting,
+// a malicious browser extension — can also reach 127.0.0.1 from the user's
+// own browser. Without an Origin gate, any such page can connect, register
+// as a dashboard, and trigger _dashboard.shutdown / _dashboard.update-apply
+// / _dashboard.effect / _dashboard.save-position / _dashboard.element-visibility
+// / etc. Same-origin enforcement: Origin must match the server's own host
+// (which is what the dashboard, overlay, and OBS browser source all send).
+function isAllowedOrigin(origin, host) {
+  if (!origin || !host) return false;
+  return origin === `http://${host}` || origin === `https://${host}`;
+}
+
 // ── WebSocket server ──────────────────────────────────────────────────────────
-const wss = new WebSocketServer({ server: httpServer });
+const wss = new WebSocketServer({
+  server: httpServer,
+  verifyClient: ({ origin, req }, done) => {
+    const ip = req.socket.remoteAddress;
+    if (ip !== '127.0.0.1' && ip !== '::1' && ip !== '::ffff:127.0.0.1') {
+      log.warn(`WS connection rejected: non-local IP ${ip}`);
+      return done(false, 403, 'Local only');
+    }
+    if (!isAllowedOrigin(origin, req.headers.host)) {
+      log.warn(`WS connection rejected: bad Origin ${origin || '(none)'} from ${ip}`);
+      return done(false, 403, 'Origin not allowed');
+    }
+    done(true);
+  },
+});
 
 wss.on('connection', (ws, req) => {
-  // Reject anything not from localhost
   const ip = req.socket.remoteAddress;
+  // Belt-and-braces: verifyClient already enforced this, but keep the check
+  // in case the WSS instance gets reconstructed without verifyClient.
   if (ip !== '127.0.0.1' && ip !== '::1' && ip !== '::ffff:127.0.0.1') {
     ws.close(1008, 'Local only');
     return;
@@ -1227,7 +1272,13 @@ wss.on('connection', (ws, req) => {
         try {
           applyUpdate({
             root: ROOT,
-            onBeforeExit: () => broadcast(overlays, { type: '_system.shutdown' }),
+            onBeforeExit: () => {
+              // Persist whatever's in the debounced flush buffer before NSIS
+              // taskkills us — otherwise the last 300 ms of widget drags /
+              // saves get lost across the update.
+              try { state.flush(); } catch {}
+              broadcast(overlays, { type: '_system.shutdown' });
+            },
           });
         } catch (err) {
           log.error('Update apply failed:', err.message);
@@ -1350,7 +1401,10 @@ httpServer.listen(PORT, BIND, () => {
   setStreamingProbe(() => obs.streaming);
   setAutoInstallHandler(() => applyUpdate({
     root: ROOT,
-    onBeforeExit: () => broadcast(overlays, { type: '_system.shutdown' }),
+    onBeforeExit: () => {
+      try { state.flush(); } catch {}
+      broadcast(overlays, { type: '_system.shutdown' });
+    },
   }));
 
   scheduleChecks({
