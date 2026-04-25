@@ -883,6 +883,106 @@ function setVersion(v) {
       el.style.display = 'block';
     }
   }
+
+  // Post-update release-notes popup. Compares this version against the last
+  // one the user dismissed; if newer, fetches the just-shipped CHANGELOG.md
+  // and shows the latest entry in a modal. First-time installs (no stored
+  // version) set the marker silently — popup only triggers AFTER an update.
+  maybeShowReleaseNotesPopup(v).catch(err => console.warn('[release-notes-popup]', err));
+}
+
+const LAST_SEEN_VERSION_KEY = 'fokker.lastSeenVersion';
+let _releaseNotesPopupShown = false;  // guard: never fire twice per session
+
+async function maybeShowReleaseNotesPopup(currentVersion) {
+  if (_releaseNotesPopupShown) return;
+  if (!currentVersion) return;
+  let lastSeen;
+  try { lastSeen = localStorage.getItem(LAST_SEEN_VERSION_KEY); } catch { return; }
+
+  // First-time install: seed the marker, don't show popup.
+  if (!lastSeen) {
+    try { localStorage.setItem(LAST_SEEN_VERSION_KEY, currentVersion); } catch {}
+    return;
+  }
+  // Same or older version: nothing to announce.
+  if (!window.fokkerSemver?.semverGt(currentVersion, lastSeen)) return;
+
+  _releaseNotesPopupShown = true;
+
+  let latestEntry = '';
+  try {
+    const res = await fetch('/api/release-notes', { cache: 'no-cache' });
+    if (res.ok) {
+      const md = await res.text();
+      latestEntry = extractLatestChangelogEntry(md);
+    }
+  } catch {/* network/CHANGELOG missing — fall through to a tiny placeholder */}
+
+  showReleaseNotesModal(currentVersion, lastSeen, latestEntry);
+}
+
+// Pulls the first `## v...` section out of the auto-generated CHANGELOG.md
+// (drops the file header and any trailing horizontal rule).
+function extractLatestChangelogEntry(md) {
+  const lines = md.split('\n');
+  let start = -1;
+  for (let i = 0; i < lines.length; i++) {
+    if (/^##\s+v/.test(lines[i])) { start = i; break; }
+  }
+  if (start < 0) return '';
+  let end = lines.length;
+  for (let i = start + 1; i < lines.length; i++) {
+    if (/^##\s+v/.test(lines[i])) { end = i; break; }
+  }
+  return lines.slice(start, end).join('\n').replace(/\n*---\s*$/m, '').trim();
+}
+
+function showReleaseNotesModal(currentVersion, previousVersion, entryMd) {
+  // Reuse the existing renderMarkdown helper so formatting matches the
+  // Release Notes page exactly.
+  const bodyHtml = entryMd
+    ? renderMarkdown(entryMd)
+    : `<p style="color:var(--text-dim);">FokkerPop has been updated to ${esc(currentVersion)}. Open <strong>Release Notes</strong> in the sidebar for full details.</p>`;
+
+  const overlay = document.createElement('div');
+  overlay.id = 'release-notes-popup';
+  overlay.style.cssText = `
+    position:fixed; inset:0; background:rgba(11,11,18,0.78); z-index:99998;
+    display:flex; align-items:center; justify-content:center; padding:32px;
+    backdrop-filter: blur(4px);
+  `;
+  overlay.innerHTML = `
+    <div style="background:var(--surface); color:var(--text); border:1px solid var(--border); border-radius:14px; max-width:640px; width:100%; max-height:80vh; display:flex; flex-direction:column; box-shadow:0 20px 60px rgba(0,0,0,0.55);">
+      <div style="padding:18px 22px 10px; border-bottom:1px solid var(--border);">
+        <div style="font-size:.7rem; letter-spacing:.1em; color:var(--accent2); font-weight:800; text-transform:uppercase;">Updated</div>
+        <div style="font-size:1.25rem; font-weight:900; margin-top:4px;">FokkerPop is now running ${esc(currentVersion)}</div>
+        <div style="font-size:.78rem; color:var(--text-dim); margin-top:4px;">Last seen: ${esc(previousVersion)}</div>
+      </div>
+      <div id="release-notes-popup-body" style="padding:14px 22px; overflow-y:auto; line-height:1.55; font-size:.88rem;">
+        ${bodyHtml}
+      </div>
+      <div style="padding:12px 22px 18px; display:flex; justify-content:flex-end; gap:8px; border-top:1px solid var(--border);">
+        <button class="btn btn-primary" id="release-notes-popup-ok">OK</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+
+  const dismiss = () => {
+    try { localStorage.setItem(LAST_SEEN_VERSION_KEY, currentVersion); } catch {}
+    overlay.remove();
+  };
+  document.getElementById('release-notes-popup-ok')?.addEventListener('click', dismiss);
+  // Click outside the card or press Esc/Enter also dismisses.
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) dismiss(); });
+  const onKey = (e) => {
+    if (e.key === 'Escape' || e.key === 'Enter') {
+      dismiss();
+      document.removeEventListener('keydown', onKey);
+    }
+  };
+  document.addEventListener('keydown', onKey);
 }
 
 function refreshAll() {

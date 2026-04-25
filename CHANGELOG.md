@@ -2,6 +2,133 @@
 
 _Auto-generated from the last 25 Release commits. Newest first._
 
+## v0.3.26 — 2026-04-24
+
+**A "Reset Widgets to Default" button on the Layout page wipes `widgets.json` and restores the shipped layout from `widgets.example.json`. Right now, if Fokker (or anyone) has accumulated bad widget state — duplicated widgets, broken positions, stale theme references — the only fix was hand-editing `widgets.json` on disk. Now the new red button next to "Reset Positions" handles it in one click. The server backs the previous `widgets.json` up to `widgets.json.bak` first so a misclick is recoverable, and `widgets.json.bak` is added to both `.gitignore` and the release-zip user-data leak invariant so it can never ship in a release. Useful for Fokker right now: this is the cleanest way to get the legacy `w-dice-d20` widget out of his install since v0.3.25's default-layout fix only helps fresh installs.**
+
+
+---
+
+## v0.3.25 — 2026-04-24
+
+**Stop the dice double-fire. The default shipped layout had two overlapping dice widgets — the legacy single-die `dice` widget AND the newer 3D `dice-tray`, both wired to fire on related-but-different events (`redeem` vs `dice-tray-roll`). When a Studio flow emitted both, you'd see one die in the tray and a second "shadow" die from the legacy widget rendered in its own canvas at a different screen position. The tray supersedes the legacy widget, so the legacy one is dropped from `widgets.example.json` (existing installs keep theirs — Fokker can hide or delete it via the Layout tab).**
+
+While in there: `triggerDice` and `triggerDiceTray` used to fire on EVERY event when `cfg.triggerEvent` was unset (the unset case fell through the gate). Switched to gate-by-default so a freshly-added dice widget that hasn't been configured yet stays quiet instead of rolling on chat messages, follows, subs, and so on.
+
+---
+
+## v0.3.24 — 2026-04-24
+
+**PolyPop import lands in the dashboard. The CLI from v0.3.23 (`node scripts/import-polypop.mjs`) still works, but its core logic has moved to `server/polypop-import.js` and is now also exposed at `POST /api/import-polypop`. A new "Import from PolyPop" card on the Setup page wraps it: pick a `.pop` file, click Import, and you get an inline review of every channel-point redeem, chat alias, and audio reference the project contained — each section has Append (skip collisions) and Replace (full overwrite) buttons that hit the existing `/api/redeems` and `/api/commands` endpoints. Body size is capped at 5 MB and the Origin gate already covers the new POST so it stays as locked-down as the rest of the API.**
+
+
+---
+
+## v0.3.23 — 2026-04-24
+
+**PolyPop project importer (CLI).**
+
+For streamers migrating from PolyPop, ships scripts/import-polypop.mjs
+that reads a PolyPop .pop project file and emits three FokkerPop
+configs alongside (never overwriting) the real ones:
+
+  - redeems.from-polypop.json — every channel-point redeem from the
+    .pop's twitch:Twitch Alerts source's ChannelPoints list, mapped
+    to a FokkerPop effect via simple name heuristics:
+      Roll/Dice/Dxx     → dice-tray-roll
+      Bub/Balloon/Pop   → balloon (count: 10, sound: pop.wav)
+      Fokker/Salvo/etc. → firework-salvo (count: 5, sound: boom.wav)
+      Sticker/Confetti  → sticker-rain
+      Sing/Cur/Word/Cam → alert-banner (mode-style timed alert)
+      everything else   → alert-banner (generic 🎉)
+  - commands.from-polypop.json — broadcaster-only !chat aliases for
+    each redeem (slugified filenames). Fokker can rename + open up to
+    "anyone" per command in Config → Commands.
+  - audio-files.txt — names of all core-app:Audio Clip sources the
+    .pop referenced; Fokker drops matching files from PolyPop's
+    Sounds folder into assets/sounds/.
+
+What it doesn't import: scenes, 3D models, Action Sequence graphs,
+animations, hotkey bindings — different paradigms with no clean
+mapping. The importer covers the 1:1 portion (redeem titles + audio
+references) and leaves the visual/effect customization to the user.
+
+Verified against LilFokker_Clean.pop:
+  - 17 channel-point redeems extracted (BUBLOOONS, Fuel the Fokker,
+    KarebeChaos, Karebec Slam Attack, Karebec Fully Loaded, Roll 6s,
+    Roll 1s, Roll 7, Crit, Pop Off, Sing/cursing/word-ban modes,
+    Kill a Jugger, Doggie Cam, Show Ardrali Some Love)
+  - 17 chat aliases generated, no slug collisions
+  - 27 audio clip references collected
+
+Documented in RELEASING.md under "Importing from PolyPop" with the
+exact command + file purposes + caveats.
+
+Future: a Setup-page button could wrap the CLI for a no-terminal
+import flow, but the CLI is enough for the migration use case
+right now.
+
+---
+
+## v0.3.22 — 2026-04-24
+
+**Layout-mode discoverability, mute fix, full CHANGELOG.**
+
+Five small UX/correctness fixes batched together — none individually
+release-worthy, all worth doing.
+
+1. Auto-enable Drag Mode when adding a widget. Clicking + Counter /
+   + Dice / + Hot Button etc. on the Layout tab used to leave Drag
+   Mode off, which kept the new widget's resize handles + × delete
+   badge invisible (CSS-gated to body.layout-mode). The handles were
+   actually attached — verified via Playwright — but the user just
+   couldn't see them. addWidget() now flips the Drag Mode checkboxes
+   on and broadcasts the layout-mode state so the new widget is
+   immediately positionable.
+
+2. Show hidden ghosts toggle — the layout-mode "ghost" rendering of
+   hidden elements (red dotted outline + "click × to restore" badge)
+   is great for occasional hides but clutters Layout Mode if you've
+   permanently removed several built-ins. New checkbox in the Layout
+   tab's preview controls flips it: ON (default) keeps current
+   ghosting behaviour; OFF makes hidden elements truly invisible in
+   Layout Mode too, restorable by toggling back ON.
+
+   Implementation: extended the existing `fokker.label-visibility`
+   postMessage with a `showGhosts` field; overlay applies a
+   `body.no-ghosts` CSS class that overrides the layout-mode-shows-
+   ghosted rule with display:none. Pref persists in localStorage like
+   the other preview toggles. Label includes a "(N hidden)" /
+   "(nothing hidden yet)" hint so the toggle's effect is obvious
+   without needing to experiment.
+
+3. Asset Gallery sound test buttons honour mute. testSoundWithVol
+   was using `parseFloat(vol) || 1.0` — which evaluates `0 || 1.0`
+   to 1.0, so dragging the slider all the way down still played at
+   full volume. Switched to a Number.isFinite check + clamp to
+   [0,1] so 0 actually mutes.
+
+4. CHANGELOG generator gets full git history. The release workflow
+   was using GitHub's default checkout fetch-depth: 1, so
+   scripts/gen-changelog.mjs only ever saw the current tag's commit
+   and emitted a CHANGELOG with a single entry. Every shipped zip
+   since v0.2.111 had a one-line release notes panel; the dashboard's
+   Release Notes tab was perpetually showing only "the version you
+   just installed." `fetch-depth: 0` on the checkout step gives the
+   workflow the full log; the next zip (this one) ships the proper
+   25-entry CHANGELOG. Also re-committing the in-repo CHANGELOG.md
+   so GitHub.com viewers see it current too.
+
+5. Side fixes from the security pass that landed in v0.3.21 are
+   already live; this release just rounds out the trim.
+
+Verified via probe: Drag Mode flips on after a new widget is added;
+ghost count text reads "(nothing hidden yet)" before any hides and
+"(N hidden)" after; testSoundWithVol with vol=0 sets audio.volume to
+0 (was 1.0).
+
+---
+
 ## v0.3.21 — 2026-04-24
 
 **Origin gating, path-traversal fix, update-flush.**
@@ -835,206 +962,3 @@ second node process that silently loses the port race.
 NSIS also now runs launch-hidden.vbs directly after install instead
 of start.bat — the updater already did the file copy cleanly, so the
 diagnostic checks are redundant and the CMD flash is avoidable.
-
----
-
-## v0.3.1 — 2026-04-23
-
-**Toggle widget/type labels in Layout & Test previews.**
-
-Adds two toggles for the preview iframes so Fokker can see his overlay
-the way a viewer will, without having to remember OBS's live URL
-swap.
-
-Layout tab gets both toggles:
-  - "Type placeholders" — the uppercase COUNTER / DICE-TRAY / MODEL-3D
-    etc. overlays that layout-mode stamps on each widget via
-    ::before content: attr(data-placeholder). Useful while placing
-    widgets, clutter once they're placed.
-  - "Widget labels" — the .cw-label row ("SUBS TODAY", "LATEST", etc.)
-    that sits above each widget's value.
-
-Test Effects tab gets only the widget-labels toggle (type placeholders
-only render when layout-mode is on, which Test Effects isn't).
-
-Wiring:
-  - overlay.html adds two body-level CSS classes
-    (`hide-type-labels`, `hide-widget-labels`) with !important rules
-    that short-circuit the existing selectors.
-  - Parent dashboard sends `fokker.label-visibility` postMessage to the
-    iframe; overlay toggles classes accordingly.
-  - Overlay emits `fokker.overlay-ready` on script-boot so the parent
-    can reapply prefs after an iframe reload without racing onload.
-  - Prefs stored per-scope ('layout' / 'effects') in localStorage at
-    key `fokker.labelPrefs`, so they survive reloads.
-  - Preview-only by design — the OBS live URL (`?live=1`) never
-    receives these messages from any dashboard, so viewers still see
-    widget labels exactly as configured.
-
-Probe confirms: flipping the Layout tab's type checkbox off changes
-the preview iframe's body class and kills the ::before display
-live; flipping widget-labels off hides every .cw-label in the iframe.
-localStorage entry persists.
-
----
-
-## v0.3.0 — 2026-04-23
-
-**Hide the CMD, add Stop button, own named process.**
-
-Minor bump — this is a visible shift in how FokkerPop behaves at
-startup. Fokker's existing widgets/goals/flows/credentials are
-preserved (gitignored user-data invariant still holds), but the launch
-experience changes noticeably enough to warrant the jump from 0.2.x.
-
-What's new:
-
-launch-hidden.vbs — WScript wrapper that Runs `node\FokkerPop.exe
-server/index.js` with window style 0 (SW_HIDE) and detach mode, so no
-CMD or console window appears at all. Validates that the node exe and
-entry script exist first and shows a MessageBox if not.
-
-start.bat — after the existing diagnostic checks pass, now dispatches
-the VBS wrapper, waits 2 seconds for the port to bind, opens the
-dashboard in the default browser, and exits itself. Net effect:
-Fokker double-clicks the icon, sees the dashboard, no persistent CMD.
-
-stop.bat — double-click companion. Tries POST /api/shutdown first for
-graceful flush, falls back to taskkill /F /IM FokkerPop.exe /T so it
-works even if the server is hung.
-
-Server-side graceful stop:
-  - POST /api/shutdown HTTP endpoint, bound to 127.0.0.1 by the
-    existing listen() so only local processes reach it.
-  - _dashboard.shutdown WebSocket message for the in-app button.
-  - Both route through the existing shutdown() function that broadcasts
-    _system.shutdown, flushes state.json, disconnects Twitch/OBS, and
-    httpServer.close() → process.exit(0).
-
-Dashboard:
-  - New red "Stop FokkerPop" card at the bottom of the Setup page with
-    a confirm dialog (different wording if OBS is currently streaming
-    so Fokker doesn't accidentally cut mid-stream).
-  - On click, fires _dashboard.shutdown and shows an in-banner message
-    explaining how to restart.
-
-Packaging:
-  - Release workflow copies start.bat + stop.bat + launch-hidden.vbs
-    into the Windows zip (previously start.bat only).
-  - Zip-smoke gate now asserts all three are present.
-
-Task Manager attribution: because node is still named FokkerPop.exe
-(renamed in the NSIS packaging step since v0.2.x), the process shows
-up cleanly under that name. Combined with the Resources page from
-v0.2.112, Fokker can now track usage without hunting through Edge
-subprocesses.
-
----
-
-## v0.2.112 — 2026-04-23
-
-**Resources page — live server + per-overlay metrics.**
-
-Fokker asked for a way to see FokkerPop's resource usage without
-hunting for the right subprocess in Edge's Task Manager sprawl. New
-Resources tab in the dashboard shows:
-
-Summary row (colour-coded):
-  - Total footprint (server RSS + sum of overlay heap samples)
-  - Server CPU %
-  - Avg overlay FPS
-  - Events/sec through the bus
-
-Server card:
-  - RSS, heap used/total, external, CPU%, uptime
-  - Node version, platform, PID, FokkerPop version
-
-Per-overlay cards, one per connected overlay:
-  - Auto-classified ("OBS browser source" for ?live=1, "Dashboard
-    preview iframe" for ?demo=0, "Ad-hoc overlay tab" otherwise)
-  - FPS (coloured red < 30, orange < 55, green otherwise)
-  - JS heap used + %-of-limit
-  - Widget count + breakdown by type (e.g. "1× counter, 1× physics-pit,
-    1× dice-tray, 1× model-3d")
-  - Viewport dimensions
-
-Wiring:
-  - server/index.js samples every 2 s via setInterval, measures
-    process.memoryUsage() and a process.cpuUsage() delta, and
-    broadcasts on a new `resources` state path. Cleans up
-    overlayResourceReports on ws close/error, drops stale entries
-    after 3 missed samples.
-  - overlay.html self-reports every 2 s over the existing WS with an
-    _overlay.resource-report message carrying FPS (rAF-sampled heap,
-    widget inventory, viewport, and ?live=1 flag.
-  - dashboard/app.js renderResources() keeps the last payload so
-    switching to the tab is instant; incremental updates arrive via
-    the existing handleState path.
-
-Probe confirms: dashboard + 1 overlay tab produces 3 overlay cards
-(main + Test Effects preview iframe + Layout preview iframe),
-~100 MB total footprint, 60 fps across the board.
-
----
-
-## v0.2.111 — 2026-04-23
-
-**Release Notes tab, auto-generated from git history.**
-
-New "Release Notes" entry in the dashboard sidebar. Clicking it fetches
-/api/release-notes (served from CHANGELOG.md in the install root) and
-renders it inline — headings, bold, bullets, code, horizontal rules —
-with a tiny zero-dep markdown parser in app.js.
-
-Generation pipeline:
-
-- scripts/gen-changelog.mjs scans the git log for `Release v<semver>:`
-  commits, takes the most recent 25 unique versions, and emits a
-  structured CHANGELOG.md (title, date, body, separator per entry).
-  Strips trailing Co-Authored-By lines.
-- The release workflow runs the script right before packaging, so every
-  published zip includes up-to-date notes for itself and the previous
-  ~24 releases.
-- CHANGELOG.md is now part of the shipped zip (cp line updated in
-  release.yml), and /api/release-notes is added to the zip-smoke HTTP
-  assertions so packaging regressions get caught at the gate.
-
-Initial CHANGELOG.md committed covers v0.2.87 → v0.2.110 (24 entries,
-16 KB). Future releases extend it automatically.
-
----
-
-## v0.2.110 — 2026-04-23
-
-**Resize widgets from any edge or corner in Layout mode.**
-
-Layout mode now supports 8-direction resize in addition to drag-to-move:
-- Each widget gets 4 edge handles (N/S/E/W) with ns-resize/ew-resize cursors
-- And 4 corner handles (NW/NE/SW/SE) with nwse-resize/nesw-resize cursors
-- SE corner keeps its visible grip texture as the "primary" resize cue;
-  other handles are transparent but the cursor change signals resizability
-- Dragging any W/N-facing handle moves the widget's top-left position so
-  the opposite edge stays pinned where the user grabbed it (standard
-  window-resize behavior)
-- Minimum size 80×40 so a widget can't be shrunk to invisibility
-
-On release, the overlay sends `_dashboard.save-size` to persist
-`config.width` and `config.height` to widgets.json (and
-`_dashboard.save-position` if the resize moved the top-left). Server
-handles the new message in both the dashboard and overlay branches.
-
-Implementation notes:
-- renderCustomWidgets in overlay.html injects all 8 handles per widget
-- New resetWidgetContent(el) helper in overlay-widgets.js replaces the
-  6 `el.innerHTML = ''` calls in mount functions. Before this, each 3D
-  widget mount wiped the handles on remount, which in practice meant
-  only 2D widgets had working resize; after, all widgets keep handles
-  through re-mount cycles.
-- 3D widgets pick up new dimensions via the usual overlay.widgets
-  re-broadcast → renderCustomWidgets → remount pathway. No live
-  renderer.setSize needed.
-
-Verified via Playwright: 8 handles attach to every widget (counter,
-physics-pit, dice-tray, model-3d), E-edge cursor is ew-resize, E-drag
-of +60px persists 480x280, W-drag of -50px correctly grows width and
-shifts position left so the right edge stays pinned.

@@ -24,10 +24,15 @@
 - **Reactive Character** — mascot sprite that reacts to energy and events
 - **Sound Effects Engine** — link custom sounds to any alert or effect
 - **Balloons, fireworks, confetti, sticker rain** — CSS + canvas animations
+- **3D dice tray** — full physics-driven multi-die rolls (Three.js + cannon-es), themable face textures, percentile (D100) rendering as paired tens/units
+- **Fokker Studio** — visual flow editor (drag-and-wire nodes) for binding any event to any effect, with template-evaluated branches and match nodes
+- **PolyPop importer** — Setup → Import from PolyPop pulls channel-point redeems, chat aliases, and audio references out of a `.pop` file in one click
 - **Crowd energy meter** — builds up during events, drives ambient glow effects
 - **Combo detector** — recognises sub and bit trains and signals them with a banner
-- **Config Editor** — manage goals and redeems directly in the dashboard
+- **Config Editor** — manage goals, redeems, and chat-command aliases directly in the dashboard
+- **Layout editor** — drag widgets into place, toggle visibility, reset to shipped defaults from the dashboard
 - **Leaderboards** — rotating display of top bits donators and gift sub kings
+- **Auto-Updater** — optional background install of new releases; gracefully waits if you're streaming
 - **Twitch Health** — real-time status of your Twitch connection in the sidebar
 - **Twitch Simulator** — offline test bed to simulate specific redeems, cheers, and alerts
 - **Demo mode** — press `?demo=1` in the overlay URL to see a full stream scenario
@@ -59,13 +64,23 @@ Your `settings.json` is created automatically and is never uploaded anywhere.
 
 ## Updating
 
-The easiest way to update is using the **Auto-Updater**:
+The dashboard checks GitHub for new releases every 30 minutes. When one is
+available, a gold banner appears at the top — click it to install.
+
+You can also:
+- **Setup → Check for Updates**: trigger a check right now.
+- **Config → Auto-Install Updates**: opt-in to fully automatic background
+  installs. If you're streaming when a release lands, install waits until
+  your stream ends.
+
+Manual install (no dashboard needed):
 
 1. Download `FokkerPop-Updater-vX.X.X.exe` from the [Releases page](../../releases)
 2. Place the file **inside** your current `FokkerPop` folder
 3. Double-click it and click **Yes** to extract/overwrite
-4. Your `settings.json`, `goals.json`, and custom assets will be **preserved**.
-5. Run `start.bat` as usual!
+4. Your `settings.json`, `goals.json`, `commands.json`, `redeems.json`,
+   `flows.json`, `widgets.json`, and uploaded assets are **preserved**.
+5. Run `start.bat` as usual.
 
 Alternatively, you can download the `.zip` and manually extract it over your existing folder.
 
@@ -86,11 +101,13 @@ I've added professional templates to make it nice and easy for you to send us wh
 Drop your WAV or MP3 files into `assets/sounds/`. You can then select these sounds from the dropdown menus in the **Config** tab of the dashboard. Use the volume slider in the **Live** tab to adjust levels.
 
 ### Character Mascot
-Place your character GIFs in `characters/lilfokkermascot/`. The app looks for these specific filenames:
-- `idle.gif`: shown when energy is low (0-24%)
-- `active.gif`: shown when energy is moderate (25-74%)
-- `hype.gif`: shown when energy is high (75-98%)
-- `explosion.gif`: shown during crowd explosions (99-100%)
+Place your character images in `characters/lilfokkermascot/`. The app
+looks for these specific basenames and tries `.gif`, `.png`, `.webp`, and
+`.jpg` in that order — so any of those formats work:
+- `idle`: shown when energy is low (0-24%)
+- `active`: shown when energy is moderate (25-74%)
+- `hype`: shown when energy is high (75-98%)
+- `explosion`: shown during crowd explosions (99-100%)
 
 ### Stickers
 Drop PNG or GIF stickers into `assets/stickers/` to have them appear during the "Sticker Rain" effect.
@@ -113,11 +130,18 @@ This happens if you downloaded the **Source Code** zip from GitHub instead of th
 
 ## Configuration Files
 
+All files live in your FokkerPop install root. They're created on first
+boot from the matching `*.example.json` and preserved across updates.
+
 | File | Purpose |
 |------|---------|
-| `settings.json` | Twitch credentials and tuning (never commit this) |
+| `settings.json` | Twitch + OBS credentials and tuning (never commit this) |
 | `goals.json` | Stream goals — targets, metrics, rewards |
 | `redeems.json` | Maps Channel Point reward titles → visual effects |
+| `commands.json` | Maps `!chat` commands → redeems, with permission gating + cooldowns |
+| `flows.json` | Fokker Studio's saved flow graphs (event → effect wiring) |
+| `widgets.json` | Custom overlay widgets (counter, dice tray, leaderboard, etc.) |
+| `state.json` | Live session state (subs/bits today, leaderboard, layout positions) |
 
 ## Architecture
 
@@ -146,15 +170,18 @@ enricher  combinator     throttler
 ## Security
 
 - Server binds to `127.0.0.1` only — not accessible from your local network
-- WebSocket server rejects any connection not from localhost
+- WebSocket server rejects any connection whose `Origin` isn't `127.0.0.1`/`localhost`
+- HTTP cross-origin write protection on all mutating (non-GET) endpoints
 - Path traversal guard on all HTTP file requests
-- Only one npm dependency (`ws`) — vendored in release zips
+- Atomic state writes (tmp + rename) with a `.bak` rotation so a crash mid-write can't corrupt your layout
+- Four npm dependencies (`ws`, `three`, `cannon-es`, `matter-js`) — all vendored in release zips, no install step at runtime
 
 ## Development
 
 ```bash
 npm install
-npm run dev   # starts with --watch (auto-restart on file changes)
+npm run dev    # starts with --watch (auto-restart on file changes)
+npm test       # HTML validator + unit tests (semver, dice, template engine)
 ```
 
-Requires Node.js 20+.
+Requires Node.js 18 or newer.

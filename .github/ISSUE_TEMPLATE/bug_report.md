@@ -23,7 +23,7 @@ A clear and concise description of what you expected to happen.
 If applicable, add screenshots to help explain your problem.
 
 **Environment (please complete the following information):**
-- FokkerPop Version: [e.g. v0.2.46]
+- FokkerPop Version: [e.g. v0.3.26 — see the version badge in the dashboard sidebar]
 - Browser: [e.g. Chrome, OBS Browser Source]
 - OS: [e.g. Windows 11]
 
