@@ -1791,6 +1791,15 @@ function handleState(path, value) {
       globalVolume = Math.max(0, Math.min(1, value));
       break;
     case 'overlay.layoutMode':
+      // Live overlays (?live=1, the OBS browser source URL) intentionally
+      // ignore the layout-mode state. The dashed outlines, type-name
+      // placeholders, force-visible auto-hide widgets, resize grips, and
+      // × delete badges are configuration chrome that would otherwise
+      // leak to viewers the moment LilFokker forgot to toggle Layout
+      // Mode off before going live. Drag/resize still works in the
+      // dashboard preview iframes and in any plain /?demo=0 tab he has
+      // open for editing — those receive the state and react to it.
+      if (isLive) break;
       layoutMode = value;
       document.body.classList.toggle('layout-mode', value);
       break;
