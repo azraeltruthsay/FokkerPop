@@ -661,6 +661,10 @@ const httpServer = createServer((req, res) => {
     stream.on('finish', () => {
       log.info(`Uploaded file: ${name} to ${targetDir}`);
       if (targetDir.endsWith('sounds')) rebuildSoundSet();
+      // Notify overlays so things like sticker rain can pick up new uploads
+      // without an explicit refresh.
+      broadcast(overlays,   { type: 'assets-updated', kind: type });
+      broadcast(dashboards, { type: 'assets-updated', kind: type });
       res.writeHead(200); res.end('{"ok":true}');
     });
     stream.on('error', (err) => {

@@ -175,7 +175,7 @@ html, body {
 }
 body.layout-mode .draggable {
   outline: 2px dashed var(--accent);
-  outline-offset: 4px;
+  outline-offset: 0;
   cursor: move !important;
   pointer-events: auto !important;
   z-index: 999 !important;
@@ -198,13 +198,20 @@ body.layout-mode #widget-combo {
 }
 body.layout-mode .draggable[data-placeholder]::before {
   content: attr(data-placeholder);
-  display: block;
-  font-size: 0.7rem;
-  font-weight: 700;
-  letter-spacing: 0.12em;
-  color: rgba(255,255,255,0.55);
+  position: absolute;
+  top: -22px;
+  left: 0;
+  font-size: 0.62rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  color: #fff;
   text-transform: uppercase;
-  padding: 14px;
+  padding: 2px 8px;
+  background: rgba(145, 71, 255, 0.78);
+  border-radius: 4px;
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 1001;
 }
 
 /* Parent dashboard can toggle these via postMessage when the overlay is
@@ -1170,11 +1177,28 @@ function spawnConfetti() {
   setTimeout(() => { active--; }, 4000);
 }
 
+// Sticker library: emoji fallback list + any user-uploaded image stickers
+// from /assets/stickers/. Refreshed on overlay boot and after every asset
+// upload (server broadcasts an `assets-updated` event).
+const FALLBACK_STICKERS = ['🎉','🎊','✨','🌟','💫','🔥','⚡','💥','🎈','🎆','🎇','🏆','💜','💎','❤️','🎁'];
+let uploadedStickers = [];
+function refreshStickers() {
+  fetch('/api/assets').then(r => r.json()).then(a => {
+    uploadedStickers = Array.isArray(a?.stickers) ? a.stickers.slice() : [];
+  }).catch(() => {});
+}
+refreshStickers();
+
 function spawnStickerRain(duration = 7000) {
   if (!canSpawn()) return;
   active++;
-  const emojis = ['🎉','🎊','✨','🌟','💫','🔥','⚡','💥','🎈','🎆','🎇','🏆','💜','💎','❤️','🎁'];
   const end = Date.now() + duration;
+  // Mix uploads + emoji each spawn so streams with a few image stickers still
+  // get visual variety. If there are no uploads, falls back to all emoji.
+  const pool = uploadedStickers.length
+    ? [...uploadedStickers.map(f => ({ kind: 'img', file: f })),
+       ...FALLBACK_STICKERS.map(e => ({ kind: 'emoji', char: e }))]
+    : FALLBACK_STICKERS.map(e => ({ kind: 'emoji', char: e }));
   function drop() {
     if (Date.now() >= end) { setTimeout(() => { active--; }, 500); return; }
     const el   = document.createElement('div');
@@ -1183,8 +1207,14 @@ function spawnStickerRain(duration = 7000) {
     const dur  = 1.8 + Math.random() * 2.2;
     const rot0 = `${(Math.random() - 0.5) * 30}deg`;
     const rot1 = `${(Math.random() - 0.5) * 90}deg`;
-    el.textContent = emojis[Math.floor(Math.random() * emojis.length)];
-    el.style.cssText = `left:${Math.random()*96}%;top:${-60}px;--size:${size}rem;--dur:${dur}s;--rot0:${rot0};--rot1:${rot1};--travel:${55 + Math.random()*40}vh;`;
+    const pick = pool[Math.floor(Math.random() * pool.length)];
+    if (pick.kind === 'img') {
+      el.style.cssText = `left:${Math.random()*96}%;top:${-60}px;width:${size}rem;height:${size}rem;--dur:${dur}s;--rot0:${rot0};--rot1:${rot1};--travel:${55 + Math.random()*40}vh;`;
+      el.innerHTML = `<img src="/assets/stickers/${encodeURIComponent(pick.file)}" style="width:100%;height:100%;object-fit:contain;pointer-events:none;">`;
+    } else {
+      el.style.cssText = `left:${Math.random()*96}%;top:${-60}px;--size:${size}rem;--dur:${dur}s;--rot0:${rot0};--rot1:${rot1};--travel:${55 + Math.random()*40}vh;`;
+      el.textContent = pick.char;
+    }
     $mid.appendChild(el);
     el.addEventListener('animationend', () => el.remove(), { once: true });
     setTimeout(drop, 80 + Math.random() * 180);
@@ -1554,6 +1584,10 @@ function handleMessage(msg) {
       break;
     case 'event-log':
       flashEventBadges(msg.event);
+      break;
+    case 'assets-updated':
+      // Sticker rain pool needs to know about new uploads. Cheap GET.
+      refreshStickers();
       break;
     case 'ping':
       ws?.send(JSON.stringify({ type: 'pong' }));
