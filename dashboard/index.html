@@ -922,7 +922,7 @@ html, body {
       </div>
 
       <div style="margin-top:10px;">
-        <button class="btn btn-ghost btn-sm" onclick="dashSend({type:'_dashboard.session-reset'})" style="color:var(--red)">
+        <button class="btn btn-ghost btn-sm" onclick="if (confirm('Reset session stats? This zeroes subs/bits/follows/raids and the leaderboard. Layout, goals, widgets, and credentials are preserved.')) dashSend({type:'_dashboard.session-reset'})" style="color:var(--red)">
           Reset Session Stats
         </button>
       </div>

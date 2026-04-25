@@ -1189,16 +1189,48 @@ function refreshStickers() {
 }
 refreshStickers();
 
-function spawnStickerRain(duration = 7000) {
+// Resolve the sticker pool from a payload `pool` option. Accepts:
+//   undefined / null         → all uploaded + emoji fallbacks (default)
+//   "*"                      → same as default
+//   "emoji"                  → emoji only
+//   "uploads"                → uploaded stickers only
+//   ["a.png","b.png", "🎉"]  → exactly these (filenames + raw emoji char)
+//   "prefix-"                → uploaded stickers whose filename starts with that
+function resolveStickerPool(opt) {
+  if (opt == null || opt === '*') {
+    return uploadedStickers.length
+      ? [...uploadedStickers.map(f => ({ kind: 'img', file: f })),
+         ...FALLBACK_STICKERS.map(e => ({ kind: 'emoji', char: e }))]
+      : FALLBACK_STICKERS.map(e => ({ kind: 'emoji', char: e }));
+  }
+  if (opt === 'emoji')   return FALLBACK_STICKERS.map(e => ({ kind: 'emoji', char: e }));
+  if (opt === 'uploads') return uploadedStickers.map(f => ({ kind: 'img', file: f }));
+  if (Array.isArray(opt)) {
+    const items = [];
+    const upSet = new Set(uploadedStickers);
+    for (const v of opt) {
+      if (typeof v !== 'string') continue;
+      if (upSet.has(v))                    items.push({ kind: 'img', file: v });
+      else if (FALLBACK_STICKERS.includes(v)) items.push({ kind: 'emoji', char: v });
+      else if (/^\p{Emoji}/u.test(v))       items.push({ kind: 'emoji', char: v });
+      // unknown filenames just get skipped (no log noise per-spawn)
+    }
+    return items.length ? items : resolveStickerPool(null);
+  }
+  if (typeof opt === 'string') {
+    // Treat as filename prefix filter against uploadedStickers.
+    const matches = uploadedStickers.filter(f => f.startsWith(opt)).map(f => ({ kind: 'img', file: f }));
+    return matches.length ? matches : resolveStickerPool(null);
+  }
+  return resolveStickerPool(null);
+}
+
+function spawnStickerRain(duration = 7000, poolOpt = null) {
   if (!canSpawn()) return;
   active++;
   const end = Date.now() + duration;
-  // Mix uploads + emoji each spawn so streams with a few image stickers still
-  // get visual variety. If there are no uploads, falls back to all emoji.
-  const pool = uploadedStickers.length
-    ? [...uploadedStickers.map(f => ({ kind: 'img', file: f })),
-       ...FALLBACK_STICKERS.map(e => ({ kind: 'emoji', char: e }))]
-    : FALLBACK_STICKERS.map(e => ({ kind: 'emoji', char: e }));
+  const pool = resolveStickerPool(poolOpt);
+  if (!pool.length) { setTimeout(() => { active--; }, 100); return; }
   function drop() {
     if (Date.now() >= end) { setTimeout(() => { active--; }, 500); return; }
     const el   = document.createElement('div');
@@ -1772,7 +1804,7 @@ function dispatchEffect(effect, p) {
     case 'firework':        spawnFireworkRandom();               break;
     case 'firework-salvo':  spawnFireworkSalvo(p.count ?? 4);   break;
     case 'confetti':        spawnConfetti();                     break;
-    case 'sticker-rain':    spawnStickerRain(p.duration ?? 7000); break;
+    case 'sticker-rain':    spawnStickerRain(p.duration ?? 7000, p.pool); break;
     case 'crowd-explosion': spawnCrowdExplosion();               break;
     case 'alert-banner':    alertQueue.push(p);                  break;
     case 'floating-text':   spawnFloatingText(p.text, p.x, p.y); break;
