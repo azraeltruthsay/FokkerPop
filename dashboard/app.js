@@ -1550,6 +1550,28 @@ window.resetLayout = function() {
   }
 };
 
+// Full widget-system reset: wipes widgets.json and restores the shipped
+// default layout. The server backs the current widgets.json up to .bak first
+// so a one-click mistake is recoverable.
+window.resetWidgetsToDefault = async function() {
+  const msg = 'Wipe ALL widgets and restore the shipped default layout?\n\n' +
+              'This deletes any widgets you added, customized configs, and saved positions. ' +
+              'Your current widgets.json is backed up to widgets.json.bak first, so the ' +
+              'change is recoverable by hand if needed.\n\n' +
+              'Proceed?';
+  if (!confirm(msg)) return;
+  try {
+    const r = await fetch('/api/widgets/reset', { method: 'POST' });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok || !data.ok) throw new Error(data?.error || `HTTP ${r.status}`);
+    // The server broadcasts overlay.widgets, which already triggers
+    // renderWidgetList via the state-path subscription. Just nudge the UI.
+    alert(`Restored ${data.count} default widgets.${data.backup ? ' Previous saved to widgets.json.bak.' : ''}`);
+  } catch (err) {
+    alert(`Reset failed: ${err.message}`);
+  }
+};
+
 window.saveCredentialsAndAuth = function () {
   const clientId     = document.getElementById('setup-client-id').value.trim();
   const clientSecret = document.getElementById('setup-client-secret').value.trim();

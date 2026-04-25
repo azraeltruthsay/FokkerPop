@@ -8,6 +8,7 @@ redeems.json
 commands.json
 flows.json
 widgets.json
+widgets.json.bak
 .env
 *.log
 logs/

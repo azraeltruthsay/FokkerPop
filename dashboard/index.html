@@ -1237,7 +1237,8 @@ html, body {
             <input type="checkbox" id="layout-mode-cb-2" onchange="dashSend({type:'_dashboard.layout-mode',active:this.checked})">
             <div class="toggle-slider"></div>
           </label>
-          <button class="btn btn-ghost btn-sm" onclick="resetLayout()" style="color:var(--red);">Reset Positions</button>
+          <button class="btn btn-ghost btn-sm" onclick="resetLayout()" style="color:var(--red);" title="Reset every widget's saved x/y back to the default position. Keeps your widget list and configuration untouched.">Reset Positions</button>
+          <button class="btn btn-ghost btn-sm" onclick="resetWidgetsToDefault()" style="color:var(--red); border:1px solid rgba(255,107,107,0.4);" title="Wipe widgets.json and restore the shipped default layout. Saves a backup to widgets.json.bak first.">Reset Widgets to Default</button>
           <button class="btn btn-primary btn-sm" onclick="window.open('/overlay','_blank','width=1280,height=720')">Pop Out ↗</button>
         </div>
       </div>

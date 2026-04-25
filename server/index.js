@@ -1,5 +1,5 @@
 import { createServer }                                  from 'node:http';
-import { readFileSync, writeFileSync, existsSync, readdirSync, createWriteStream, statSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync, readdirSync, createWriteStream, statSync, copyFileSync } from 'node:fs';
 import { extname, join, normalize, resolve, sep, relative, isAbsolute, basename } from 'node:path';
 import { exec }                                from 'node:child_process';
 import { WebSocketServer, WebSocket }          from 'ws';
@@ -833,6 +833,38 @@ const httpServer = createServer((req, res) => {
         res.writeHead(200); res.end('{"ok":true}');
       } catch (err) { res.writeHead(400); res.end(err.message); }
     });
+    return;
+  }
+
+  // Wipe widgets.json and restore the shipped default layout from
+  // widgets.example.json. Backs up the current widgets.json to .bak first
+  // so a one-click mistake is recoverable. Used by the "Reset Widgets to
+  // Default" button on the Layout page.
+  if (path === '/api/widgets/reset' && req.method === 'POST') {
+    try {
+      const target  = join(ROOT, 'widgets.json');
+      const backup  = join(ROOT, 'widgets.json.bak');
+      const example = join(ROOT, 'widgets.example.json');
+      if (!existsSync(example)) throw new Error('widgets.example.json missing — cannot restore defaults.');
+      if (existsSync(target)) {
+        try { copyFileSync(target, backup); }
+        catch (err) { log.warn('widgets.json.bak write failed:', err.message); }
+      }
+      const defaults = JSON.parse(readFileSync(example, 'utf8'));
+      if (!Array.isArray(defaults)) throw new Error('widgets.example.json is not an array.');
+      widgets.length = 0;
+      widgets.push(...defaults);
+      state.set('overlay.widgets', widgets);
+      writeFileSync(target, JSON.stringify(widgets, null, 2));
+      broadcastState('overlay.widgets', widgets);
+      log.info(`Widgets reset to default (${widgets.length} widgets); previous saved to widgets.json.bak.`);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ok: true, count: widgets.length, backup: existsSync(backup) }));
+    } catch (err) {
+      log.error('Widget reset failed:', err.message);
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ok: false, error: err.message }));
+    }
     return;
   }
 
