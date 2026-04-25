@@ -28,6 +28,17 @@ class StateStore extends EventEmitter {
     super();
     this.#data = this.#loadInitial();
 
+    // Refresh the backup from the current good state.json on boot. Two reasons:
+    //   1. Cleans up any stale .bak left over from a prior install (notably
+    //      the v0.3.18 dev-leak hotfixed in v0.3.19 — that .bak contained
+    //      a dev tree's positions and would have given garbage data if a
+    //      user ever fell back to it).
+    //   2. Bounds recovery worst-case to "state at boot" instead of "state
+    //      from whenever the last flush happened to the previous run".
+    if (existsSync(STATE_FILE)) {
+      try { copyFileSync(STATE_FILE, STATE_FILE_BAK); } catch {}
+    }
+
     // Belt-and-braces periodic flush. Debounced writes in set() cover the
     // normal case; this catches the edge case where something sits in the
     // buffer longer than expected.
