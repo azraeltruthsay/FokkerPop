@@ -106,6 +106,13 @@ function connect() {
     handleMessage(msg);
   });
   ws.addEventListener('close', () => {
+    if (window.__fokkerStopped) {
+      // User clicked Stop FokkerPop (or stop.bat / Stop Menu shortcut). The
+      // server isn't coming back on its own — don't burn cycles reconnecting.
+      setBadge('disconnected', '○ Stopped');
+      $dot?.classList.remove('active');
+      return;
+    }
     retries++;
     setBadge('disconnected', '○ Disconnected');
     $dot?.classList.remove('active');
@@ -284,6 +291,14 @@ function handleMessage(msg) {
     case 'flow.node-fired':
       if (window.highlightNode) window.highlightNode(msg.nodeId);
       break;
+
+    case '_system.shutdown':
+      // Server is going away on purpose. Stop the auto-reconnect loop and
+      // show a persistent overlay explaining how to bring it back, instead
+      // of leaving the dashboard stuck on "Connecting…" forever.
+      window.__fokkerStopped = true;
+      showStoppedOverlay();
+      break;
   }
 }
 
@@ -395,6 +410,10 @@ function applyStateUpdate(path, value) {
     if (l) l.textContent = `${Math.round(value * 100)}%`;
   }
   if (path === 'update.available') renderUpdateBanner(value);
+  // Manual Check-for-Updates button watches these via this custom event.
+  if (path === 'update.available' || path === 'update.checked-at' || path === 'update.check-error') {
+    document.dispatchEvent(new CustomEvent('fokker-update-state', { detail: { path, value } }));
+  }
   if (path === 'obs.streaming') handleStreamingChange(!!value);
   if (path === 'overlay.widgets') { widgets = value || []; renderWidgetList(); }
   if (path === 'resources') window.renderResources?.(value);
@@ -1710,7 +1729,85 @@ window.fokkerLabelToggle = function(scope, kind, visible) {
   });
 })();
 
+// ═══════════════════════════════════════════════ Updates
+
+window.checkForUpdatesNow = function() {
+  const btn  = document.getElementById('check-updates-btn');
+  const stat = document.getElementById('check-updates-status');
+  if (btn) { btn.disabled = true; btn.textContent = 'Checking…'; }
+  if (stat) { stat.textContent = 'contacting GitHub…'; stat.style.color = 'var(--text-dim)'; }
+
+  // The server's checkForUpdate broadcasts on update.available when it finds
+  // something new (or null when on latest). Watch for that path or the
+  // checked-at acknowledgement.
+  let done = false;
+  const finish = (msg, color = 'var(--text-dim)') => {
+    if (done) return;
+    done = true;
+    if (btn)  { btn.disabled = false; btn.textContent = '🔄 Check for Updates'; }
+    if (stat) { stat.textContent = msg; stat.style.color = color; }
+    document.removeEventListener('fokker-update-state', listener);
+  };
+  const listener = (e) => {
+    const { path, value } = e.detail;
+    if (path === 'update.available') {
+      if (value && value.version) finish(`✓ v${value.version} available — banner appeared at the top.`, 'var(--green)');
+      else                        finish(`✓ You're on the latest version.`, 'var(--green)');
+    } else if (path === 'update.check-error') {
+      finish(`✗ Check failed: ${value}`, 'var(--red)');
+    } else if (path === 'update.checked-at') {
+      // Fired even when result is "no new version"
+      finish(`✓ Checked just now — you're up to date.`, 'var(--green)');
+    }
+  };
+  document.addEventListener('fokker-update-state', listener);
+  setTimeout(() => finish('✗ Check timed out (no GitHub response)', 'var(--red)'), 15000);
+
+  dashSend({ type: '_dashboard.check-update' });
+};
+
 // ═══════════════════════════════════════════════ Shutdown
+
+function showStoppedOverlay() {
+  // Replace the dashboard with a clear "FokkerPop is stopped" message so
+  // viewers don't sit staring at "Connecting…" forever after a Stop.
+  const existing = document.getElementById('fokker-stopped-overlay');
+  if (existing) return;
+  const overlay = document.createElement('div');
+  overlay.id = 'fokker-stopped-overlay';
+  overlay.style.cssText = `
+    position:fixed; inset:0; background:rgba(11,11,18,0.94); z-index:99999;
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    color:#fff; font-family:'Segoe UI',system-ui,sans-serif; text-align:center; padding:32px;
+    backdrop-filter: blur(4px);
+  `;
+  overlay.innerHTML = `
+    <div style="font-size:3.5rem; margin-bottom:18px;">⏻</div>
+    <h1 style="font-size:1.6rem; font-weight:900; margin:0 0 12px;">FokkerPop is stopped</h1>
+    <p style="font-size:1rem; color:rgba(255,255,255,0.72); max-width:520px; line-height:1.5; margin:0 0 24px;">
+      The server has been shut down cleanly. To start it again:
+    </p>
+    <ul style="text-align:left; font-size:.92rem; color:rgba(255,255,255,0.85); line-height:1.9; margin:0 0 28px; list-style:none; padding:0;">
+      <li>• Click the <strong>FokkerPop</strong> shortcut in your Start Menu</li>
+      <li>• Or double-click <code style="background:rgba(255,255,255,0.08); padding:2px 8px; border-radius:4px;">FokkerPop.exe</code> in your install folder</li>
+      <li>• Or run <code style="background:rgba(255,255,255,0.08); padding:2px 8px; border-radius:4px;">start.bat</code></li>
+    </ul>
+    <p style="font-size:.78rem; color:var(--text-dim); margin:0;">
+      Once the server is back up, this tab will reconnect automatically.
+    </p>
+  `;
+  document.body.appendChild(overlay);
+  // Resume reconnect once the user (presumably) restarts. Poll the WS URL.
+  const probe = setInterval(() => {
+    fetch('/api/state', { cache: 'no-store' }).then(r => {
+      if (r.ok) {
+        clearInterval(probe);
+        window.__fokkerStopped = false;
+        location.reload();
+      }
+    }).catch(() => {});
+  }, 2000);
+}
 
 window.shutdownFokkerPop = function() {
   const streaming = appState?.obs?.streaming;

@@ -1,0 +1,202 @@
+{
+  "session": {
+    "subCount": 0,
+    "bitsTotal": 0,
+    "followCount": 0,
+    "raidCount": 0
+  },
+  "crowd": {
+    "energy": 0,
+    "combo": null
+  },
+  "goals": [
+    {
+      "id": "first-100-subs",
+      "label": "100 Subs",
+      "metric": "session.subCount",
+      "target": 100,
+      "reward": {
+        "type": "effect",
+        "effect": "crowd-explosion",
+        "sound": "boom.wav"
+      },
+      "style": "bar",
+      "active": true,
+      "completed": false
+    },
+    {
+      "id": "bits-goal",
+      "label": "50,000 Bits",
+      "metric": "session.bitsTotal",
+      "target": 50000,
+      "reward": {
+        "type": "effect",
+        "effect": "firework-salvo"
+      },
+      "style": "bar",
+      "active": false,
+      "completed": false
+    }
+  ],
+  "leaderboard": {
+    "bits": {},
+    "subs": {},
+    "gifts": {}
+  },
+  "recent": [
+    {
+      "type": "redeem",
+      "ts": 1776797282867
+    },
+    {
+      "type": "flow.node-fired",
+      "ts": 1776797282867
+    },
+    {
+      "type": "flow.node-fired",
+      "ts": 1776797282867
+    },
+    {
+      "type": "flow.node-fired",
+      "ts": 1776797282867
+    },
+    {
+      "type": "flow.node-fired",
+      "ts": 1776797282867
+    },
+    {
+      "type": "flow.node-fired",
+      "ts": 1776797282867
+    },
+    {
+      "type": "flow.node-fired",
+      "ts": 1776797282867
+    },
+    {
+      "type": "flow.node-fired",
+      "ts": 1776797282867
+    },
+    {
+      "type": "flow.node-fired",
+      "ts": 1776797282867
+    },
+    {
+      "type": "flow.node-fired",
+      "ts": 1776797282867
+    },
+    {
+      "type": "flow.node-fired",
+      "ts": 1776797282867
+    },
+    {
+      "type": "flow.node-fired",
+      "ts": 1776797282867
+    },
+    {
+      "type": "flow.node-fired",
+      "ts": 1776797282867
+    },
+    {
+      "type": "flow.node-fired",
+      "ts": 1776797282867
+    },
+    {
+      "type": "flow.node-fired",
+      "ts": 1776797282867
+    }
+  ],
+  "chatters": [],
+  "overlay": {
+    "widgets": [
+      {
+        "id": "w-sample-counter",
+        "type": "counter",
+        "x": 40,
+        "y": 4,
+        "config": {
+          "label": "SUBS TODAY",
+          "metric": "session.subCount",
+          "fontSize": 38,
+          "color": "#9147FF"
+        }
+      },
+      {
+        "id": "w-mo5xwurt",
+        "type": "physics-pit",
+        "x": 40,
+        "y": 10,
+        "config": {
+          "visible": true,
+          "size": 18,
+          "gravity": 1,
+          "width": 320,
+          "height": 220,
+          "maxAlive": 60,
+          "spawns": [
+            {
+              "triggerEvent": "sub",
+              "emojis": [
+                "🎈",
+                "✨"
+              ],
+              "count": 6,
+              "layer": 1
+            },
+            {
+              "triggerEvent": "cheer",
+              "emojis": [
+                "💎"
+              ],
+              "count": 4,
+              "layer": 2
+            }
+          ]
+        }
+      },
+      {
+        "id": "w-default-2d6",
+        "type": "dice-tray",
+        "x": 70,
+        "y": 60,
+        "config": {
+          "visible": true,
+          "autoHide": true,
+          "dice": [
+            {
+              "sides": 6,
+              "count": 2
+            }
+          ],
+          "triggerEvent": "dice-tray-roll",
+          "eventType": "dice-tray-roll",
+          "width": 420,
+          "height": 280,
+          "dieSize": 0.55,
+          "trayWidth": 2.5,
+          "trayDepth": 1.6
+        }
+      },
+      {
+        "id": "w-mo5xxbdp",
+        "type": "model-3d",
+        "x": 40,
+        "y": 10,
+        "config": {
+          "visible": true,
+          "modelUrl": "",
+          "rotationSpeed": 0.005,
+          "scale": 1,
+          "reactiveScale": "",
+          "width": 300,
+          "height": 300
+        }
+      }
+    ],
+    "positions": {
+      "w-mo5xxbdp": {
+        "x": 69.8436,
+        "y": 23.7086
+      }
+    }
+  }
+}

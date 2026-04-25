@@ -1594,10 +1594,21 @@ html, body {
         </p>
       </div>
 
+      <div class="card">
+        <div class="card-title">Updates</div>
+        <p style="font-size:.82rem; color:var(--text-dim); margin: 4px 0 12px;">
+          FokkerPop checks for new releases every 30 minutes automatically. Use this button to check right now.
+        </p>
+        <div style="display:flex; align-items:center; gap:12px;">
+          <button class="btn btn-primary btn-sm" id="check-updates-btn" onclick="checkForUpdatesNow()">🔄 Check for Updates</button>
+          <span id="check-updates-status" style="font-size:.78rem; color:var(--text-dim);"></span>
+        </div>
+      </div>
+
       <div class="card" style="border-color: rgba(255,107,107,0.35);">
         <div class="card-title" style="color: var(--red);">Shut down FokkerPop</div>
         <p style="font-size:.82rem; color:var(--text-dim); margin: 4px 0 14px;">
-          Stops the server cleanly — broadcasts a shutdown signal to every connected overlay (so OBS browser sources clear their effect queues), flushes <code>state.json</code>, then exits. You'll need to run <code>start.bat</code> again to bring it back up.
+          Stops the server cleanly — broadcasts a shutdown signal to every connected overlay (so OBS browser sources clear their effect queues), flushes <code>state.json</code>, then exits. You'll need to run <code>start.bat</code> (or the <strong>FokkerPop</strong> Start Menu shortcut, or the desktop <code>FokkerPop.exe</code>) to bring it back up.
         </p>
         <button class="btn btn-ghost" style="color: var(--red); border: 1px solid rgba(255,107,107,0.4);" onclick="shutdownFokkerPop()">⏻ Stop FokkerPop</button>
       </div>

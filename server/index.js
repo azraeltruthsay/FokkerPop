@@ -15,7 +15,7 @@ import settings, { ROOT }    from './settings-loader.js';
 
 import log                        from './logger.js';
 import { makeCtx, resolveDeep }   from './template.js';
-import { scheduleChecks, applyUpdate, getAvailable as getAvailableUpdate, setAutoInstall, setStreamingProbe, setAutoInstallHandler, onStreamingStateChange } from './update-checker.js';
+import { scheduleChecks, checkForUpdate, applyUpdate, getAvailable as getAvailableUpdate, setAutoInstall, setStreamingProbe, setAutoInstallHandler, onStreamingStateChange } from './update-checker.js';
 import { parseChatRollSpec, expandPercentile, canRenderInTray } from '../shared/dice.js';
 
 process.title = 'FokkerPop';
@@ -539,7 +539,22 @@ const httpServer = createServer((req, res) => {
 
   // Dashboard static files
   if (path === '/dashboard/') {
-    return serveFile(res, join(ROOT, 'dashboard/index.html'));
+    // Render the version directly into the HTML so it's correct on first paint
+    // — no dependency on the WebSocket round-trip, no risk of seeing the stale
+    // "v..." placeholder during connect, no cache-staleness across browser tabs
+    // opened at different points in the install's lifetime.
+    try {
+      const html = readFileSync(join(ROOT, 'dashboard/index.html'), 'utf8')
+        .replace(/(<span class="v-(?:badge|string)")>v\.\.\.</g, `$1>v${VERSION}<`);
+      res.writeHead(200, {
+        'Content-Type':           'text/html; charset=utf-8',
+        'X-Content-Type-Options': 'nosniff',
+        'Cache-Control':          'no-cache',
+      });
+      return res.end(html);
+    } catch {
+      return serveFile(res, join(ROOT, 'dashboard/index.html'));
+    }
   }
   if (path.startsWith('/dashboard/')) {
     return serveFile(res, join(ROOT, path.slice(1)));
@@ -1225,6 +1240,22 @@ wss.on('connection', (ws, req) => {
         // open overlays clear their effect queues before the server dies.
         log.info('Shutdown requested from dashboard.');
         setTimeout(() => shutdown('dashboard-request'), 50);
+        break;
+      case '_dashboard.check-update':
+        // Manual GitHub release poll (otherwise runs automatically every 30
+        // min via update-checker.js). Result lands on every dashboard via the
+        // `update.available` state path the auto-poll already broadcasts on.
+        log.info('Manual update check requested from dashboard.');
+        checkForUpdate({
+          currentVersion:        VERSION,
+          root:                  ROOT,
+          broadcastToDashboards: (msg) => broadcast(dashboards, msg),
+        }).then(() => {
+          // Echo a no-op state so the dashboard can clear its "Checking…" UI.
+          send(ws, { type: 'state', path: 'update.checked-at', value: Date.now() });
+        }).catch(err => {
+          send(ws, { type: 'state', path: 'update.check-error', value: err.message });
+        });
         break;
     }
   });
