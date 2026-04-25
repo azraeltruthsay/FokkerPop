@@ -1,10 +1,11 @@
 {
-  "!pop":   { "effect": "firework-salvo", "count": 2, "sound": "boom.wav", "cooldown": 10 },
-  "!bub":   { "effect": "balloon",        "count": 5, "sound": "pop.wav",  "cooldown": 10 },
-  "!coin":  { "effect": "balloon",        "count": 1, "sound": "coin.wav", "emoji": "🪙", "cooldown": 5 },
-  "!yay":   { "effect": "confetti",       "sound": "yay.wav", "cooldown": 15 },
+  "_comment_permissions": "Every command is broadcaster-only by default — viewers can't fire it. Add 'allow' to widen access: 'anyone', 'subscriber', 'vip', or 'mod'. Each tier implicitly grants higher tiers (mod includes vip+sub+broadcaster). 'allow':'anyone' is the only value that makes a command public.",
+  "!bub":   { "effect": "balloon",        "count": 5, "sound": "pop.wav",  "cooldown": 10, "allow": "anyone" },
+  "!pop":   { "effect": "firework-salvo", "count": 2, "sound": "boom.wav", "cooldown": 10, "allow": "anyone" },
+  "!coin":  { "effect": "balloon",        "count": 1, "sound": "coin.wav", "emoji": "🪙", "cooldown": 5, "allow": "subscriber" },
+  "!yay":   { "effect": "confetti",       "sound": "yay.wav", "cooldown": 15, "allow": "vip" },
 
-  "_comment_redeem_alias": "Use 'redeem' instead of 'effect' to make a chat command fire the same flow a real channel-point redemption would. The value must EXACTLY match the rewardTitle key in redeems.json (case, spaces, exclamation marks all count).",
+  "_comment_redeem_alias": "Use 'redeem' instead of 'effect' to make a chat command fire the same flow a real channel-point redemption would. The value must EXACTLY match the rewardTitle key in redeems.json (case, spaces, exclamation marks all count). Note: chat aliases never deduct channel points (Twitch's API doesn't allow that for any app); use 'allow':'mod' or omit it (broadcaster-only) to keep it from being a free bypass.",
   "!bigbub": { "redeem": "BUBLOOONS!!", "cooldown": 10 },
 
   "_comment_random_sound": "sound:'*' picks any uploaded sound from assets/sounds/. sound:['a.wav','b.wav'] picks from that exact list. Pair with effect:'play-sound' to skip the visual entirely (useful for soundboards / 'out of context' style commands).",

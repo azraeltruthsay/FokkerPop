@@ -38,10 +38,37 @@ flowEngine.setFlows(flows);
 
 const commandCooldowns = new Map();
 
+// Tier hierarchy: a higher tier always satisfies a lower-tier requirement.
+// `broadcaster` is implicit at every level — it's Fokker's stream, he can
+// always fire his own commands. Dashboard simulator events (source:
+// 'dashboard') are treated as broadcaster too since they originate from the
+// dashboard which is auth-bound to Fokker's machine.
+function userMatchesAllow(event, allow) {
+  if (!allow || allow === 'anyone') return true;
+  if (event.source === 'dashboard') return true;
+  const badges = event.payload?.badges || [];
+  const sets = new Set(badges.map(b => b?.set_id ?? b));
+  if (sets.has('broadcaster')) return true;
+  switch (allow) {
+    case 'mod':        return sets.has('moderator');
+    case 'vip':        return sets.has('moderator') || sets.has('vip');
+    case 'subscriber': return sets.has('moderator') || sets.has('vip') || sets.has('subscriber');
+    case 'broadcaster': return false;  // already handled above; viewers don't qualify
+    default:           return false;   // unknown allow value → fail closed
+  }
+}
+
 function fireCommand(text, event) {
   if (!text.startsWith('!')) return;
   const cmd = commands[text.toLowerCase().trim()];
   if (!cmd) return;
+
+  // Default-deny: any command without an explicit `allow` is broadcaster-only.
+  // This is the safer default — if someone shares a flashy chat command in a
+  // tutorial somewhere, viewers don't end up triggering it on Fokker's stream
+  // for free. Free commands opt in with "allow": "anyone".
+  const allow = cmd.allow ?? 'broadcaster';
+  if (!userMatchesAllow(event, allow)) return;
 
   const now = Date.now();
   const last = commandCooldowns.get(text) ?? 0;
@@ -447,6 +474,7 @@ const MIME = {
   '.png':  'image/png',
   '.jpg':  'image/jpeg',
   '.gif':  'image/gif',
+  '.webp': 'image/webp',
   '.svg':  'image/svg+xml',
   '.wav':  'audio/wav',
   '.mp3':  'audio/mpeg',
