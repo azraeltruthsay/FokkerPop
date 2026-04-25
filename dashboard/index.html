@@ -1609,6 +1609,22 @@ html, body {
         </div>
       </div>
 
+      <div class="card">
+        <div class="card-title">Import from PolyPop</div>
+        <p style="font-size:.82rem; color:var(--text-dim); margin: 4px 0 12px;">
+          Migrating from PolyPop? Pick your <code>.pop</code> project file — FokkerPop will pull
+          out your channel-point redeems and chat-command aliases. Only the 1:1 pieces (redeem
+          titles, audio file references) come over; PolyPop's Action Sequences, scenes, and 3D
+          models don't have FokkerPop equivalents and are skipped.
+        </p>
+        <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+          <input id="import-pop-file" type="file" accept=".pop,application/json" style="font-size:.78rem;">
+          <button class="btn btn-primary btn-sm" id="import-pop-btn" onclick="importPolyPopProject()">📥 Import</button>
+          <span id="import-pop-status" style="font-size:.78rem; color:var(--text-dim);"></span>
+        </div>
+        <div id="import-pop-result" style="margin-top:14px; display:none;"></div>
+      </div>
+
       <div class="card" style="border-color: rgba(255,107,107,0.35);">
         <div class="card-title" style="color: var(--red);">Shut down FokkerPop</div>
         <p style="font-size:.82rem; color:var(--text-dim); margin: 4px 0 14px;">

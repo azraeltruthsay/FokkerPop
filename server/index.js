@@ -17,6 +17,7 @@ import log                        from './logger.js';
 import { makeCtx, resolveDeep }   from './template.js';
 import { scheduleChecks, checkForUpdate, applyUpdate, getAvailable as getAvailableUpdate, setAutoInstall, setStreamingProbe, setAutoInstallHandler, onStreamingStateChange } from './update-checker.js';
 import { parseChatRollSpec, expandPercentile, canRenderInTray } from '../shared/dice.js';
+import { importPolyPop }          from './polypop-import.js';
 
 process.title = 'FokkerPop';
 
@@ -938,6 +939,39 @@ const httpServer = createServer((req, res) => {
       } catch (err) {
         log.error('Settings POST error:', err.message);
         res.writeHead(400); res.end('Bad request');
+      }
+    });
+    return;
+  }
+
+  // PolyPop project importer — accepts the raw .pop JSON body, returns the
+  // parsed shape (redeems / commands / audioFiles) so the dashboard can show
+  // it inline and let the user pick Append vs Replace. Doesn't touch
+  // redeems.json or commands.json itself; the dashboard re-uses the existing
+  // /api/redeems + /api/commands POSTs to apply.
+  if (path === '/api/import-polypop' && req.method === 'POST') {
+    let body = '';
+    let aborted = false;
+    req.on('data', d => {
+      body += d;
+      if (body.length > 5 * 1024 * 1024) {  // 5 MB hard cap
+        aborted = true;
+        res.writeHead(413); res.end('Project file too large (>5 MB).');
+        req.destroy();
+      }
+    });
+    req.on('end', () => {
+      if (aborted) return;
+      try {
+        const pop = JSON.parse(body);
+        const result = importPolyPop(pop);
+        log.info(`PolyPop import: ${Object.keys(result.redeems).length} redeems, ${Object.keys(result.commands).length} commands, ${result.audioFiles.length} audio refs.`);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(result));
+      } catch (err) {
+        log.warn('PolyPop import failed:', err.message);
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: err.message }));
       }
     });
     return;

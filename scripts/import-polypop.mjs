@@ -15,10 +15,13 @@
 // FokkerPop concepts (redeem titles, audio file references). It does NOT try
 // to walk PolyPop's full Action Sequence graph (different paradigm) or import
 // scenes/3D models/animations (no equivalent). Fokker reviews + customizes
-// each redeem in the dashboard's Config tab afterwards.
+// each redeem in the dashboard's Config tab afterwards. The Setup page in the
+// dashboard wraps this same logic with a file picker + apply buttons; this
+// script stays around for headless / migration-script use.
 
 import { readFileSync, writeFileSync } from 'node:fs';
 import { resolve, basename } from 'node:path';
+import { importPolyPop } from '../server/polypop-import.js';
 
 const args = process.argv.slice(2);
 const popPath = args[0];
@@ -30,62 +33,20 @@ const outDirIdx = args.indexOf('--out-dir');
 const outDir = outDirIdx >= 0 ? args[outDirIdx + 1] : process.cwd();
 
 const pop = JSON.parse(readFileSync(popPath, 'utf8'));
-if (pop.app !== 'PolyPop') {
-  console.error(`Not a PolyPop project file (app=${pop.app}).`);
+
+let result;
+try {
+  result = importPolyPop(pop);
+} catch (err) {
+  console.error(err.message);
   process.exit(1);
 }
 
-console.log(`Reading "${basename(popPath)}" — PolyPop ${pop.ver}`);
-console.log(`  ${(pop.sources || []).length} sources · ${(pop.wires || []).length} wires · ${(pop.scenes || []).length} scenes`);
+const { redeems, commands, audioFiles, summary } = result;
 
-// ── 1. Extract channel-point redeems ─────────────────────────────────────────
-const redeems = {};
-const sourceById = new Map(pop.sources.map(s => [s.id, s]));
-const wires = pop.wires || [];
-const twitchSrc = pop.sources.find(s => s.uix === 'twitch:Twitch Alerts');
-const cpRedeems = twitchSrc?.properties?.ChannelPoints?.objects ?? [];
+console.log(`Reading "${basename(popPath)}" — PolyPop ${summary.polypopVersion}`);
+console.log(`  ${summary.sourceCount} sources · ${summary.wireCount} wires · ${summary.sceneCount} scenes`);
 
-// Heuristic: pick a default FokkerPop effect from the redeem name. Fokker can
-// edit each one afterwards. Goal is "do something sensible by default" — a
-// firework for "fire/blast", balloons for "pop/bub", dice for "roll", etc.
-function guessEffect(name) {
-  const n = name.toLowerCase();
-  if (/\broll\b|\bdice\b|\bd\d+\b/.test(n))                  return { effect: 'dice-tray-roll', payload: { user: 'Roller' } };
-  if (/\bbub|\bballoon|\bpop\b|popoff|pop off/.test(n))      return { effect: 'balloon',    count: 10, sound: 'pop.wav' };
-  if (/firework|salvo|chaos|fokker|slam|fire|blast/.test(n)) return { effect: 'firework-salvo', count: 5, sound: 'boom.wav' };
-  if (/sticker|confetti|party|love/.test(n))                 return { effect: 'sticker-rain', duration: 6000 };
-  if (/sing|cur|word|jugger|cam|mode/.test(n))               return { effect: 'alert-banner', tier: 'A', icon: '⏱️', text: name, sound: 'alert.wav' };
-  return { effect: 'alert-banner', tier: 'B', icon: '🎉', text: name, sound: 'alert.wav' };
-}
-
-for (const r of cpRedeems) {
-  redeems[r.name] = guessEffect(r.name);
-}
-
-// ── 2. Generate !chat aliases (broadcaster-only by default) ──────────────────
-// Slugify "Roll 6s for 12 PUSHUPS!" → "!roll6s12pushups". Fokker can rename.
-function slugify(s) {
-  return '!' + s.toLowerCase()
-    .replace(/[^a-z0-9]+/g, '')
-    .slice(0, 18) || '!cmd';
-}
-const commands = {};
-for (const name of Object.keys(redeems)) {
-  const cmd = slugify(name);
-  if (commands[cmd]) continue; // collision — skip, user can rename
-  commands[cmd] = { redeem: name, cooldown: 10 };  // allow defaults to broadcaster
-}
-
-// ── 3. Find audio files referenced anywhere in the project ───────────────────
-const audioFiles = new Set();
-for (const s of pop.sources) {
-  if (s.uix !== 'core-app:Audio Clip') continue;
-  const f = s.properties?.file || s.properties?.filename;
-  if (typeof f === 'string') audioFiles.add(basename(f));
-  if (typeof s.name === 'string') audioFiles.add(s.name + ' (Audio Clip)');
-}
-
-// ── 4. Write outputs ─────────────────────────────────────────────────────────
 const redeemsOut = resolve(outDir, 'redeems.from-polypop.json');
 const cmdsOut    = resolve(outDir, 'commands.from-polypop.json');
 const audioOut   = resolve(outDir, 'audio-files.txt');
@@ -107,14 +68,14 @@ writeFileSync(audioOut, [
   '# project stored them; use this list as a hint, then verify against PolyPop\'s',
   '# Sounds folder (typically %USERPROFILE%\\Documents\\PolyPop\\Sounds\\).',
   '',
-  ...[...audioFiles].sort(),
+  ...audioFiles,
   '',
 ].join('\n'));
 
 console.log('');
 console.log(`Wrote ${Object.keys(redeems).length} redeems → ${redeemsOut}`);
 console.log(`Wrote ${Object.keys(commands).length} chat aliases → ${cmdsOut}`);
-console.log(`Wrote ${audioFiles.size} audio references → ${audioOut}`);
+console.log(`Wrote ${audioFiles.length} audio references → ${audioOut}`);
 console.log('');
 console.log('Next steps for Fokker:');
 console.log('  1. Open redeems.from-polypop.json in a text editor; review each entry.');
@@ -123,3 +84,5 @@ console.log('  3. Same for commands.from-polypop.json → commands.json.');
 console.log('  4. Drop any custom audio files into assets/sounds/ to match the names');
 console.log('     in the redeems (currently they default to alert.wav / pop.wav / boom.wav).');
 console.log('  5. Restart FokkerPop and test each redeem from Config → Redeems → ▶ Test.');
+console.log('');
+console.log('Or skip this CLI and use the dashboard\'s Setup → Import from PolyPop button.');

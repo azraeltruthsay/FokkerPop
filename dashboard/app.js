@@ -1797,6 +1797,154 @@ window.checkForUpdatesNow = function() {
   dashSend({ type: '_dashboard.check-update' });
 };
 
+// ═══════════════════════════════════════════════ PolyPop import
+
+// Cached so the Append/Replace buttons can reuse the parsed result without
+// re-uploading the whole .pop file.
+let _polyPopImportResult = null;
+
+window.importPolyPopProject = async function() {
+  const fileInput = document.getElementById('import-pop-file');
+  const btn       = document.getElementById('import-pop-btn');
+  const status    = document.getElementById('import-pop-status');
+  const resultEl  = document.getElementById('import-pop-result');
+
+  const file = fileInput?.files?.[0];
+  if (!file) {
+    status.textContent = 'Pick a .pop file first.';
+    status.style.color = 'var(--orange)';
+    return;
+  }
+
+  btn.disabled = true;
+  status.textContent = `Reading ${file.name}…`;
+  status.style.color = 'var(--text-dim)';
+  resultEl.style.display = 'none';
+
+  try {
+    const text = await file.text();
+    const r = await fetch('/api/import-polypop', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: text,
+    });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data?.error || `HTTP ${r.status}`);
+
+    _polyPopImportResult = data;
+    const rCount = Object.keys(data.redeems).length;
+    const cCount = Object.keys(data.commands).length;
+    const aCount = data.audioFiles.length;
+    status.textContent = `Parsed PolyPop ${data.summary.polypopVersion} — ${rCount} redeems · ${cCount} commands · ${aCount} audio refs.`;
+    status.style.color = 'var(--green)';
+    renderPolyPopImportResult(data);
+    resultEl.style.display = 'block';
+  } catch (err) {
+    status.textContent = `Import failed: ${err.message}`;
+    status.style.color = 'var(--red)';
+  } finally {
+    btn.disabled = false;
+  }
+};
+
+function renderPolyPopImportResult(data) {
+  const resultEl = document.getElementById('import-pop-result');
+  if (!resultEl) return;
+
+  const redeemRows = Object.entries(data.redeems).map(([name, def]) => `
+    <tr>
+      <td style="padding:6px 10px; font-weight:600;">${esc(name)}</td>
+      <td style="padding:6px 10px; color:var(--text-dim); font-family:ui-monospace,monospace; font-size:.74rem;">${esc(def.effect)}${def.tier ? ' · ' + esc(def.tier) : ''}${def.sound ? ' · ' + esc(def.sound) : ''}</td>
+    </tr>
+  `).join('');
+
+  const commandRows = Object.entries(data.commands).map(([cmd, def]) => `
+    <tr>
+      <td style="padding:6px 10px; font-family:ui-monospace,monospace; font-weight:600;">${esc(cmd)}</td>
+      <td style="padding:6px 10px; color:var(--text-dim);">→ ${esc(def.redeem)}</td>
+    </tr>
+  `).join('');
+
+  const audioList = data.audioFiles.length
+    ? data.audioFiles.map(f => `<li style="font-family:ui-monospace,monospace; font-size:.76rem;">${esc(f)}</li>`).join('')
+    : '<li style="color:var(--text-dim); font-style:italic;">(none referenced)</li>';
+
+  resultEl.innerHTML = `
+    <div style="background:var(--surface2); border:1px solid var(--border); border-radius:10px; padding:14px 16px;">
+      <p style="font-size:.78rem; color:var(--text-dim); margin:0 0 12px;">
+        Review below. <strong>Append</strong> adds new entries without touching existing ones (collisions skipped).
+        <strong>Replace</strong> wipes the current file and writes only what's listed here. Always test a redeem after applying.
+      </p>
+
+      <details open style="margin-bottom:10px;">
+        <summary style="cursor:pointer; font-weight:700; font-size:.86rem;">Redeems (${Object.keys(data.redeems).length})</summary>
+        <table style="width:100%; border-collapse:collapse; margin-top:8px; font-size:.8rem;">${redeemRows}</table>
+        <div style="display:flex; gap:8px; margin-top:10px;">
+          <button class="btn btn-primary btn-sm" onclick="applyPolyPopImport('redeems', 'append')">Append new</button>
+          <button class="btn btn-ghost btn-sm" onclick="applyPolyPopImport('redeems', 'replace')" style="color:var(--orange); border:1px solid rgba(255,159,28,0.4);">Replace all</button>
+          <span id="import-pop-redeems-status" style="font-size:.74rem; color:var(--text-dim); align-self:center;"></span>
+        </div>
+      </details>
+
+      <details style="margin-bottom:10px;">
+        <summary style="cursor:pointer; font-weight:700; font-size:.86rem;">Chat commands (${Object.keys(data.commands).length})</summary>
+        <p style="font-size:.74rem; color:var(--text-dim); margin:6px 0 4px;">
+          All imported as broadcaster-only with a 10 s cooldown. Edit the <code>allow</code> field in the Config tab afterwards if you want viewers to fire any of them.
+        </p>
+        <table style="width:100%; border-collapse:collapse; margin-top:6px; font-size:.8rem;">${commandRows}</table>
+        <div style="display:flex; gap:8px; margin-top:10px;">
+          <button class="btn btn-primary btn-sm" onclick="applyPolyPopImport('commands', 'append')">Append new</button>
+          <button class="btn btn-ghost btn-sm" onclick="applyPolyPopImport('commands', 'replace')" style="color:var(--orange); border:1px solid rgba(255,159,28,0.4);">Replace all</button>
+          <span id="import-pop-commands-status" style="font-size:.74rem; color:var(--text-dim); align-self:center;"></span>
+        </div>
+      </details>
+
+      <details>
+        <summary style="cursor:pointer; font-weight:700; font-size:.86rem;">Audio files (${data.audioFiles.length})</summary>
+        <p style="font-size:.74rem; color:var(--text-dim); margin:6px 0 4px;">
+          Audio Clip references in the .pop file. PolyPop stores audio outside the project — copy these from
+          <code>%USERPROFILE%\\Documents\\PolyPop\\Sounds\\</code> into your FokkerPop install's <code>assets/sounds/</code>
+          folder, then upload via the Assets tab.
+        </p>
+        <ul style="margin:6px 0 0 18px; line-height:1.7;">${audioList}</ul>
+      </details>
+    </div>
+  `;
+}
+
+window.applyPolyPopImport = async function(kind, mode) {
+  if (!_polyPopImportResult) return;
+  const statusId = `import-pop-${kind}-status`;
+  const statusEl = document.getElementById(statusId);
+  const incoming = _polyPopImportResult[kind] || {};
+
+  const verb = mode === 'replace' ? 'Replace' : 'Append';
+  const label = kind === 'redeems' ? 'redeems.json' : 'commands.json';
+  if (mode === 'replace' && !confirm(`${verb} ${label} with the ${Object.keys(incoming).length} imported entries? This will wipe the current file.`)) return;
+
+  statusEl.textContent = 'Saving…';
+  statusEl.style.color = 'var(--text-dim)';
+
+  try {
+    let payload = incoming;
+    if (mode === 'append') {
+      const cur = await fetch(`/api/${kind}`).then(r => r.json());
+      payload = { ...incoming, ...cur };  // existing wins on collision
+    }
+    const r = await fetch(`/api/${kind}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    statusEl.textContent = `✓ Saved ${Object.keys(payload).length} ${kind}.`;
+    statusEl.style.color = 'var(--green)';
+  } catch (err) {
+    statusEl.textContent = `✗ ${err.message}`;
+    statusEl.style.color = 'var(--red)';
+  }
+};
+
 // ═══════════════════════════════════════════════ Shutdown
 
 function showStoppedOverlay() {
