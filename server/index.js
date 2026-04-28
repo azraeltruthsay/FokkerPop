@@ -11,7 +11,7 @@ import { TwitchEventSub }         from './twitch/eventsub.js';
 import flowEngine            from './pipeline/flow-engine.js';
 import obs                   from './obs.js';
 import * as helix            from './twitch/helix.js';
-import settings, { ROOT }    from './settings-loader.js';
+import settings, { ROOT, loadedFrom, saveSettings } from './settings-loader.js';
 
 import log                        from './logger.js';
 import { makeCtx, resolveDeep }   from './template.js';
@@ -27,6 +27,16 @@ process.title = 'FokkerPop';
 const PORT    = parseInt(process.env.PORT, 10) || settings.server?.port || 4747;
 const BIND    = '127.0.0.1';   // local only — never expose to LAN
 const VERSION = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8')).version;
+
+// Loud breadcrumb when settings.json was unreadable on boot and we recovered
+// from .bak (typical: prior NSIS update taskkill'd a settings write mid-flight).
+// Without this, a successful recovery is silent and Fokker would only notice
+// indirectly by Twitch staying connected when he expected it to break.
+if (loadedFrom === 'settings.json.bak') {
+  log.warn('settings.json was unreadable on boot — recovered from settings.json.bak (Twitch creds preserved).');
+} else if (loadedFrom === 'settings.example.json') {
+  log.warn('settings.json missing — booted from settings.example.json. Twitch creds need to be re-connected in the dashboard.');
+}
 
 const goals    = loadAndEnsureJson('goals.json',   []);
 const redeems  = loadAndEnsureJson('redeems.json', {});
@@ -959,8 +969,8 @@ const httpServer = createServer((req, res) => {
           }
         }
 
-        writeFileSync(join(ROOT, 'settings.json'), JSON.stringify(settings, null, 2));
-        
+        saveSettings();
+
         if (obsChanged) {
           log.info('OBS settings updated — reconnecting...');
           obs.reconnect();
@@ -1033,7 +1043,7 @@ async function handleOAuthCallback(params, res) {
     if (token.access_token) {
       settings.twitch.accessToken  = token.access_token;
       settings.twitch.refreshToken = token.refresh_token ?? '';
-      writeFileSync(join(ROOT, 'settings.json'), JSON.stringify(settings, null, 2));
+      saveSettings();
       log.info(`Twitch OAuth success. Token stored; reconnecting EventSub.`);
       res.writeHead(200, { 'Content-Type': 'text/html' });
       res.end(`<!doctype html>
@@ -1239,6 +1249,7 @@ wss.on('connection', (ws, req) => {
             log.error('Failed to persist widgets.json after resize:', err.message);
           }
           state.set('overlay.widgets', widgets);
+          state.flush();
           broadcastState('overlay.widgets', widgets);
         }
       }
@@ -1289,13 +1300,18 @@ wss.on('connection', (ws, req) => {
         const positions = state.get('overlay.positions') ?? {};
         positions[msg.id] = { x: msg.x, y: msg.y };
         state.set('overlay.positions', positions);
+        // Force immediate flush — the default 300ms debounce loses drags if
+        // the user runs the updater EXE (NSIS taskkill /F) right after
+        // dragging. state.flush() is a tmp+rename atomic write so it's safe
+        // to call on every drag-end.
+        state.flush();
         broadcastState('overlay.positions', positions);
         break;
       }
       case '_dashboard.element-visibility': {
-        // Per-element hide/show. Stored as { [id]: false } for elements the
-        // user has explicitly hidden; visible-true is implicit (the absence
-        // of an entry) so the file stays compact and easy to inspect.
+        // Stored as { [id]: false } for elements the user has explicitly
+        // hidden; visible-true is implicit (the absence of an entry) so the
+        // file stays compact and easy to inspect.
         if (typeof msg.id !== 'string' || !msg.id) break;
         const map = { ...(state.get('overlay.elementVisibility') ?? {}) };
         if (msg.visible === false) {
@@ -1304,6 +1320,7 @@ wss.on('connection', (ws, req) => {
           delete map[msg.id];
         }
         state.set('overlay.elementVisibility', map);
+        state.flush();
         broadcastState('overlay.elementVisibility', map);
         break;
       }
@@ -1319,12 +1336,14 @@ wss.on('connection', (ws, req) => {
             log.error('Failed to persist widgets.json after resize:', err.message);
           }
           state.set('overlay.widgets', widgets);
+          state.flush();
           broadcastState('overlay.widgets', widgets);
         }
         break;
       }
       case '_dashboard.reset-layout':
         state.set('overlay.positions', {});
+        state.flush();
         broadcastState('overlay.positions', {});
         break;
       case '_dashboard.session-reset':

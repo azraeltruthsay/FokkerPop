@@ -135,7 +135,7 @@ boot from the matching `*.example.json` and preserved across updates.
 
 | File | Purpose |
 |------|---------|
-| `settings.json` | Twitch + OBS credentials and tuning (never commit this) |
+| `settings.json` | Twitch + OBS credentials and tuning (never commit this; auto-rotates a `.bak` so a crash mid-write can't lose your Twitch connection) |
 | `goals.json` | Stream goals — targets, metrics, rewards |
 | `redeems.json` | Maps Channel Point reward titles → visual effects |
 | `commands.json` | Maps `!chat` commands → redeems, with permission gating + cooldowns |
@@ -173,7 +173,7 @@ enricher  combinator     throttler
 - WebSocket server rejects any connection whose `Origin` isn't `127.0.0.1`/`localhost`
 - HTTP cross-origin write protection on all mutating (non-GET) endpoints
 - Path traversal guard on all HTTP file requests
-- Atomic state writes (tmp + rename) with a `.bak` rotation so a crash mid-write can't corrupt your layout
+- Atomic writes (tmp + rename) with a `.bak` rotation on `state.json` and `settings.json` so a crash mid-write can't corrupt your layout or wipe your Twitch credentials
 - Four npm dependencies (`ws`, `three`, `cannon-es`, `matter-js`) — all vendored in release zips, no install step at runtime
 
 ## Development

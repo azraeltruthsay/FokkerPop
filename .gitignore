@@ -1,5 +1,7 @@
 node_modules/
 settings.json
+settings.json.bak
+settings.json.tmp
 state.json
 state.json.bak
 state.json.tmp

@@ -212,7 +212,7 @@ jobs:
           # SetOverwrite on would otherwise clobber the user's layout /
           # goals / credentials on every update. These files are gitignored
           # and created by the server on first boot from *.example.json.
-          for f in widgets.json widgets.json.bak state.json state.json.bak state.json.tmp goals.json redeems.json commands.json flows.json settings.json; do
+          for f in widgets.json widgets.json.bak state.json state.json.bak state.json.tmp goals.json redeems.json commands.json flows.json settings.json settings.json.bak settings.json.tmp; do
             if [ -e "$APP/$f" ]; then
               echo "FAIL: $f is in the release zip — updates would overwrite user customizations"
               exit 1

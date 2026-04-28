@@ -1,9 +1,7 @@
 import { EventEmitter } from 'node:events';
 import { WebSocket }    from 'ws';
-import { join }         from 'node:path';
-import { writeFileSync } from 'node:fs';
 import bus             from '../bus.js';
-import settings, { ROOT } from '../settings-loader.js';
+import settings, { saveSettings } from '../settings-loader.js';
 import { refreshAccessToken } from './helix.js';
 import log             from '../logger.js';
 
@@ -182,7 +180,7 @@ export class TwitchEventSub extends EventEmitter {
           if (newTokens?.access_token) {
             settings.twitch.accessToken = newTokens.access_token;
             if (newTokens.refresh_token) settings.twitch.refreshToken = newTokens.refresh_token;
-            writeFileSync(join(ROOT, 'settings.json'), JSON.stringify(settings, null, 2));
+            saveSettings();
             log.info('Token refreshed successfully — retrying subscription.');
             return this.#subscribe(); // Retry entire loop once
           } else {
