@@ -26,12 +26,33 @@ export class FlowEngine {
    */
   async processEvent(event, broadcastEffect) {
     const activeFlows = this.#flows.filter(f => f.active && f.trigger === event.type);
-    
+
     for (const flow of activeFlows) {
       log.debug(`Executing flow [${flow.name || flow.id}] for event ${event.type}`);
       this.executeFlow(flow, event, broadcastEffect).catch(err => {
         log.error(`Flow execution error [${flow.id}]:`, err.message);
       });
+    }
+  }
+
+  /**
+   * "Test This Trigger" entry point from Studio's right-click menu. Walks
+   * only the chain rooted at the given flow's trigger — does NOT fan out to
+   * every flow listening to the same event type, so the user gets isolated
+   * preview of the flow they're actually editing. The flow's `active` flag
+   * is bypassed too, so disabled flows can be poked while being built.
+   */
+  async testFlow(flowId, event, broadcastEffect) {
+    const flow = this.#flows.find(f => f.id === flowId);
+    if (!flow) {
+      log.warn(`testFlow: no flow with id ${flowId}`);
+      return;
+    }
+    log.info(`Test-running flow [${flow.name || flow.id}] with synthetic ${event.type} event`);
+    try {
+      await this.executeFlow(flow, event, broadcastEffect);
+    } catch (err) {
+      log.error(`Test flow execution error [${flow.id}]:`, err.message);
     }
   }
 
@@ -79,6 +100,11 @@ export class FlowEngine {
             bus.publish({ source: 'studio', type: 'obs.set-scene', scene: data.scene, isTest: event.isTest });
           } else if (node.action === 'showBanner') {
             broadcastEffect('alert-banner', { tier: data.tier || 'B', icon: data.icon || '📢', text: data.text, subText: data.subText }, event.isTest);
+          } else if (node.action === 'showImage') {
+            broadcastEffect('image-show', {
+              src: data.file,
+              durationMs: Number(data.durationMs) || 5000,
+            }, event.isTest);
           } else if (node.action === 'adjustEnergy') {
             const current = state.get('crowd.energy') ?? 0;
             const amount  = Number(data.amount);
@@ -214,6 +240,24 @@ export class FlowEngine {
     return spec; // plain literal string
   }
 }
+
+// Default synthetic payloads for "Test This Trigger" — kept in one place so
+// they're easy to edit later. Fokker explicitly asked for centralisation
+// (issue #6): future per-flow overrides should land here, not get scattered
+// across the studio UI and server handlers.
+export const TEST_PAYLOADS = {
+  'follow':              { user: 'TestUser', userId: '0' },
+  'sub':                 { user: 'TestUser', tier: '1000', message: 'test sub' },
+  'sub.gifted':          { user: 'TestUser', count: 1, tier: '1000', recipient: 'GiftedUser' },
+  'cheer':               { user: 'TestUser', bits: 100, message: 'cheer100 test' },
+  'raid':                { user: 'TestUser', viewers: 10 },
+  'redeem':              { user: 'TestUser', rewardTitle: 'Test Redeem', rewardId: 'test-id', input: '' },
+  'chat':                { user: 'TestUser', message: 'hello world', color: '#FFFFFF', badges: [] },
+  'hype-train.start':    { level: 1, total: 100 },
+  'hype-train.progress': { level: 1, total: 100, progress: 50, goal: 100 },
+  'hype-train.end':      { level: 2, total: 250 },
+  'dice-tray-roll':      { user: 'TestUser', dice: [{ sides: 20, result: 12 }], rollId: 'test', sum: 12, total: { 20: 12 } },
+};
 
 const engine = new FlowEngine();
 export default engine;

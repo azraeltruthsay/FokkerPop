@@ -1187,6 +1187,15 @@ html, body {
 
           <div>
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+              <div style="font-size:0.65rem; color:var(--text-dim); text-transform:uppercase; letter-spacing:0.05em; font-weight:800;">Images</div>
+              <button class="btn btn-ghost btn-sm" onclick="triggerUpload('image')">➕ Upload Image</button>
+            </div>
+            <p style="font-size:.65rem; color:var(--text-dim); margin-bottom:12px;">Foreground images shown by Studio's <strong>Show Image</strong> action inside an <strong>Image Display</strong> widget. PNG / JPG / GIF / WEBP / SVG.</p>
+            <div id="gallery-images" style="display:flex; flex-wrap:wrap; gap:12px;"></div>
+          </div>
+
+          <div>
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
               <div style="font-size:0.65rem; color:var(--text-dim); text-transform:uppercase; letter-spacing:0.05em; font-weight:800;">Mascot Animations</div>
               <button class="btn btn-ghost btn-sm" onclick="triggerUpload('character')">➕ Upload Mascot</button>
             </div>
@@ -1198,6 +1207,7 @@ html, body {
         <!-- Hidden Upload Inputs -->
         <input type="file" id="upload-sound"     style="display:none" onchange="handleFileUpload('sound', this.files[0])" accept="audio/*">
         <input type="file" id="upload-sticker"   style="display:none" onchange="handleFileUpload('sticker', this.files[0])" accept="image/*">
+        <input type="file" id="upload-image"     style="display:none" onchange="handleFileUpload('image', this.files[0])" accept="image/png,image/jpeg,image/gif,image/webp,image/svg+xml">
         <input type="file" id="upload-character" style="display:none" onchange="handleFileUpload('character', this.files[0])" accept="image/gif">
         <input type="file" id="upload-model"     style="display:none" onchange="handleFileUpload('model', this.files[0])" accept=".glb,.gltf">
       </div>
@@ -1290,6 +1300,7 @@ html, body {
             <button class="btn btn-ghost btn-sm" onclick="addWidget('dice')">+ Dice</button>
             <button class="btn btn-ghost btn-sm" onclick="addWidget('dice-tray')">+ Dice Tray</button>
             <button class="btn btn-ghost btn-sm" onclick="addWidget('model-3d')">+ 3D Model</button>
+            <button class="btn btn-ghost btn-sm" onclick="addWidget('image')">+ Image Display</button>
           </div>
         </div>
         <p style="font-size:.78rem; color:var(--text-dim); margin:8px 0 12px;">

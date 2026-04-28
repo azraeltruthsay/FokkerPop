@@ -25,6 +25,17 @@ window.queueStudioSave = function() {
   saveTimeout = setTimeout(() => silentSave(), 1000);
 };
 
+// Force any pending debounced save to run now and wait for it. Used by
+// "Test This Trigger" so the test runs against the version of the flow
+// currently on screen, not whatever was on disk a second ago.
+window.flushStudioSave = async function() {
+  if (saveTimeout) {
+    clearTimeout(saveTimeout);
+    saveTimeout = null;
+    await silentSave();
+  }
+};
+
 async function silentSave() {
   try {
     const res = await fetch('/api/flows', {
@@ -331,11 +342,16 @@ function onContextMenu(e) {
     if (node) {
       selectNode(node);
       const isTrigger = node.type === 'trigger';
+      const testTriggerHtml = isTrigger ? `
+        <div class="ctx-divider"></div>
+        <div class="ctx-item" onclick="testCurrentFlow()">▶️ Test This Trigger</div>
+      ` : '';
       const changeTypeHtml = isTrigger ? '' : `
         <div class="ctx-divider"></div>
         <div class="ctx-header">Change Type</div>
         <div class="ctx-item" onclick="changeNodeAction('spawnEffect')">🎇 Effect</div>
         <div class="ctx-item" onclick="changeNodeAction('showBanner')">📢 Banner</div>
+        <div class="ctx-item" onclick="changeNodeAction('showImage')">🖼️ Show Image</div>
         <div class="ctx-item" onclick="changeNodeAction('playSound')">🔊 Sound</div>
         <div class="ctx-item" onclick="changeNodeAction('fireEvent')">🚀 Fire Event</div>
         <div class="ctx-item" onclick="changeNodeAction('rollDice')">🎲 Roll Dice</div>
@@ -355,6 +371,7 @@ function onContextMenu(e) {
         <div class="ctx-item" onclick="copyNode('${nodeId}')">📄 Copy Node (Ctrl+C)</div>
         <div class="ctx-item" onclick="cloneNode('${nodeId}')">👯 Clone Node</div>
         <div class="ctx-item" onclick="disconnectNode('${nodeId}')">🔌 Disconnect All</div>
+        ${testTriggerHtml}
         ${changeTypeHtml}
         <div class="ctx-divider"></div>
         <div class="ctx-item" onclick="deleteActiveNode()" style="color:var(--red)">🗑️ Delete Node (Del)</div>
@@ -366,6 +383,7 @@ function onContextMenu(e) {
       ${clipboardNode ? `<div class="ctx-item" onclick="pasteNode(${x}, ${y})">📋 Paste Node (Ctrl+V)</div>` : ''}
       <div class="ctx-item" onclick="addNode('action', 'spawnEffect', ${x}, ${y})">🎇 Effect</div>
       <div class="ctx-item" onclick="addNode('action', 'showBanner', ${x}, ${y})">📢 Banner</div>
+      <div class="ctx-item" onclick="addNode('action', 'showImage', ${x}, ${y})">🖼️ Show Image</div>
       <div class="ctx-item" onclick="addNode('action', 'playSound', ${x}, ${y})">🔊 Sound</div>
       <div class="ctx-item" onclick="addNode('action', 'fireEvent', ${x}, ${y})">🚀 Fire Event</div>
       <div class="ctx-item" onclick="addNode('action', 'rollDice', ${x}, ${y})">🎲 Roll Dice</div>
@@ -443,6 +461,21 @@ window.duplicateActiveFlow = function() {
   hideContextMenu();
   renderFlowList();
   loadFlow(newFlow.id);
+};
+
+// "Test This Trigger" — runs only the active flow with a synthetic event
+// matching its trigger type. Server fills in default payload from
+// flow-engine.js's TEST_PAYLOADS map; future per-flow overrides should
+// piggyback on the `payload` field of this message.
+window.testCurrentFlow = async function() {
+  if (!activeFlow) return;
+  hideContextMenu();
+  // Persist any pending edits before firing — otherwise the test would run
+  // against the previous on-disk version of the flow, not what the user is
+  // looking at on screen. POST /api/flows refreshes flowEngine.setFlows()
+  // server-side, so awaiting this guarantees the test sees the current graph.
+  if (typeof window.flushStudioSave === 'function') await window.flushStudioSave();
+  window.dashSend({ type: '_dashboard.test-flow', flowId: activeFlow.id });
 };
 
 window.copyNode = function(id) {
@@ -674,6 +707,20 @@ function renderProps() {
   if (n.action === 'updateStat') {
     html += exprField('Path (e.g. session.subCount)', 'path', n.data.path || '');
     html += exprField('Increment By', 'by', n.data.by ?? 1);
+  }
+
+  if (n.action === 'showImage') {
+    const imageOptions = window.assets?.images || [];
+    html += `
+      <div class="prop-field">
+        <label>Image File</label>
+        <select class="input-field" oninput="activeNode.data.file=this.value; window.queueStudioSave()">
+          <option value="">-- No Image --</option>
+          ${imageOptions.map(o => `<option value="${esc(o)}" ${o === (n.data.file || '') ? 'selected' : ''}>${esc(o)}</option>`).join('')}
+        </select>
+      </div>`;
+    html += exprField('Duration (ms)', 'durationMs', n.data.durationMs ?? 5000);
+    html += `<div style="font-size:0.6rem; color:var(--text-dim); margin-top:-8px; margin-bottom:8px;">Drops <code>assets/images/&lt;file&gt;</code> into the first <strong>Image</strong> widget on the overlay (add one from the Layout tab if you don't have one yet). Multiple in flight queue in order.</div>`;
   }
 
   if (n.action === 'playSound') {

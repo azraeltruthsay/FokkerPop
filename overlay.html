@@ -344,6 +344,35 @@ body.layout-mode .resize-handle:hover { opacity: 1; }
 .custom-widget.cw-visible { opacity: 1; transition: opacity 0.25s ease; }
 body.layout-mode .custom-widget.cw-hidden { opacity: 0.5 !important; pointer-events: auto !important; }
 
+/* Image-display widget — shows letterboxed images dropped in by Studio's
+   Show Image action. The placeholder frame is invisible while empty (only
+   visible in Layout mode for placement); the inner <img> fades in/out per
+   widget config (defaults set in JS). */
+.custom-widget[data-type="image"] {
+  background: transparent;
+  border: none;
+  padding: 0;
+  overflow: hidden;
+}
+body.layout-mode .custom-widget[data-type="image"] {
+  background: rgba(8, 8, 16, 0.55);
+  border: 1px dashed rgba(255,255,255,0.35);
+  border-radius: 8px;
+}
+.cw-image-frame {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.cw-image-frame img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  opacity: 0;
+}
+
 /* ═══════════════════════════════════════════════════════ Custom widgets */
 .custom-widget {
   position: absolute;
@@ -1812,6 +1841,7 @@ function dispatchEffect(effect, p) {
     case 'firework-salvo':  spawnFireworkSalvo(p.count ?? 4);   break;
     case 'confetti':        spawnConfetti();                     break;
     case 'sticker-rain':    spawnStickerRain(p.duration ?? 7000, p.pool); break;
+    case 'image-show':      enqueueImageShow(p.src, p.durationMs ?? 5000); break;
     case 'crowd-explosion': spawnCrowdExplosion();               break;
     case 'alert-banner':    alertQueue.push(p);                  break;
     case 'floating-text':   spawnFloatingText(p.text, p.x, p.y); break;
@@ -2042,6 +2072,15 @@ function renderCustomWidgets() {
         () => layoutMode
       ))
         .catch(err => console.error('[hot-button-3d] mount failed for', w.id, err));
+    } else if (w.type === 'image') {
+      el.style.minWidth  = (cfg.width  || 320) + 'px';
+      el.style.minHeight = (cfg.height || 240) + 'px';
+      const frame = document.createElement('div');
+      frame.className = 'cw-image-frame';
+      const img = document.createElement('img');
+      img.alt = '';
+      frame.appendChild(img);
+      el.appendChild(frame);
     }
 
     // Per-widget visibility toggle (default true). Hidden widgets stay hidden
@@ -2162,6 +2201,55 @@ function applyPositions(positions) {
     el.style.right  = 'auto';
     el.style.transform = 'none';
   }
+}
+
+// ── Image-display widget (Studio "Show Image" action) ──
+// Each Image widget has its own queue so a flurry of show-image effects plays
+// in arrival order instead of stomping each other. Per Fokker's spec: fade in
+// 250 ms (configurable per widget), hold for the requested durationMs, fade
+// out 400 ms (configurable), then dequeue the next.
+const imageQueues = new WeakMap();   // el -> { queue: [], busy: bool }
+
+function enqueueImageShow(src, durationMs) {
+  if (!src) return;
+  const widgets = document.querySelectorAll('.custom-widget[data-type="image"]');
+  if (!widgets.length) {
+    console.warn('[image-show] no Image Display widget on the overlay — add one from the Layout tab');
+    return;
+  }
+  for (const el of widgets) {
+    let q = imageQueues.get(el);
+    if (!q) { q = { queue: [], busy: false }; imageQueues.set(el, q); }
+    q.queue.push({ src, durationMs });
+    if (!q.busy) runImageQueue(el, q);
+  }
+}
+
+function runImageQueue(el, q) {
+  const next = q.queue.shift();
+  if (!next) { q.busy = false; return; }
+  q.busy = true;
+
+  const widget = state.widgets.find(w => w.id === el.id);
+  const cfg    = widget?.config || {};
+  const fadeIn  = Math.max(0, cfg.fadeInMs  ?? 250);
+  const fadeOut = Math.max(0, cfg.fadeOutMs ?? 400);
+  const hold    = Math.max(0, next.durationMs - fadeIn - fadeOut);
+
+  const img = el.querySelector('.cw-image-frame img');
+  if (!img) { q.busy = false; return; }
+
+  img.src = '/assets/images/' + encodeURIComponent(next.src);
+  img.style.transition = `opacity ${fadeIn}ms ease`;
+  // Force a frame so the transition picks up the change.
+  void img.offsetWidth;
+  img.style.opacity = '1';
+
+  setTimeout(() => {
+    img.style.transition = `opacity ${fadeOut}ms ease`;
+    img.style.opacity = '0';
+    setTimeout(() => runImageQueue(el, q), fadeOut);
+  }, fadeIn + hold);
 }
 
 // ── Drag & Drop ──

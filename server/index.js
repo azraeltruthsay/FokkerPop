@@ -1,5 +1,5 @@
 import { createServer }                                  from 'node:http';
-import { readFileSync, writeFileSync, existsSync, readdirSync, createWriteStream, statSync, copyFileSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync, readdirSync, createWriteStream, statSync, copyFileSync, mkdirSync } from 'node:fs';
 import { extname, join, normalize, resolve, sep, relative, isAbsolute, basename } from 'node:path';
 import { exec }                                from 'node:child_process';
 import { WebSocketServer, WebSocket }          from 'ws';
@@ -8,7 +8,7 @@ import bus                        from './bus.js';
 import state                      from './state.js';
 import { applyPipeline }          from './pipeline/index.js';
 import { TwitchEventSub }         from './twitch/eventsub.js';
-import flowEngine            from './pipeline/flow-engine.js';
+import flowEngine, { TEST_PAYLOADS } from './pipeline/flow-engine.js';
 import obs                   from './obs.js';
 import * as helix            from './twitch/helix.js';
 import settings, { ROOT, loadedFrom, saveSettings } from './settings-loader.js';
@@ -36,6 +36,14 @@ if (loadedFrom === 'settings.json.bak') {
   log.warn('settings.json was unreadable on boot — recovered from settings.json.bak (Twitch creds preserved).');
 } else if (loadedFrom === 'settings.example.json') {
   log.warn('settings.json missing — booted from settings.example.json. Twitch creds need to be re-connected in the dashboard.');
+}
+
+// Ensure user-asset directories exist so first-boot uploads land somewhere
+// instead of erroring. Sounds and stickers were always shipped pre-populated,
+// but images/ is new in v0.3.29 — without this, /api/upload's createWriteStream
+// fails with ENOENT until the user manually creates the folder.
+for (const dir of ['assets/sounds', 'assets/stickers', 'assets/images', 'assets/models']) {
+  try { mkdirSync(join(ROOT, dir), { recursive: true }); } catch {}
 }
 
 const goals    = loadAndEnsureJson('goals.json',   []);
@@ -756,6 +764,7 @@ const httpServer = createServer((req, res) => {
     const folders = {
       sound:     'assets/sounds',
       sticker:   'assets/stickers',
+      image:     'assets/images',
       character: 'characters/lilfokkermascot',
       model:     'assets/models',
     };
@@ -880,7 +889,7 @@ const httpServer = createServer((req, res) => {
 
   if (path === '/api/assets' && req.method === 'GET') {
     rebuildSoundSet();
-    const assets = { sounds: [], stickers: [], characters: [], models: [], diceThemes: [] };
+    const assets = { sounds: [], stickers: [], images: [], characters: [], models: [], diceThemes: [] };
     try {
       const mDir = join(ROOT, 'assets/models');
       if (existsSync(mDir)) assets.models = readdirSync(mDir).filter(f => !f.startsWith('.') && /\.(gl[bt]f)$/i.test(f));
@@ -888,6 +897,8 @@ const httpServer = createServer((req, res) => {
       if (existsSync(sDir)) assets.sounds = readdirSync(sDir).filter(f => !f.startsWith('.'));
       const tDir = join(ROOT, 'assets/stickers');
       if (existsSync(tDir)) assets.stickers = readdirSync(tDir).filter(f => !f.startsWith('.'));
+      const iDir = join(ROOT, 'assets/images');
+      if (existsSync(iDir)) assets.images = readdirSync(iDir).filter(f => !f.startsWith('.') && /\.(png|jpe?g|gif|webp|svg)$/i.test(f));
       const cDir = join(ROOT, 'characters/lilfokkermascot');
       if (existsSync(cDir)) assets.characters = readdirSync(cDir).filter(f => !f.startsWith('.'));
       // Dice themes: each subdir of assets/dice/ with at least one face-N.{png,jpg,jpeg,webp}
@@ -1260,6 +1271,22 @@ wss.on('connection', (ws, req) => {
       case '_dashboard.test-event':
         bus.publish({ source: 'dashboard', isTest: true, ...(msg.event ?? {}) });
         break;
+      case '_dashboard.test-flow': {
+        // Studio "Test This Trigger" — runs only the right-clicked flow's
+        // chain with a synthetic event, without fanning out to every flow
+        // listening to the same trigger type.
+        const flow = flows.find(f => f.id === msg.flowId);
+        if (!flow) break;
+        const eventType = flow.trigger;
+        const payload   = { ...(TEST_PAYLOADS[eventType] || {}), ...(msg.payload || {}) };
+        flowEngine.testFlow(msg.flowId, {
+          source:  'dashboard',
+          type:    eventType,
+          payload,
+          isTest:  true,
+        }, broadcastEffect);
+        break;
+      }
       case '_dashboard.effect':
         broadcastEffect(msg.effect, msg.payload ?? {}, true);
         break;
