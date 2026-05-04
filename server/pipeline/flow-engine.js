@@ -25,7 +25,21 @@ export class FlowEngine {
    * Main entry point for events entering the flow system.
    */
   async processEvent(event, broadcastEffect) {
-    const activeFlows = this.#flows.filter(f => f.active && f.trigger === event.type);
+    const activeFlows = this.#flows.filter(f => {
+      if (!f.active || f.trigger !== event.type) return false;
+      // Redeem flows can scope themselves to a single reward title via the
+      // Studio "Specific Reward" dropdown. Empty/missing = match every redeem
+      // (the existing behavior, kept for back-compat with pre-v0.3.30 flows).
+      // Compare case-insensitively because Twitch reward titles are
+      // human-typed and casing drift between dashboard config and Twitch is
+      // a footgun we'd rather absorb than expose.
+      if (event.type === 'redeem' && f.rewardTitle) {
+        const flowTitle  = String(f.rewardTitle).toLowerCase();
+        const eventTitle = String(event.payload?.rewardTitle || '').toLowerCase();
+        if (flowTitle !== eventTitle) return false;
+      }
+      return true;
+    });
 
     for (const flow of activeFlows) {
       log.debug(`Executing flow [${flow.name || flow.id}] for event ${event.type}`);
@@ -252,7 +266,7 @@ export const TEST_PAYLOADS = {
   'cheer':               { user: 'TestUser', bits: 100, message: 'cheer100 test' },
   'raid':                { user: 'TestUser', viewers: 10 },
   'redeem':              { user: 'TestUser', rewardTitle: 'Test Redeem', rewardId: 'test-id', input: '' },
-  'chat':                { user: 'TestUser', message: 'hello world', color: '#FFFFFF', badges: [] },
+  'chat':                { user: 'TestUser', message: 'hello world', color: '#FFFFFF', badges: [], userIsMod: false, userIsVip: false, userIsSub: false, userMonthsSubbed: 0 },
   'hype-train.start':    { level: 1, total: 100 },
   'hype-train.progress': { level: 1, total: 100, progress: 50, goal: 100 },
   'hype-train.end':      { level: 2, total: 250 },

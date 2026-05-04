@@ -709,6 +709,43 @@ const httpServer = createServer((req, res) => {
     return;
   }
 
+  // Pulls the broadcaster's current Channel Point custom rewards from
+  // Twitch Helix and merges any new titles into redeems.json. Existing
+  // entries are preserved (we don't want to clobber Fokker's effect/sound
+  // wiring); new ones get a stub `{}` so the title shows up in the Studio
+  // dropdown immediately. Triggered by the 🔄 button on the Redeem
+  // trigger's "Specific Reward" dropdown.
+  if (path === '/api/redeems/refresh-from-twitch' && req.method === 'POST') {
+    (async () => {
+      try {
+        const { userId, accessToken } = settings.twitch ?? {};
+        if (!userId || !accessToken) {
+          res.writeHead(400); res.end(JSON.stringify({ error: 'Twitch is not connected. Open Settings → Connect Twitch first.' }));
+          return;
+        }
+        const rewards = await helix.getCustomRewards(userId, accessToken);
+        const titles  = rewards.map(r => r.title).filter(Boolean);
+        let added = 0;
+        for (const title of titles) {
+          if (!Object.prototype.hasOwnProperty.call(redeems, title)) {
+            redeems[title] = {};
+            added++;
+          }
+        }
+        if (added > 0) {
+          writeFileSync(join(ROOT, 'redeems.json'), JSON.stringify(redeems, null, 2));
+        }
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: true, added, totalFromTwitch: titles.length }));
+      } catch (err) {
+        log.error('Refresh redeems from Twitch failed:', err.message);
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: err.message }));
+      }
+    })();
+    return;
+  }
+
   if (path === '/api/commands' && req.method === 'GET') {
     res.writeHead(200, { 'Content-Type': 'application/json' });
     return res.end(JSON.stringify(commands));
@@ -1287,6 +1324,22 @@ wss.on('connection', (ws, req) => {
         }, broadcastEffect);
         break;
       }
+      case '_dashboard.run-flow': {
+        // Hotkey-triggered manual run (issue #3). Same single-chain semantics
+        // as test-flow, but isTest=false so the OBS-bound overlay reacts —
+        // this is meant as a stream-deck-style live trigger, not a preview.
+        const flow = flows.find(f => f.id === msg.flowId);
+        if (!flow) break;
+        const eventType = flow.trigger;
+        const payload   = { ...(TEST_PAYLOADS[eventType] || {}), ...(msg.payload || {}) };
+        flowEngine.testFlow(msg.flowId, {
+          source:  'dashboard',
+          type:    eventType,
+          payload,
+          isTest:  false,
+        }, broadcastEffect);
+        break;
+      }
       case '_dashboard.effect':
         broadcastEffect(msg.effect, msg.payload ?? {}, true);
         break;
@@ -1452,6 +1505,60 @@ const twitchEventSub = new TwitchEventSub();
 
 twitchEventSub.on('status', (status) => {
   broadcast(dashboards, { type: 'state', path: 'twitch.status', value: status });
+});
+
+// Live stream stats poller (issue #4 cluster A). Twitch EventSub doesn't
+// surface viewer count, current category, or stream title — those need a
+// 60s Helix poll. Surfaces as state.twitch.live so Studio templates can
+// reference {{ twitch.live.viewers }}, {{ twitch.live.title }}, etc., and
+// dashboards/widgets can react to live/offline transitions.
+//
+// 60s cadence is conservative: viewer counts move on minutes, not seconds,
+// and Helix is rate-limited globally per app. Skips while Twitch is not
+// connected so offline dev sessions don't spam errors.
+const STREAM_POLL_INTERVAL_MS = 60_000;
+let streamPollTimer = null;
+async function pollStreamStats() {
+  try {
+    const { userId, accessToken } = settings.twitch ?? {};
+    if (!userId || !accessToken) return;
+    if (twitchEventSub.status !== 'connected') return;
+    const stream = await helix.getStreamInfo(userId, accessToken);
+    const prev   = state.get('twitch.live') ?? {};
+    let live;
+    if (stream) {
+      const startedAt = stream.started_at ? new Date(stream.started_at).getTime() : Date.now();
+      live = {
+        isLive:    true,
+        viewers:   stream.viewer_count ?? 0,
+        title:     stream.title ?? '',
+        game:      stream.game_name ?? '',
+        gameId:    stream.game_id ?? '',
+        startedAt,
+        uptimeSec: Math.max(0, Math.floor((Date.now() - startedAt) / 1000)),
+        language:  stream.language ?? '',
+      };
+    } else {
+      live = { isLive: false, viewers: 0, title: prev.title ?? '', game: prev.game ?? '', gameId: '', startedAt: 0, uptimeSec: 0, language: '' };
+    }
+    state.set('twitch.live', live);
+    broadcast(dashboards, { type: 'state', path: 'twitch.live', value: live });
+    broadcast(overlays,   { type: 'state', path: 'twitch.live', value: live });
+    if (prev.isLive !== live.isLive) {
+      log.info(`Twitch stream ${live.isLive ? 'WENT LIVE' : 'went offline'}${live.isLive ? ` (${live.game || 'no category'}, ${live.viewers} viewer${live.viewers === 1 ? '' : 's'})` : ''}`);
+    }
+  } catch (err) {
+    log.debug('Stream stats poll failed:', err.message);
+  }
+}
+function startStreamPoller() {
+  if (streamPollTimer) return;
+  streamPollTimer = setInterval(pollStreamStats, STREAM_POLL_INTERVAL_MS);
+  // Kick once immediately so the first sample lands well before the first interval.
+  pollStreamStats();
+}
+twitchEventSub.on('status', (status) => {
+  if (status === 'connected') startStreamPoller();
 });
 
 obs.on('status', (status, reason) => {

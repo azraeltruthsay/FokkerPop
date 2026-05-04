@@ -36,6 +36,56 @@ window.flushStudioSave = async function() {
   }
 };
 
+// Hotkey support (issue #3): each flow can carry an optional `hotkey` string
+// like "Alt+1" or "Ctrl+Shift+F". When the dashboard window is focused and
+// the user presses the combo, we fire the flow for real (isTest=false) so
+// the OBS overlay reacts — this is meant as a stream-deck-style manual
+// trigger, not a test fire. Flows are loaded eagerly at script init so the
+// listener works on any dashboard page, not just Studio.
+function normalizeHotkey(s) {
+  if (!s) return '';
+  return s.split('+').map(p => p.trim()).filter(Boolean)
+    .map(p => p.length === 1 ? p.toUpperCase() : p[0].toUpperCase() + p.slice(1).toLowerCase())
+    .join('+');
+}
+function eventToHotkey(e) {
+  // Ignore standalone modifier presses.
+  if (['Alt', 'Control', 'Shift', 'Meta'].includes(e.key)) return '';
+  const parts = [];
+  if (e.ctrlKey)  parts.push('Ctrl');
+  if (e.altKey)   parts.push('Alt');
+  if (e.shiftKey) parts.push('Shift');
+  if (e.metaKey)  parts.push('Meta');
+  // Use e.key for letters/digits (case-folded). For special keys, take as-is.
+  let keyName = e.key.length === 1 ? e.key.toUpperCase() : e.key;
+  parts.push(keyName);
+  return parts.join('+');
+}
+window.addEventListener('keydown', (e) => {
+  // Ignore typing inside form fields — otherwise Alt+1 inside a flow-name
+  // input would silently fire a flow.
+  const tag = (e.target?.tagName || '').toLowerCase();
+  if (tag === 'input' || tag === 'textarea' || e.target?.isContentEditable) return;
+  if (!flows.length) return;
+  const pressed = eventToHotkey(e);
+  if (!pressed) return;
+  const flow = flows.find(f => f.active && f.hotkey && normalizeHotkey(f.hotkey) === pressed);
+  if (!flow) return;
+  e.preventDefault();
+  window.dashSend?.({ type: '_dashboard.run-flow', flowId: flow.id });
+  // Tiny on-screen breadcrumb so it's clear the hotkey landed.
+  console.log(`[studio hotkey] ${pressed} → ${flow.name || flow.id}`);
+});
+
+// Eager flow load: hotkeys need flows present before the user ever opens
+// Studio, otherwise pressing Alt+1 from the Live page does nothing.
+(async () => {
+  try {
+    const res = await fetch('/api/flows');
+    if (res.ok) flows = await res.json();
+  } catch {}
+})();
+
 async function silentSave() {
   try {
     const res = await fetch('/api/flows', {
@@ -71,6 +121,7 @@ window.initStudio = async function() {
   if (!$wrap || studioInitialized) return;
 
   await fetchFlows();
+  await fetchRedeems();
   
   if (flows.length === 0) {
     flows.push({ id: 'flow-default', name: 'Default Flow', active: true, trigger: 'sub', nodes: { 't1': { id: 't1', type: 'trigger', x: 100, y: 100 } }, edges: [] });
@@ -89,6 +140,7 @@ window.initStudio = async function() {
   window.addEventListener('mousedown', (e) => { if ($ctxMenu && !e.target.closest('#studio-ctx-menu')) hideContextMenu(); });
 
   studioInitialized = true;
+  restoreStudioPreviewState();
 };
 
 async function fetchFlows() {
@@ -96,6 +148,86 @@ async function fetchFlows() {
     const res = await fetch('/api/flows');
     flows = await res.json();
   } catch (err) { console.error('Flow fetch failed:', err); }
+}
+
+// Cached for the per-flow Redeem trigger's "specific reward" dropdown.
+// Exposed on window so the Refresh-from-Twitch button (which lives in the
+// Studio props pane) can repopulate after a Helix sync without a page reload.
+async function fetchRedeems() {
+  try {
+    const res = await fetch('/api/redeems');
+    const data = await res.json();
+    window.studioRedeems = Object.keys(data).filter(k => !k.startsWith('_'));
+  } catch (err) {
+    console.error('Redeems fetch failed:', err);
+    window.studioRedeems = window.studioRedeems || [];
+  }
+}
+window.studioFetchRedeems = fetchRedeems;
+
+// Studio overlay preview pane (issue #6). The OBS-bound overlay (?live=1)
+// drops isTest events on purpose so accidental dashboard tests can't leak on
+// stream — but that means Test This Trigger fires render nowhere visible
+// when you're inside Studio. This pane mounts a ?demo=0 overlay iframe so
+// effects show up alongside the canvas. Off by default to keep idle Studio
+// sessions cheap (an overlay iframe costs a WS connection + WebGL contexts
+// for any 3D widgets).
+const STUDIO_PREVIEW_KEY = 'fokker.studio.preview-on';
+window.toggleStudioPreview = function () {
+  const pane  = document.getElementById('studio-preview-pane');
+  const frame = document.getElementById('studio-preview-frame');
+  const btn   = document.getElementById('studio-preview-toggle');
+  if (!pane || !frame) return;
+  const wasOn = pane.style.display !== 'none';
+  if (wasOn) {
+    pane.style.display = 'none';
+    frame.src = 'about:blank';
+    if (btn) { btn.classList.remove('btn-primary'); btn.classList.add('btn-ghost'); }
+    try { localStorage.setItem(STUDIO_PREVIEW_KEY, '0'); } catch {}
+  } else {
+    pane.style.display = 'flex';
+    const target = frame.getAttribute('data-studio-src');
+    if (target) frame.src = target;
+    if (btn) { btn.classList.remove('btn-ghost'); btn.classList.add('btn-primary'); }
+    try { localStorage.setItem(STUDIO_PREVIEW_KEY, '1'); } catch {}
+  }
+};
+
+// One-shot keydown capture for the hotkey "Record" button. Adds a
+// temporary listener that swallows the next non-modifier keypress and
+// writes the resulting combo back to the flow.
+window.recordStudioHotkey = function (btn) {
+  const input = document.getElementById('studio-hotkey-input');
+  if (!input || !activeFlow) return;
+  const original = btn.textContent;
+  btn.textContent = '…';
+  input.placeholder = 'Press the combo now (Esc to cancel)';
+  const handler = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.key === 'Escape') {
+      window.removeEventListener('keydown', handler, true);
+      btn.textContent = original;
+      input.placeholder = "Click 'Record', then press a combo";
+      return;
+    }
+    if (['Alt','Control','Shift','Meta'].includes(e.key)) return; // wait for the real key
+    const combo = eventToHotkey(e);
+    if (!combo) return;
+    activeFlow.hotkey = combo;
+    window.queueStudioSave();
+    window.removeEventListener('keydown', handler, true);
+    btn.textContent = original;
+    renderProps();
+  };
+  window.addEventListener('keydown', handler, true);
+};
+
+// Restore the toggle on Studio init so the preview state survives reloads.
+function restoreStudioPreviewState() {
+  let on = false;
+  try { on = localStorage.getItem(STUDIO_PREVIEW_KEY) === '1'; } catch {}
+  if (on) window.toggleStudioPreview();
 }
 
 function renderFlowList() {
@@ -573,6 +705,8 @@ const EXPR_REF = `
     <summary style="font-size:0.62rem;color:var(--text-dim);cursor:pointer;letter-spacing:0.05em;text-transform:uppercase;">Variables reference</summary>
     <div style="font-size:0.65rem;color:var(--text-dim);line-height:2;margin-top:6px;font-family:monospace;">
       <div><span style="color:var(--accent2)">payload.user</span> · .bits · .count · .viewers</div>
+      <div><span style="color:var(--accent2)">payload.userIsMod</span> · .userIsVip · .userIsSub · .userMonthsSubbed (chat only)</div>
+      <div><span style="color:var(--accent2)">twitch.live</span>.viewers · .title · .game · .uptimeSec · .isLive</div>
       <div><span style="color:var(--accent2)">roll</span> — result of the last 🎲 Dice Roll</div>
       <div><span style="color:var(--accent2)">kaprekar</span>.iterations · .start</div>
       <div><span style="color:var(--accent2)">chatters</span> — recent chatter list</div>
@@ -621,6 +755,31 @@ window.setEffectPayloadVol = function (node, value) {
   if (Number.isFinite(value)) node.data.payload.vol = value;
 };
 
+// Pulls the broadcaster's current Channel Point custom rewards from Twitch
+// via the server's Helix-backed endpoint, then re-loads the cached redeems
+// list and re-renders props so the new entries appear in the dropdown
+// without a page reload. Disables the button mid-flight to prevent
+// double-clicks (Helix is rate-limited).
+window.refreshRedeemsFromTwitch = async function (btn) {
+  if (!btn) return;
+  const original = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = '⏳';
+  try {
+    const res = await fetch('/api/redeems/refresh-from-twitch', { method: 'POST' });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Refresh failed');
+    await window.studioFetchRedeems();
+    renderProps();
+    btn.textContent = data.added > 0 ? `+${data.added}` : '✓';
+    setTimeout(() => { btn.textContent = original; btn.disabled = false; }, 1500);
+  } catch (err) {
+    alert('Refresh from Twitch failed: ' + err.message);
+    btn.textContent = original;
+    btn.disabled = false;
+  }
+};
+
 function renderProps() {
   const $props = document.getElementById('studio-props');
   const $fields = document.getElementById('prop-fields');
@@ -636,10 +795,43 @@ function renderProps() {
     const triggerOptions = ['sub', 'sub.gifted', 'follow', 'cheer', 'raid', 'redeem', 'chat', 'hype-train.start', 'hype-train.progress', 'hype-train.end', 'dice.rolled', 'dice-tray.rolled', 'dice-tray-roll'];
     html += `<div class="prop-field">
       <label>Event Type</label>
-      <select class="input-field" oninput="activeFlow.trigger=this.value; window.queueStudioSave()">
+      <select class="input-field" oninput="activeFlow.trigger=this.value; window.queueStudioSave(); renderProps()">
         ${triggerOptions.map(o => `<option value="${esc(o)}" ${o === activeFlow.trigger ? 'selected' : ''}>${esc(o)}</option>`).join('')}
       </select>
     </div>`;
+
+    // Optional dashboard hotkey — manual stream-deck-style trigger.
+    // Press the recorded combo (e.g. "Alt+1") with the dashboard focused
+    // and the flow runs for real (NOT isTest), so OBS sees it.
+    const currentHotkey = activeFlow.hotkey || '';
+    html += `<div class="prop-field">
+      <label>Hotkey (optional)</label>
+      <div style="display:flex; gap:6px;">
+        <input class="input-field" id="studio-hotkey-input" style="flex:1;" value="${esc(currentHotkey)}" placeholder="Click 'Record', then press a combo" readonly>
+        <button class="btn btn-ghost btn-sm" onclick="window.recordStudioHotkey(this)" title="Record a key combo">⌨️</button>
+        <button class="btn btn-ghost btn-sm" onclick="activeFlow.hotkey=''; window.queueStudioSave(); renderProps()" title="Clear">✕</button>
+      </div>
+      <div style="font-size:0.6rem; color:var(--text-dim); margin-top:4px;">Fires this flow live (not as a test) when pressed with the dashboard focused. Works on any dashboard page.</div>
+    </div>`;
+
+    // For 'redeem' triggers, a second dropdown narrows matching to a single
+    // reward title. Empty = "Any Redeem" (existing behavior — every redeem
+    // fires this flow). Match is case-insensitive on the server.
+    if (activeFlow.trigger === 'redeem') {
+      const redeemList = window.studioRedeems || [];
+      const current = activeFlow.rewardTitle || '';
+      html += `<div class="prop-field">
+        <label>Specific Reward (optional)</label>
+        <div style="display:flex; gap:6px;">
+          <select class="input-field" style="flex:1;" oninput="activeFlow.rewardTitle=this.value; window.queueStudioSave()">
+            <option value="" ${current === '' ? 'selected' : ''}>— Any Redeem —</option>
+            ${redeemList.map(r => `<option value="${esc(r)}" ${r === current ? 'selected' : ''}>${esc(r)}</option>`).join('')}
+          </select>
+          <button class="btn btn-ghost btn-sm" onclick="window.refreshRedeemsFromTwitch(this)" title="Pull latest custom rewards from Twitch">🔄</button>
+        </div>
+        <div style="font-size:0.6rem; color:var(--text-dim); margin-top:4px;">Blank fires this flow on any channel-point redeem. Pick one to scope it. 🔄 pulls new rewards from Twitch.</div>
+      </div>`;
+    }
   }
 
   if (n.action === 'delay') {

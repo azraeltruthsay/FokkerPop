@@ -21,6 +21,25 @@ const SUBS = (uid) => [
   ['channel.chat.message',                              '1', { broadcaster_user_id: uid, user_id: uid }],
 ];
 
+// Pull role/tier info out of Twitch chat badges (issue #4 cluster D).
+// Chat events carry an array of {set_id, id, info} badge objects — for
+// subscriber, `id` happens to encode the months-subscribed badge tier
+// (1/3/6/12/24/...), which is what Twitch displays. Mod/VIP just have to
+// exist. For non-chat events badges aren't included by EventSub, so this
+// derivation runs on chat only and other events get the fields as
+// undefined; per-user Helix lookups for cheer/redeem can come in a later
+// iteration if rate-limit budget allows.
+function deriveUserMeta(badges) {
+  const list = Array.isArray(badges) ? badges : [];
+  const sub  = list.find(b => b?.set_id === 'subscriber');
+  return {
+    userIsMod:        list.some(b => b?.set_id === 'moderator'),
+    userIsVip:        list.some(b => b?.set_id === 'vip'),
+    userIsSub:        !!sub,
+    userMonthsSubbed: sub?.id ? Number(sub.id) || 0 : 0,
+  };
+}
+
 // Maps Twitch subscription types → normalized FokkerPop events.
 const NORMALIZERS = {
   'channel.follow':
@@ -42,7 +61,7 @@ const NORMALIZERS = {
   'channel.hype_train.end':
     (ev) => ({ type: 'hype-train.end',      payload: { level: ev.level, total: ev.total } }),
   'channel.chat.message':
-    (ev) => ({ type: 'chat',                payload: { user: ev.chatter_user_name, message: ev.message.text, color: ev.color, badges: ev.badges } }),
+    (ev) => ({ type: 'chat',                payload: { user: ev.chatter_user_name, message: ev.message.text, color: ev.color, badges: ev.badges, ...deriveUserMeta(ev.badges) } }),
 };
 
 export class TwitchEventSub extends EventEmitter {

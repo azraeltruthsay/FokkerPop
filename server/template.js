@@ -14,6 +14,7 @@ import state from './state.js';
  *   crowd       — state.crowd shorthand
  *   leaderboard — state.leaderboard shorthand
  *   chatters    — string[] of recent chatters (most recent first)
+ *   twitch      — state.twitch shorthand (twitch.live.viewers, .title, .game, .uptimeSec, .isLive)
  *   pick(arr)   — random element from array
  *   clamp(v,min,max)
  *   plural(n, word) — e.g. plural(3, 'sub') → '3 subs'
@@ -36,6 +37,7 @@ export function makeCtx(event = {}) {
     crowd:       snap.crowd       ?? {},
     leaderboard: snap.leaderboard ?? {},
     chatters:    snap.chatters    ?? [],
+    twitch:      snap.twitch      ?? {},
     Math,
     pick:   (arr) => Array.isArray(arr) && arr.length ? arr[Math.floor(Math.random() * arr.length)] : '',
     clamp:  (v, min, max) => Math.min(Math.max(v, min), max),

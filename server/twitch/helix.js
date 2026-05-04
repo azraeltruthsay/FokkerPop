@@ -19,6 +19,24 @@ export async function getUser(login, accessToken) {
   return data.data?.[0] ?? null;
 }
 
+// Live-stream info for the broadcaster. Empty array → offline. When live,
+// returns one entry with viewer_count, title, game_name, started_at, etc.
+// Used by the stream-stats poller to keep state.twitch.live in sync.
+export async function getStreamInfo(broadcasterId, accessToken) {
+  const data = await helixGet(`/streams?user_id=${encodeURIComponent(broadcasterId)}`, accessToken);
+  return data.data?.[0] ?? null;
+}
+
+// List the broadcaster's Channel Point custom rewards. Used by the Studio
+// "Refresh from Twitch" button on the Redeem trigger's reward dropdown so
+// new rewards created in the Twitch dashboard show up without manual
+// redeems.json edits. Requires the channel:read:redemptions scope which the
+// app already requests for EventSub redemption subscriptions.
+export async function getCustomRewards(broadcasterId, accessToken) {
+  const data = await helixGet(`/channel_points/custom_rewards?broadcaster_id=${encodeURIComponent(broadcasterId)}`, accessToken);
+  return data.data ?? [];
+}
+
 async function helixPost(path, body, accessToken) {
   const { clientId } = settings.twitch ?? {};
   const res = await fetch(`${BASE}${path}`, {
