@@ -61,7 +61,33 @@ function eventToHotkey(e) {
   parts.push(keyName);
   return parts.join('+');
 }
+// Global-hotkey toggle (v0.3.31): when on, the dashboard listener bows out
+// so AHK (running outside the browser) is the sole owner of flow hotkeys.
+// Without this, having both running while the dashboard window is focused
+// would double-fire the flow.
+const STUDIO_GLOBAL_HOTKEY_KEY = 'fokker.studio.global-hotkeys-on';
+function isGlobalHotkeysOn() {
+  try { return localStorage.getItem(STUDIO_GLOBAL_HOTKEY_KEY) === '1'; } catch { return false; }
+}
+window.toggleStudioGlobalHotkeys = function () {
+  const next = !isGlobalHotkeysOn();
+  try { localStorage.setItem(STUDIO_GLOBAL_HOTKEY_KEY, next ? '1' : '0'); } catch {}
+  paintGlobalHotkeyButton();
+};
+function paintGlobalHotkeyButton() {
+  const btn = document.getElementById('studio-global-hotkey-toggle');
+  if (!btn) return;
+  const on = isGlobalHotkeysOn();
+  btn.textContent = on ? '🌐 Global On' : '🌐 Global Off';
+  btn.classList.toggle('btn-primary', on);
+  btn.classList.toggle('btn-ghost',   !on);
+}
+// Re-paint whenever Studio activates so the toolbar reflects current state.
+document.addEventListener('DOMContentLoaded', paintGlobalHotkeyButton);
+
 window.addEventListener('keydown', (e) => {
+  // When Global mode is on, AHK owns hotkeys — stay quiet.
+  if (isGlobalHotkeysOn()) return;
   // Ignore typing inside form fields — otherwise Alt+1 inside a flow-name
   // input would silently fire a flow.
   const tag = (e.target?.tagName || '').toLowerCase();
@@ -141,6 +167,7 @@ window.initStudio = async function() {
 
   studioInitialized = true;
   restoreStudioPreviewState();
+  paintGlobalHotkeyButton();
 };
 
 async function fetchFlows() {
@@ -214,6 +241,12 @@ window.recordStudioHotkey = function (btn) {
     if (['Alt','Control','Shift','Meta'].includes(e.key)) return; // wait for the real key
     const combo = eventToHotkey(e);
     if (!combo) return;
+    // Require at least one modifier so a bare digit can't end up bound and
+    // hijack ordinary typing on any focused dashboard page.
+    if (!combo.includes('+')) {
+      input.placeholder = 'Need a modifier (Alt/Ctrl/Shift). Try again or Esc to cancel.';
+      return;
+    }
     activeFlow.hotkey = combo;
     window.queueStudioSave();
     window.removeEventListener('keydown', handler, true);
@@ -811,7 +844,7 @@ function renderProps() {
         <button class="btn btn-ghost btn-sm" onclick="window.recordStudioHotkey(this)" title="Record a key combo">⌨️</button>
         <button class="btn btn-ghost btn-sm" onclick="activeFlow.hotkey=''; window.queueStudioSave(); renderProps()" title="Clear">✕</button>
       </div>
-      <div style="font-size:0.6rem; color:var(--text-dim); margin-top:4px;">Fires this flow live (not as a test) when pressed with the dashboard focused. Works on any dashboard page.</div>
+      <div style="font-size:0.6rem; color:var(--text-dim); margin-top:4px;">Fires this flow live (not as a test). Works while the dashboard is focused. For OS-wide hotkeys (while OBS or a game is foreground), click <strong>📋 Export AHK</strong> in the toolbar and run the script with <a href="https://www.autohotkey.com" target="_blank" rel="noopener" style="color:var(--accent);">AutoHotkey v2</a> installed, then flip <strong>🌐 Global</strong> on.</div>
     </div>`;
 
     // For 'redeem' triggers, a second dropdown narrows matching to a single

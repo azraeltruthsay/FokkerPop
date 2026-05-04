@@ -746,6 +746,103 @@ const httpServer = createServer((req, res) => {
     return;
   }
 
+  // Translate the dashboard's hotkey strings ("Alt+1", "Ctrl+Shift+F1")
+  // into AutoHotkey v2 hotkey syntax ("!1", "^+{F1}"). Returns null if a
+  // key name can't be safely encoded — caller writes a comment line in the
+  // generated script instead of producing broken bindings.
+  function comboToAhk(combo) {
+    if (!combo) return null;
+    const parts = combo.split('+').map(p => p.trim()).filter(Boolean);
+    if (parts.length < 2) return null;  // require at least one modifier + a key
+    const MOD = { Alt: '!', Ctrl: '^', Shift: '+', Meta: '#' };
+    let mods = '';
+    let key  = '';
+    for (const p of parts) {
+      if (Object.prototype.hasOwnProperty.call(MOD, p)) mods += MOD[p];
+      else key = p;
+    }
+    if (!key) return null;
+    if (key.length === 1) return mods + key.toLowerCase();
+    // Function keys, navigation keys, etc. use { } in AHK v2.
+    if (/^F\d{1,2}$/.test(key)) return mods + '{' + key + '}';
+    const SPECIAL = new Set(['Tab','Enter','Space','Escape','Backspace','Delete','Insert','Home','End','PageUp','PageDown','ArrowUp','ArrowDown','ArrowLeft','ArrowRight']);
+    const SPECIAL_MAP = { Escape: 'Esc', Backspace: 'Backspace', ArrowUp: 'Up', ArrowDown: 'Down', ArrowLeft: 'Left', ArrowRight: 'Right', PageUp: 'PgUp', PageDown: 'PgDn' };
+    if (SPECIAL.has(key)) return mods + '{' + (SPECIAL_MAP[key] || key) + '}';
+    return null;
+  }
+
+  // HTTP equivalent of the _dashboard.run-flow WS message — same single-
+  // chain semantics, isTest=false (so OBS reacts). Designed for AutoHotkey
+  // to call when the dashboard isn't focused. AHK passes Origin via
+  // Msxml2.XMLHTTP.SetRequestHeader so the existing CSRF gate is happy
+  // without a separate auth path.
+  if (path.startsWith('/api/run-flow/') && req.method === 'POST') {
+    const flowId = decodeURIComponent(path.slice('/api/run-flow/'.length));
+    const flow = flows.find(f => f.id === flowId);
+    if (!flow) {
+      res.writeHead(404, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ error: 'flow not found', flowId }));
+    }
+    const eventType = flow.trigger;
+    const payload   = { ...(TEST_PAYLOADS[eventType] || {}) };
+    flowEngine.testFlow(flowId, {
+      source:  'http-hotkey',
+      type:    eventType,
+      payload,
+      isTest:  false,
+    }, broadcastEffect);
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    return res.end(JSON.stringify({ ok: true, flowId, name: flow.name }));
+  }
+
+  // Generates an AutoHotkey v2 script with one binding per active flow that
+  // has a configured hotkey. Lets Fokker drop a single .ahk file alongside
+  // FokkerPop and get OS-wide hotkeys without us shipping a native key
+  // listener. The script Origin-spoofs http://localhost:<port> via COM so it
+  // passes the same gate the dashboard uses (any non-browser caller can do
+  // this; the gate is specifically a browser-CSRF defense, not auth).
+  if (path === '/api/run-flow.ahk' && req.method === 'GET') {
+    const flowsWithHotkeys = flows.filter(f => f.active && f.hotkey);
+    const port = activePort;
+    const lines = [];
+    lines.push('#Requires AutoHotkey v2.0');
+    lines.push('; FokkerPop generated hotkey script — re-export from Studio after editing flows.');
+    lines.push(`; Generated for FokkerPop v${VERSION} on port ${port}.`);
+    lines.push(`; Active hotkey flows: ${flowsWithHotkeys.length}`);
+    lines.push('');
+    lines.push(`PORT := ${port}`);
+    lines.push('');
+    if (flowsWithHotkeys.length === 0) {
+      lines.push('; No flows currently have a hotkey configured.');
+      lines.push('; Open Studio, pick a flow, click the trigger node, set Hotkey, then re-export.');
+    } else {
+      for (const f of flowsWithHotkeys) {
+        const ahkCombo = comboToAhk(f.hotkey);
+        if (!ahkCombo) {
+          lines.push(`; (skipped: couldn't translate ${JSON.stringify(f.hotkey)} for flow ${f.name || f.id})`);
+          continue;
+        }
+        const safeName = (f.name || f.id).replace(/[^\x20-\x7e]/g, '?');
+        const safeId   = JSON.stringify(f.id);
+        lines.push(`${ahkCombo}::SendFokkerFlow(${safeId})  ; ${f.hotkey} — ${safeName}`);
+      }
+    }
+    lines.push('');
+    lines.push('SendFokkerFlow(flowId) {');
+    lines.push('    try {');
+    lines.push('        whr := ComObject("Msxml2.XMLHTTP")');
+    lines.push('        whr.Open("POST", "http://localhost:" . PORT . "/api/run-flow/" . flowId, false)');
+    lines.push('        whr.SetRequestHeader("Origin", "http://localhost:" . PORT)');
+    lines.push('        whr.Send()');
+    lines.push('    }');
+    lines.push('}');
+    res.writeHead(200, {
+      'Content-Type':        'text/plain; charset=utf-8',
+      'Content-Disposition': 'attachment; filename="fokkerpop-hotkeys.ahk"',
+    });
+    return res.end(lines.join('\r\n'));
+  }
+
   if (path === '/api/commands' && req.method === 'GET') {
     res.writeHead(200, { 'Content-Type': 'application/json' });
     return res.end(JSON.stringify(commands));
