@@ -1,7 +1,7 @@
 import { createServer }                                  from 'node:http';
-import { readFileSync, writeFileSync, existsSync, readdirSync, createWriteStream, statSync, copyFileSync, mkdirSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync, readdirSync, createWriteStream, statSync, copyFileSync, mkdirSync, unlinkSync } from 'node:fs';
 import { extname, join, normalize, resolve, sep, relative, isAbsolute, basename } from 'node:path';
-import { exec }                                from 'node:child_process';
+import { exec, spawn }                         from 'node:child_process';
 import { WebSocketServer, WebSocket }          from 'ws';
 
 import bus                        from './bus.js';
@@ -795,18 +795,17 @@ const httpServer = createServer((req, res) => {
     return res.end(JSON.stringify({ ok: true, flowId, name: flow.name }));
   }
 
-  // Generates an AutoHotkey v2 script with one binding per active flow that
-  // has a configured hotkey. Lets Fokker drop a single .ahk file alongside
-  // FokkerPop and get OS-wide hotkeys without us shipping a native key
-  // listener. The script Origin-spoofs http://localhost:<port> via COM so it
-  // passes the same gate the dashboard uses (any non-browser caller can do
-  // this; the gate is specifically a browser-CSRF defense, not auth).
-  if (path === '/api/run-flow.ahk' && req.method === 'GET') {
+  // Builds the AutoHotkey v2 script body. Used by both the download endpoint
+  // and the wizard's install endpoint, which writes this same body to the
+  // user's Windows Startup folder. Generating once-per-call is fine — flows
+  // can change between calls and we want the latest set every time.
+  function buildAhkScript() {
     const flowsWithHotkeys = flows.filter(f => f.active && f.hotkey);
     const port = activePort;
     const lines = [];
     lines.push('#Requires AutoHotkey v2.0');
-    lines.push('; FokkerPop generated hotkey script — re-export from Studio after editing flows.');
+    lines.push('#SingleInstance Force');
+    lines.push('; FokkerPop generated hotkey script — re-run the Studio "Set Up Global Hotkeys" wizard after editing flows.');
     lines.push(`; Generated for FokkerPop v${VERSION} on port ${port}.`);
     lines.push(`; Active hotkey flows: ${flowsWithHotkeys.length}`);
     lines.push('');
@@ -814,7 +813,7 @@ const httpServer = createServer((req, res) => {
     lines.push('');
     if (flowsWithHotkeys.length === 0) {
       lines.push('; No flows currently have a hotkey configured.');
-      lines.push('; Open Studio, pick a flow, click the trigger node, set Hotkey, then re-export.');
+      lines.push('; Open Studio, pick a flow, click the trigger node, set Hotkey, then re-run the wizard.');
     } else {
       for (const f of flowsWithHotkeys) {
         const ahkCombo = comboToAhk(f.hotkey);
@@ -836,11 +835,118 @@ const httpServer = createServer((req, res) => {
     lines.push('        whr.Send()');
     lines.push('    }');
     lines.push('}');
+    return lines.join('\r\n');
+  }
+
+  // Candidate AHK install locations. Order matters: prefer v2 64-bit (the
+  // default for new installs), fall back to other v2 builds, lastly v1
+  // (which would refuse to run our v2-marked script anyway, so a v1-only
+  // detection should still report installed=true but flag wrongVersion).
+  function detectAhk() {
+    const programFiles    = process.env['ProgramFiles']      || 'C:\\Program Files';
+    const programFiles86  = process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)';
+    const userPrograms    = process.env.LOCALAPPDATA ? join(process.env.LOCALAPPDATA, 'Programs') : '';
+    const candidates = [
+      { path: join(programFiles,   'AutoHotkey', 'v2', 'AutoHotkey64.exe'), v2: true },
+      { path: join(programFiles,   'AutoHotkey', 'v2', 'AutoHotkey32.exe'), v2: true },
+      { path: join(programFiles86, 'AutoHotkey', 'v2', 'AutoHotkey32.exe'), v2: true },
+      ...(userPrograms ? [{ path: join(userPrograms, 'AutoHotkey', 'v2', 'AutoHotkey64.exe'), v2: true }] : []),
+      { path: join(programFiles,   'AutoHotkey', 'AutoHotkey.exe'),         v2: false },
+      { path: join(programFiles86, 'AutoHotkey', 'AutoHotkey.exe'),         v2: false },
+    ];
+    for (const c of candidates) {
+      if (existsSync(c.path)) return { installed: true, v2: c.v2, path: c.path };
+    }
+    return { installed: false, v2: false, path: null };
+  }
+
+  // Wizard step 1: report AHK install state without changing anything.
+  if (path === '/api/system/ahk-status' && req.method === 'GET') {
+    const info = detectAhk();
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    return res.end(JSON.stringify(info));
+  }
+
+  // Wizard step 2: write the current AHK script into the user's Windows
+  // Startup folder so it auto-launches on login. Re-runnable — overwrites
+  // the same file each call so the user's latest hotkeys are reflected.
+  // Returns the path so the wizard can tell the user where it landed.
+  if (path === '/api/system/install-ahk-script' && req.method === 'POST') {
+    try {
+      const appData = process.env.APPDATA;
+      if (!appData) throw new Error('APPDATA env var missing — this endpoint only works on Windows.');
+      const startupDir = join(appData, 'Microsoft', 'Windows', 'Start Menu', 'Programs', 'Startup');
+      mkdirSync(startupDir, { recursive: true });
+      const scriptPath = join(startupDir, 'fokkerpop-hotkeys.ahk');
+      writeFileSync(scriptPath, buildAhkScript());
+      log.info(`AHK hotkey script installed to ${scriptPath}`);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ ok: true, path: scriptPath }));
+    } catch (err) {
+      log.error('Install AHK script failed:', err.message);
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ error: err.message }));
+    }
+  }
+
+  // Wizard step 3: launch the installed script so it's running NOW (rather
+  // than only after next Windows login). Uses #SingleInstance Force in the
+  // script body so re-runs replace the prior AHK instance cleanly.
+  // Detached + unref so closing FokkerPop doesn't kill AHK.
+  if (path === '/api/system/launch-ahk-script' && req.method === 'POST') {
+    try {
+      const ahk = detectAhk();
+      if (!ahk.installed) throw new Error('AutoHotkey not detected. Install AutoHotkey v2 first.');
+      if (!ahk.v2)        throw new Error('AutoHotkey v1 detected; FokkerPop scripts require v2. Install AutoHotkey v2 from autohotkey.com.');
+      const appData = process.env.APPDATA;
+      if (!appData) throw new Error('APPDATA env var missing.');
+      const scriptPath = join(appData, 'Microsoft', 'Windows', 'Start Menu', 'Programs', 'Startup', 'fokkerpop-hotkeys.ahk');
+      if (!existsSync(scriptPath)) throw new Error('Hotkey script not yet installed. Run install step first.');
+      const child = spawn(ahk.path, [scriptPath], { detached: true, stdio: 'ignore' });
+      child.unref();
+      log.info(`AHK launched: ${ahk.path} ${scriptPath}`);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ ok: true }));
+    } catch (err) {
+      log.error('Launch AHK script failed:', err.message);
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ error: err.message }));
+    }
+  }
+
+  // Disable global hotkeys: delete the Startup-folder script so it stops
+  // auto-launching at login. We deliberately don't `taskkill` the running
+  // AHK instance — that could nuke other AHK scripts the user is running
+  // for unrelated reasons. The wizard tells them to right-click the tray
+  // icon → Exit if they want it gone right now.
+  if (path === '/api/system/uninstall-ahk-script' && req.method === 'POST') {
+    try {
+      const appData = process.env.APPDATA;
+      if (!appData) throw new Error('APPDATA env var missing.');
+      const scriptPath = join(appData, 'Microsoft', 'Windows', 'Start Menu', 'Programs', 'Startup', 'fokkerpop-hotkeys.ahk');
+      const existed = existsSync(scriptPath);
+      if (existed) {
+        // Use the unlinkSync from fs — already imported via the named imports
+        // (existsSync, etc.). Add unlinkSync to that list at the top of the file.
+        unlinkSync(scriptPath);
+        log.info(`AHK hotkey script removed: ${scriptPath}`);
+      }
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ ok: true, removed: existed }));
+    } catch (err) {
+      log.error('Uninstall AHK script failed:', err.message);
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ error: err.message }));
+    }
+  }
+
+  // Plain download — kept for the manual "I want the file myself" path.
+  if (path === '/api/run-flow.ahk' && req.method === 'GET') {
     res.writeHead(200, {
       'Content-Type':        'text/plain; charset=utf-8',
       'Content-Disposition': 'attachment; filename="fokkerpop-hotkeys.ahk"',
     });
-    return res.end(lines.join('\r\n'));
+    return res.end(buildAhkScript());
   }
 
   if (path === '/api/commands' && req.method === 'GET') {

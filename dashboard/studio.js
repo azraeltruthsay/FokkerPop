@@ -256,6 +256,161 @@ window.recordStudioHotkey = function (btn) {
   window.addEventListener('keydown', handler, true);
 };
 
+// Global Hotkey wizard (v0.3.32). The v0.3.31 manual flow (Export AHK,
+// install AHK separately, run script, flip Global toggle) was too many
+// steps for non-technical users to complete reliably — Fokker tested it,
+// got the dashboard listener working, then re-asked the original "make it
+// work when OBS is foreground" question without picking up that the
+// AHK route was the answer. This wizard collapses the whole flow behind
+// one button: detect AHK, link to the official installer if missing,
+// write the latest script into the user's Windows Startup folder, launch
+// it now (so the user doesn't have to log out/in), and flip the dashboard
+// listener off so the two don't fight.
+window.openGlobalHotkeyWizard = function () {
+  const overlay = document.createElement('div');
+  overlay.id = 'ghw-overlay';
+  overlay.style.cssText = `
+    position:fixed; inset:0; background:rgba(11,11,18,0.78); z-index:99998;
+    display:flex; align-items:center; justify-content:center; padding:32px;
+    backdrop-filter: blur(4px);
+  `;
+  overlay.innerHTML = `
+    <div style="background:var(--surface); color:var(--text); border:1px solid var(--border); border-radius:14px; max-width:560px; width:100%; box-shadow:0 20px 60px rgba(0,0,0,0.55);">
+      <div style="padding:18px 22px 10px; border-bottom:1px solid var(--border);">
+        <div style="font-size:.7rem; letter-spacing:.1em; color:var(--accent2); font-weight:800; text-transform:uppercase;">Set Up Global Hotkeys</div>
+        <div style="font-size:1.15rem; font-weight:900; margin-top:4px;">Make your hotkeys work everywhere</div>
+        <div style="font-size:.75rem; color:var(--text-dim); margin-top:4px;">Hotkeys will fire even when OBS, your game, or any other window is focused.</div>
+      </div>
+      <div id="ghw-body" style="padding:18px 22px; min-height:180px; line-height:1.55; font-size:.88rem;">
+        <div style="text-align:center; color:var(--text-dim);">⏳ Checking AutoHotkey…</div>
+      </div>
+      <div style="padding:12px 22px 18px; display:flex; justify-content:space-between; gap:8px; border-top:1px solid var(--border);">
+        <a href="/api/run-flow.ahk" download="fokkerpop-hotkeys.ahk" style="font-size:.7rem; color:var(--text-dim); text-decoration:underline; align-self:center;">Advanced: download script manually</a>
+        <button class="btn btn-ghost" id="ghw-close">Close</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+
+  const dismiss = () => {
+    overlay.remove();
+    document.removeEventListener('keydown', onKey);
+  };
+  const onKey = (e) => { if (e.key === 'Escape') dismiss(); };
+  document.getElementById('ghw-close')?.addEventListener('click', dismiss);
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) dismiss(); });
+  document.addEventListener('keydown', onKey);
+
+  // Kick off the first step.
+  ghwCheckAhk();
+};
+
+function ghwSetBody(html) {
+  const body = document.getElementById('ghw-body');
+  if (body) body.innerHTML = html;
+}
+
+async function ghwCheckAhk() {
+  ghwSetBody(`<div style="text-align:center; color:var(--text-dim);">⏳ Checking AutoHotkey…</div>`);
+  try {
+    const res = await fetch('/api/system/ahk-status');
+    const data = await res.json();
+    if (!data.installed) {
+      ghwSetBody(`
+        <p><strong>AutoHotkey isn't installed yet.</strong> It's a free, lightweight tool (~3 MB) used by countless streamers — FokkerPop uses it for OS-wide hotkeys instead of bundling its own keyboard listener (which would trip antivirus heuristics on unsigned builds).</p>
+        <ol style="padding-left:22px; margin:10px 0;">
+          <li>Click <strong>Open AutoHotkey download page</strong> below.</li>
+          <li>Download and run the v2 installer (default settings are fine).</li>
+          <li>Come back here and click <strong>I've installed it</strong>.</li>
+        </ol>
+        <div style="display:flex; gap:8px; margin-top:14px;">
+          <a class="btn btn-primary" href="https://www.autohotkey.com/" target="_blank" rel="noopener">Open AutoHotkey download page ↗</a>
+          <button class="btn btn-ghost" onclick="window._ghwRecheck()">I've installed it</button>
+        </div>
+      `);
+      window._ghwRecheck = ghwCheckAhk;
+      return;
+    }
+    if (!data.v2) {
+      ghwSetBody(`
+        <p><strong>An older AutoHotkey v1 install was found</strong> at <code style="font-size:.78rem;">${escapeHtml(data.path)}</code>. FokkerPop's generated scripts use v2 syntax, so we need v2 alongside (or instead of) v1.</p>
+        <p>Install v2 from <a href="https://www.autohotkey.com/" target="_blank" rel="noopener" style="color:var(--accent);">autohotkey.com</a> (it installs side-by-side with v1, no conflict). Then come back and re-check.</p>
+        <div style="display:flex; gap:8px; margin-top:14px;">
+          <a class="btn btn-primary" href="https://www.autohotkey.com/" target="_blank" rel="noopener">Open download page ↗</a>
+          <button class="btn btn-ghost" onclick="window._ghwRecheck()">Re-check</button>
+        </div>
+      `);
+      window._ghwRecheck = ghwCheckAhk;
+      return;
+    }
+    // AHK v2 detected — proceed straight to install + launch.
+    ghwSetBody(`<p>✅ AutoHotkey v2 detected at <code style="font-size:.78rem;">${escapeHtml(data.path)}</code>.</p><div style="text-align:center; color:var(--text-dim); margin-top:14px;">⏳ Writing your hotkey script…</div>`);
+    await ghwInstallAndLaunch();
+  } catch (err) {
+    ghwSetBody(`<p style="color:var(--red);">Couldn't check AutoHotkey: ${escapeHtml(err.message)}</p><button class="btn btn-ghost" onclick="window._ghwRecheck()">Retry</button>`);
+    window._ghwRecheck = ghwCheckAhk;
+  }
+}
+
+async function ghwInstallAndLaunch() {
+  try {
+    const installRes = await fetch('/api/system/install-ahk-script', { method: 'POST' });
+    const installData = await installRes.json();
+    if (!installRes.ok) throw new Error(installData.error || 'Install step failed');
+
+    const launchRes = await fetch('/api/system/launch-ahk-script', { method: 'POST' });
+    const launchData = await launchRes.json();
+    if (!launchRes.ok) throw new Error(launchData.error || 'Launch step failed');
+
+    // Flip the dashboard listener off so a focused dashboard doesn't double-fire.
+    try { localStorage.setItem(STUDIO_GLOBAL_HOTKEY_KEY, '1'); } catch {}
+    paintGlobalHotkeyButton();
+
+    const flowsWithKeys = (Array.isArray(flows) ? flows : []).filter(f => f.active && f.hotkey);
+    const list = flowsWithKeys.length === 0
+      ? '<p style="color:var(--text-dim); font-size:.8rem;">No flows have a hotkey configured yet — set one on a trigger node and re-run this wizard.</p>'
+      : '<ul style="font-size:.8rem; padding-left:22px; margin:8px 0;">' + flowsWithKeys.map(f => `<li><strong>${escapeHtml(f.hotkey)}</strong> — ${escapeHtml(f.name || f.id)}</li>`).join('') + '</ul>';
+
+    ghwSetBody(`
+      <p style="color:var(--accent); font-weight:800;">✅ All set!</p>
+      <p>Your hotkeys are now active globally — they'll fire from any window. The script auto-launches whenever Windows starts, so you only need to run this wizard again when you change which flows have hotkeys.</p>
+      <div style="background:var(--bg); border:1px solid var(--border); border-radius:8px; padding:10px 14px; margin:12px 0;">
+        <div style="font-size:.7rem; text-transform:uppercase; letter-spacing:.05em; color:var(--text-dim); margin-bottom:4px;">Active hotkeys</div>
+        ${list}
+        <div style="font-size:.7rem; color:var(--text-dim); margin-top:6px;">Script: <code style="font-size:.72rem;">${escapeHtml(installData.path)}</code></div>
+      </div>
+      <p style="font-size:.78rem; color:var(--text-dim);">Try one now — even if you click out of FokkerPop first.</p>
+      <div style="text-align:right; margin-top:14px;">
+        <button class="btn btn-ghost btn-sm" onclick="window.ghwUninstall()" style="font-size:.72rem; color:var(--text-dim);">🗑️ Disable global hotkeys</button>
+      </div>
+    `);
+  } catch (err) {
+    ghwSetBody(`<p style="color:var(--red);">Setup failed: ${escapeHtml(err.message)}</p><button class="btn btn-ghost" onclick="window._ghwRecheck()">Retry</button>`);
+    window._ghwRecheck = ghwInstallAndLaunch;
+  }
+}
+
+function escapeHtml(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
+}
+
+window.ghwUninstall = async function () {
+  if (!confirm('Stop global hotkeys?\n\nThis removes the auto-launch entry. Hotkeys will still work while the dashboard is focused. Any AutoHotkey instance currently running will keep running until you close FokkerPop or right-click its tray icon → Exit.')) return;
+  try {
+    const res = await fetch('/api/system/uninstall-ahk-script', { method: 'POST' });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Disable failed');
+    try { localStorage.setItem(STUDIO_GLOBAL_HOTKEY_KEY, '0'); } catch {}
+    paintGlobalHotkeyButton();
+    ghwSetBody(`
+      <p>✅ Global hotkeys disabled. Auto-launch entry removed.</p>
+      <p style="font-size:.78rem; color:var(--text-dim);">If AutoHotkey is still running in your tray, right-click its icon → Exit to stop it now. Otherwise it'll be gone after your next Windows restart.</p>
+    `);
+  } catch (err) {
+    alert('Disable failed: ' + err.message);
+  }
+};
+
 // Restore the toggle on Studio init so the preview state survives reloads.
 function restoreStudioPreviewState() {
   let on = false;
