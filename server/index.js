@@ -1019,6 +1019,29 @@ const httpServer = createServer((req, res) => {
     }
     const name = basename(nameStr); // defense in depth
 
+    // Per-type extension allowlist. Without this, an .fbx model upload (or
+    // any other format) lands silently in the folder but the asset listing
+    // (and the dashboard's selection dropdowns) filter it back out — so
+    // users see "upload succeeded" then can't find their file. Issue #8.
+    const ALLOWED_EXTS = {
+      sound:     ['.wav', '.mp3', '.ogg', '.m4a'],
+      sticker:   ['.png', '.webp', '.gif', '.jpg', '.jpeg', '.svg'],
+      image:     ['.png', '.webp', '.gif', '.jpg', '.jpeg', '.svg'],
+      character: ['.png', '.webp', '.jpg', '.jpeg'],
+      model:     ['.glb', '.gltf'],
+    };
+    const allowed = ALLOWED_EXTS[type];
+    if (allowed) {
+      const ext = (extname(name) || '').toLowerCase();
+      if (!allowed.includes(ext)) {
+        log.warn(`Upload rejected: ${name} (type=${type}, ext=${ext || '(none)'}) — not in allowed list ${allowed.join(', ')}`);
+        res.writeHead(400);
+        res.end(`This ${type} format isn't supported. Allowed: ${allowed.join(', ')}. ` +
+          (type === 'model' ? 'Re-export from your modeling tool as .glb (the universal "JPEG of 3D" format) — Three.js loads it natively. .fbx/.obj/.stl/.usd/.abc/.ply aren\'t supported.' : ''));
+        return;
+      }
+    }
+
     const targetRoot = resolve(ROOT, targetDir);
     const savePath   = resolve(targetRoot, name);
     if (!savePath.startsWith(targetRoot + sep)) {
