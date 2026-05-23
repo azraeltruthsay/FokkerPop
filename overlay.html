@@ -935,6 +935,7 @@ body:not(.layout-mode) .custom-widget[data-type="hot-button"]:hover {
   }
 }
 </script>
+<script src="/shared/widget-claims-space.js"></script>
 </head>
 <body>
 
@@ -1944,6 +1945,7 @@ function renderCustomWidgets() {
     el.id = w.id;
     el.dataset.type = w.type;
     el.dataset.placeholder = (w.type || 'Widget').toUpperCase();
+    if (window.widgetClaimsSpaceFor?.(w)) el.dataset.claimsSpace = '1';
     const cfg = w.config || {};
     if (cfg.color)     el.style.color       = cfg.color;
     if (cfg.bgColor)   el.style.background  = cfg.bgColor;
@@ -2264,6 +2266,34 @@ const MIN_H = 40;
 let resizeTarget = null;
 let resizeStart  = null;   // { mouseX, mouseY, width, height }
 
+// ── Claims-space collision (per-widget opt-in) ──
+// Widgets flagged with data-claims-space="1" reserve their footprint: another
+// claims-space widget can't be dragged or resized into the overlap. Defaults
+// per type live in /shared/widget-claims-space.js. Implementation notes:
+//   * "Escape mode": if two widgets are *already* overlapping (e.g. before the
+//     feature shipped), allow movement that doesn't worsen the overlap so the
+//     user isn't stuck — we only block transitions from non-overlap → overlap.
+//   * Axis-separated sliding: if a diagonal move collides, we retry the X-only
+//     and Y-only components so the dragged widget can slide along an obstacle's
+//     edge instead of sticking dead.
+function rectsIntersect(a, b) {
+  return a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
+}
+function claimsSpaceObstacles(self) {
+  return [...document.querySelectorAll('[data-claims-space="1"]')]
+    .filter(el => el !== self)
+    .map(el => el.getBoundingClientRect());
+}
+function rectAt(left, top, width, height) {
+  return { left, top, right: left + width, bottom: top + height };
+}
+function blockedBy(rect, obstacles, oldRect) {
+  for (const o of obstacles) {
+    if (rectsIntersect(rect, o) && !(oldRect && rectsIntersect(oldRect, o))) return o;
+  }
+  return null;
+}
+
 window.addEventListener('mousedown', (e) => {
   if (!layoutMode) return;
 
@@ -2319,8 +2349,35 @@ window.addEventListener('mousemove', (e) => {
     const { hDir, vDir } = resizeStart;
     const dx = e.clientX - resizeStart.mouseX;
     const dy = e.clientY - resizeStart.mouseY;
-    const nw = Math.max(MIN_W, Math.round(resizeStart.width  + hDir * dx));
-    const nh = Math.max(MIN_H, Math.round(resizeStart.height + vDir * dy));
+    let nw = Math.max(MIN_W, Math.round(resizeStart.width  + hDir * dx));
+    let nh = Math.max(MIN_H, Math.round(resizeStart.height + vDir * dy));
+
+    // Claims-space resize clamp: shrink nw/nh until the resulting rect (with
+    // the appropriate anchor) no longer intersects another claims-space rect
+    // it wasn't already intersecting. We bias toward the previous frame's
+    // dimensions so the user can keep dragging past the limit without the
+    // widget snapping smaller.
+    if (resizeTarget.dataset.claimsSpace === '1') {
+      const obstacles = claimsSpaceObstacles(resizeTarget);
+      if (obstacles.length) {
+        const oldRect = resizeTarget.getBoundingClientRect();
+        const computeRect = (w, h) => {
+          const left = (hDir === -1) ? resizeStart.left + (resizeStart.width  - w) : resizeStart.left;
+          const top  = (vDir === -1) ? resizeStart.top  + (resizeStart.height - h) : resizeStart.top;
+          return rectAt(left, top, w, h);
+        };
+        if (blockedBy(computeRect(nw, nh), obstacles, oldRect)) {
+          // Try shrinking just one axis (lets a drag past a corner still grow
+          // along the unobstructed axis). Prefer current dimensions; if those
+          // also collide somehow, fall back to the previous frame's size.
+          const curW = oldRect.width, curH = oldRect.height;
+          if (!blockedBy(computeRect(nw, curH), obstacles, oldRect))      nh = curH;
+          else if (!blockedBy(computeRect(curW, nh), obstacles, oldRect)) nw = curW;
+          else { nw = curW; nh = curH; }
+        }
+      }
+    }
+
     resizeTarget.style.width  = nw + 'px';
     resizeTarget.style.height = nh + 'px';
 
@@ -2352,9 +2409,26 @@ window.addEventListener('mousemove', (e) => {
   const x = e.clientX - dragOffset.x;
   const y = e.clientY - dragOffset.y;
 
+  // Claims-space drag clamp: try the proposed (x,y); if it collides with a
+  // claims-space widget it didn't already overlap, fall back to x-only or
+  // y-only motion so the dragged widget slides along the obstacle's edge.
+  let nx = x, ny = y;
+  if (dragTarget.dataset.claimsSpace === '1') {
+    const obstacles = claimsSpaceObstacles(dragTarget);
+    if (obstacles.length) {
+      const oldRect = dragTarget.getBoundingClientRect();
+      const w = oldRect.width, h = oldRect.height;
+      if (blockedBy(rectAt(x, y, w, h), obstacles, oldRect)) {
+        if      (!blockedBy(rectAt(x, oldRect.top,  w, h), obstacles, oldRect)) ny = oldRect.top;
+        else if (!blockedBy(rectAt(oldRect.left, y, w, h), obstacles, oldRect)) nx = oldRect.left;
+        else { nx = oldRect.left; ny = oldRect.top; }
+      }
+    }
+  }
+
   // Convert to percentage for resolution-independence based on container size
-  const px = (x / rect.width) * 100;
-  const py = (y / rect.height) * 100;
+  const px = (nx / rect.width) * 100;
+  const py = (ny / rect.height) * 100;
 
   dragTarget.style.left = `${px}%`;
   dragTarget.style.top  = `${py}%`;

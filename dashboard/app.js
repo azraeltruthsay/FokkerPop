@@ -831,6 +831,9 @@ window.renderWidgetList = function() {
     })();
     const autoHideTypes = new Set(['physics-pit', 'physics-pit-3d', 'dice', 'dice-tray', 'event-badge']);
     const showAutoHide = autoHideTypes.has(w.type);
+    const claimsSpaceOn = window.widgetClaimsSpaceFor ? window.widgetClaimsSpaceFor(w) : false;
+    const claimsSpaceDefault = !!(window.WIDGET_CLAIMS_SPACE_DEFAULTS?.[w.type]);
+    const claimsSpaceTitle = `Block other "block-overlap" widgets from being dragged or resized into this one's footprint. Defaults on for physics widgets (dice pits, dice trays, 3D models) where overlap looks broken on stream.${claimsSpaceDefault !== claimsSpaceOn ? ` (Overrides this type's default.)` : ''}`;
     return `
       <div class="card" style="margin-bottom:10px; padding:12px; background:var(--surface2); ${visible ? '' : 'opacity:0.55;'}">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
@@ -842,6 +845,9 @@ window.renderWidgetList = function() {
             ${showAutoHide ? `<label style="display:inline-flex; align-items:center; gap:6px; font-size:.72rem; color:var(--text-dim); cursor:pointer;" title="Hide until the trigger event fires; fade back out after 8 s">
               <input type="checkbox" ${c.autoHide ? 'checked' : ''} onchange="updateWidgetField('${w.id}','autoHide',this.checked)"> auto-hide
             </label>` : ''}
+            <label style="display:inline-flex; align-items:center; gap:6px; font-size:.72rem; color:var(--text-dim); cursor:pointer;" title="${esc(claimsSpaceTitle)}">
+              <input type="checkbox" ${claimsSpaceOn ? 'checked' : ''} onchange="updateWidgetField('${w.id}','claimsSpace',this.checked)"> block overlap
+            </label>
             <button class="btn btn-ghost btn-sm" onclick="deleteWidget('${w.id}')" style="color:var(--red);">Delete</button>
           </div>
         </div>
