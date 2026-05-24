@@ -1511,6 +1511,16 @@ html, body {
         <label style="display:inline-flex; align-items:center; gap:6px; font-size:.72rem; color:var(--text-dim); cursor:pointer;" title="Write a keyframe automatically whenever you finish dragging the gizmo">
           <input type="checkbox" id="scenes-auto-key" checked> Auto-key
         </label>
+        <label style="display:inline-flex; align-items:center; gap:6px; font-size:.72rem; color:var(--text-dim);" title="Frames a guide on the viewport showing what the overlay will see at this aspect ratio">
+          Guide:
+          <select id="scenes-aspect-select" class="input-field" style="margin:0; padding:2px 6px; font-size:.72rem; width:auto;">
+            <option value="">Off</option>
+            <option value="1.7778">16:9</option>
+            <option value="0.5625">9:16</option>
+            <option value="1.3333">4:3</option>
+            <option value="1">1:1</option>
+          </select>
+        </label>
         <button class="btn btn-ghost btn-sm" id="scenes-test-btn" title="Plays the active scene in this viewport from t=0">▶ Test</button>
         <span id="scenes-save-status" style="font-size:.65rem; color:var(--accent); font-weight:800; opacity:0; transition:opacity 0.3s;">✅ SAVED</span>
       </div>
@@ -1526,6 +1536,10 @@ html, body {
 
         <div style="grid-row:1/2; position:relative; background:#0a0a14; overflow:hidden;">
           <div id="scenes-viewport" style="position:absolute; inset:0;"></div>
+          <!-- Aspect-ratio guide: positioned over the viewport, sized to the
+               selected ratio centered in the available space. Pointer-events
+               off so it never steals viewport interaction. -->
+          <div id="scenes-aspect-guide" style="position:absolute; pointer-events:none; border:1px dashed rgba(255,200,80,0.6); box-shadow:0 0 0 9999px rgba(0,0,0,0.25); display:none;"></div>
           <div id="scenes-viewport-empty" style="position:absolute; inset:0; display:flex; align-items:center; justify-content:center; color:var(--text-dim); font-size:.8rem; text-align:center; pointer-events:none; padding:20px;">
             Drag an asset from the left to add it to this scene.<br>
             Click an object to select it. Use the gizmo to move/rotate/scale.<br>
@@ -1534,6 +1548,7 @@ html, body {
         </div>
 
         <div style="grid-row:1/2; background:var(--surface); border-left:1px solid var(--border); padding:10px; display:flex; flex-direction:column; gap:8px; min-height:0;">
+          <div id="scenes-inspector" style="display:none; padding:10px; background:var(--surface2); border-radius:4px; border:1px solid var(--border); flex-direction:column; gap:8px;"></div>
           <div style="font-size:.7rem; color:var(--text-dim); text-transform:uppercase; letter-spacing:.05em;">Scenes</div>
           <div id="scenes-list" style="flex:1; overflow-y:auto; display:flex; flex-direction:column; gap:4px;"></div>
           <button class="btn btn-primary btn-sm" id="scenes-new-btn">+ New Scene</button>

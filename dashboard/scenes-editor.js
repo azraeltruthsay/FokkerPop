@@ -1,3 +1,5 @@
+import { resolveEasing, EASING_NAMES } from '/shared/easing.js';
+
 // Studio Scenes editor — Phase 1 (v0.4.0).
 //
 // Mounts a Three.js viewport in the dashboard's 🎬 Scenes tab so the user
@@ -165,6 +167,33 @@ function resizeViewport() {
   ed.three.renderer.setSize(w, h);
   ed.three.camera.aspect = w / h;
   ed.three.camera.updateProjectionMatrix();
+  updateAspectGuide();
+}
+
+// Sizes the aspect-ratio guide div to fit the configured ratio inside the
+// viewport's available space, centered. The guide is purely visual — it
+// has no effect on the runtime, which always renders at the overlay
+// window's actual size.
+function updateAspectGuide() {
+  const guide = document.getElementById('scenes-aspect-guide');
+  if (!guide) return;
+  const s = activeScene();
+  const ratio = s?.aspectRatio;
+  if (!ratio) { guide.style.display = 'none'; return; }
+  const container = document.getElementById('scenes-viewport');
+  const parent    = container?.parentElement;
+  if (!parent) return;
+  const cw = parent.clientWidth, ch = parent.clientHeight;
+  if (cw === 0 || ch === 0) return;
+  const containerRatio = cw / ch;
+  let w, h;
+  if (containerRatio > ratio) { h = ch; w = ch * ratio; }
+  else                         { w = cw; h = cw / ratio; }
+  guide.style.display = 'block';
+  guide.style.width   = w + 'px';
+  guide.style.height  = h + 'px';
+  guide.style.left    = ((cw - w) / 2) + 'px';
+  guide.style.top     = ((ch - h) / 2) + 'px';
 }
 
 // ── Toolbar ──────────────────────────────────────────────────────────
@@ -198,6 +227,15 @@ function bindToolbar() {
     const s = activeScene();
     if (!s) return;
     s.mountMode = e.target.value;
+    queueSave();
+  });
+  document.getElementById('scenes-aspect-select').addEventListener('change', (e) => {
+    const s = activeScene();
+    if (!s) return;
+    // Empty string = "Off" (no guide). Stored as null so saved JSON stays
+    // explicit and the validator's "missing = no guide" path triggers.
+    s.aspectRatio = e.target.value ? parseFloat(e.target.value) : null;
+    updateAspectGuide();
     queueSave();
   });
 }
@@ -390,6 +428,111 @@ function selectObject(id) {
   } else {
     ed.three.transform.detach();
   }
+  renderObjectInspector();
+  renderTimeline();
+}
+
+// Object inspector — surfaces in the right-hand panel when an object is
+// selected. Name (editable, defaults to asset basename), opacity slider
+// (writes a keyframe at scrubber time on every change), delete button.
+// Hidden when nothing is selected. Phase 4+ will extend with material/
+// light channels.
+function renderObjectInspector() {
+  const panel = document.getElementById('scenes-inspector');
+  if (!panel) return;
+  const s = activeScene();
+  const obj = s?.objects.find(o => o.id === ed.selectedObjectId);
+  if (!obj) {
+    panel.style.display = 'none';
+    panel.innerHTML = '';
+    return;
+  }
+  panel.style.display = 'flex';
+
+  // Resolve current-frame opacity from the track (last keyframe at or
+  // before scrubber time). Lets the slider reflect what the player is
+  // actually showing at this instant.
+  const currentOpacity = (() => {
+    const track = s.tracks.find(tr => tr.objectId === obj.id);
+    if (!track) return 1;
+    const kfs = [...track.keyframes].sort((a, b) => a.t - b.t);
+    let val = 1;
+    for (const kf of kfs) {
+      if (kf.t > ed.currentTime) break;
+      if (kf.opacity != null) val = kf.opacity;
+    }
+    return val;
+  })();
+
+  const displayName = obj.name || obj.asset;
+  panel.innerHTML = `
+    <div style="font-size:.65rem; color:var(--text-dim); text-transform:uppercase; letter-spacing:.05em;">Selected Object</div>
+    <input type="text" id="scene-obj-name" class="input-field" value="${esc(displayName)}" placeholder="Name" style="margin:0; padding:4px 6px; font-size:.78rem;">
+    <div style="font-size:.6rem; color:var(--text-dim);">${esc(obj.type)} · <span style="opacity:.7;">${esc(obj.asset)}</span></div>
+    <div style="display:flex; align-items:center; gap:6px;">
+      <span style="font-size:.65rem; color:var(--text-dim); min-width:48px;">Opacity</span>
+      <input type="range" id="scene-obj-opacity" min="0" max="1" step="0.01" value="${currentOpacity}" style="flex:1;">
+      <span id="scene-obj-opacity-val" style="font-size:.65rem; min-width:28px; text-align:right; font-family:monospace;">${currentOpacity.toFixed(2)}</span>
+    </div>
+    <button class="btn btn-ghost btn-sm" id="scene-obj-delete" style="color:var(--red);">🗑️ Delete Object</button>
+  `;
+
+  document.getElementById('scene-obj-name').addEventListener('change', (e) => {
+    obj.name = e.target.value.trim() || undefined;
+    renderTimeline();
+    queueSave();
+  });
+  document.getElementById('scene-obj-opacity').addEventListener('input', (e) => {
+    const v = parseFloat(e.target.value);
+    document.getElementById('scene-obj-opacity-val').textContent = v.toFixed(2);
+    // Always commit an opacity keyframe at scrubber time — the slider is
+    // an explicit edit, not a transient gizmo drag, so auto-key on/off
+    // doesn't gate it.
+    writeOpacityKeyframe(obj.id, ed.currentTime, v);
+    // Live-preview on the viewport object too.
+    const three = ed.objectsByGuid.get(obj.id);
+    if (three) setObjOpacity(three, v);
+    queueSave();
+  });
+  document.getElementById('scene-obj-delete').addEventListener('click', () => {
+    if (!confirm(`Delete "${displayName}"? (Removes its track too.)`)) return;
+    s.objects = s.objects.filter(o => o.id !== obj.id);
+    s.tracks  = s.tracks.filter(tr => tr.objectId !== obj.id);
+    // Tear down the Three.js object.
+    const three = ed.objectsByGuid.get(obj.id);
+    if (three) {
+      ed.three.scene.remove(three);
+      three.traverse?.(child => {
+        if (child.geometry) child.geometry.dispose?.();
+        if (child.material) {
+          const mats = Array.isArray(child.material) ? child.material : [child.material];
+          mats.forEach(m => { m.map?.dispose?.(); m.dispose?.(); });
+        }
+      });
+    }
+    ed.objectsByGuid.delete(obj.id);
+    selectObject(null);
+    renderTimeline();
+    queueSave();
+  });
+}
+
+function writeOpacityKeyframe(objectId, t, opacity) {
+  const s = activeScene();
+  if (!s) return;
+  let track = s.tracks.find(tr => tr.objectId === objectId);
+  if (!track) {
+    track = { objectId, keyframes: [] };
+    s.tracks.push(track);
+  }
+  const tr = Math.max(0, Math.round(t));
+  const existing = track.keyframes.find(k => k.t === tr);
+  if (existing) {
+    existing.opacity = opacity;
+  } else {
+    track.keyframes.push({ t: tr, opacity });
+    track.keyframes.sort((a, b) => a.t - b.t);
+  }
   renderTimeline();
 }
 
@@ -445,8 +588,9 @@ function applyKeyframesAt(obj, keyframes, t) {
   let i = 0;
   while (i < sorted.length - 1 && sorted[i + 1].t < t) i++;
   const a = sorted[i], b = sorted[i + 1];
-  const span  = b.t - a.t;
-  const alpha = span > 0 ? (t - a.t) / span : 0;
+  const span     = b.t - a.t;
+  const rawAlpha = span > 0 ? (t - a.t) / span : 0;
+  const alpha    = resolveEasing(a.easing)(rawAlpha);
   if (a.position && b.position) obj.position.set(
     lerp(a.position[0], b.position[0], alpha),
     lerp(a.position[1], b.position[1], alpha),
@@ -462,12 +606,26 @@ function applyKeyframesAt(obj, keyframes, t) {
     lerp(a.scale[1], b.scale[1], alpha),
     lerp(a.scale[2], b.scale[2], alpha),
   );
+  if (a.opacity != null && b.opacity != null) {
+    setObjOpacity(obj, lerp(a.opacity, b.opacity, alpha));
+  }
 }
 
 function applyKeyframe(obj, kf) {
   if (kf.position) obj.position.set(...kf.position);
   if (kf.rotation) obj.rotation.set(...kf.rotation);
   if (kf.scale)    obj.scale.set(...kf.scale);
+  if (kf.opacity != null) setObjOpacity(obj, kf.opacity);
+}
+
+// Walks the subtree so opacity applies to all materials inside a loaded
+// GLB. Force-sets transparent=true (Three.js's opaque-by-default materials
+// would otherwise ignore opacity writes).
+function setObjOpacity(obj, op) {
+  obj.traverse?.(child => {
+    const mats = child.material ? (Array.isArray(child.material) ? child.material : [child.material]) : null;
+    mats?.forEach(m => { m.transparent = true; m.opacity = op; });
+  });
 }
 
 function lerp(a, b, t) { return a + (b - a) * t; }
@@ -544,6 +702,7 @@ function newScene() {
     name: `Scene ${ed.scenes.length + 1}`,
     durationMs: 10000,
     mountMode: 'fullscreen',
+    aspectRatio: 16 / 9,
     camera: { type: 'perspective', position: [0, 1.2, 4], lookAt: [0, 0, 0], fov: 50 },
     objects: [],
     tracks: [],
@@ -561,12 +720,14 @@ function setActiveScene(id) {
   if (s) {
     document.getElementById('scenes-duration-input').value = s.durationMs;
     document.getElementById('scenes-mount-mode').value     = s.mountMode || 'fullscreen';
+    document.getElementById('scenes-aspect-select').value  = s.aspectRatio ? String(s.aspectRatio) : '';
     hideEmptyViewportHint(s.objects.length > 0);
   }
   rebuildViewportFromActive();
   renderScenesList();
   renderTimeline();
   renderTimeDisplay();
+  updateAspectGuide();
 }
 
 function hideEmptyViewportHint(hide) {
@@ -612,17 +773,23 @@ function renderTimeline() {
   const dur = s.durationMs || 10000;
   body.innerHTML = s.tracks.map(track => {
     const obj = s.objects.find(o => o.id === track.objectId);
-    const label = obj ? `${esc(obj.asset)} <span style="opacity:.5;">(${obj.type})</span>` : track.objectId;
+    const label = obj ? `${esc(obj.name || obj.asset)} <span style="opacity:.5;">(${obj.type})</span>` : track.objectId;
     const isSelected = track.objectId === ed.selectedObjectId;
     const kfs = (track.keyframes || []).map(kf => {
       const pct = Math.max(0, Math.min(100, (kf.t / dur) * 100));
+      // Eased keyframes get an orange outline so the streamer can spot the
+      // non-linear segments at a glance without opening the context menu.
+      const fillColor   = isSelected ? '#fff' : 'var(--accent)';
+      const borderColor = kf.easing && kf.easing !== 'linear' ? '#ff9933' : '#000';
+      const borderWidth = kf.easing && kf.easing !== 'linear' ? '2px' : '1px';
+      const easingHint  = kf.easing ? ` • ${kf.easing}` : '';
       return `<div class="scene-keyframe"
                    data-object-id="${track.objectId}"
                    data-keyframe-t="${kf.t}"
-                   title="t=${kf.t}ms (click to seek, shift-click to delete)"
+                   title="t=${kf.t}ms${easingHint} (drag to retime, right-click for options)"
                    style="position:absolute; left:${pct}%; top:50%; transform:translate(-50%,-50%) rotate(45deg);
-                          width:10px; height:10px; background:${isSelected ? '#fff' : 'var(--accent)'};
-                          border:1px solid #000; cursor:pointer;"></div>`;
+                          width:10px; height:10px; background:${fillColor};
+                          border:${borderWidth} solid ${borderColor}; cursor:ew-resize;"></div>`;
     }).join('');
     return `
       <div class="scene-track-row" data-object-id="${track.objectId}"
@@ -637,29 +804,7 @@ function renderTimeline() {
     const label = row.firstElementChild;
     label.addEventListener('click', () => selectObject(row.dataset.objectId));
   });
-  body.querySelectorAll('.scene-keyframe').forEach(diamond => {
-    diamond.addEventListener('click', (e) => {
-      e.stopPropagation();
-      const objId = diamond.dataset.objectId;
-      const t = parseInt(diamond.dataset.keyframeT, 10);
-      if (e.shiftKey) {
-        // Shift-click deletes the keyframe (rather than seeking to it).
-        const track = activeScene().tracks.find(tr => tr.objectId === objId);
-        if (track) {
-          track.keyframes = track.keyframes.filter(k => k.t !== t);
-          renderTimeline();
-          queueSave();
-        }
-      } else {
-        selectObject(objId);
-        ed.currentTime = t;
-        ed.isPlaying = false;
-        applyTracksAtTime(t);
-        renderTimelineHead();
-        renderTimeDisplay();
-      }
-    });
-  });
+  body.querySelectorAll('.scene-keyframe').forEach(diamond => bindKeyframeDiamond(diamond));
 
   renderTimelineHead();
 }
@@ -723,6 +868,145 @@ function flashSaveStatus() {
   if (!el) return;
   el.style.opacity = '1';
   setTimeout(() => { el.style.opacity = '0'; }, 1200);
+}
+
+// ── Keyframe interaction ─────────────────────────────────────────────
+// Mousedown-driven so we can disambiguate click (seek) from drag (retime).
+// Right-click opens the easing+delete context menu instead of seeking.
+function bindKeyframeDiamond(diamond) {
+  diamond.addEventListener('contextmenu', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    openKeyframeContextMenu(e.clientX, e.clientY, diamond.dataset.objectId, parseInt(diamond.dataset.keyframeT, 10));
+  });
+
+  diamond.addEventListener('mousedown', (e) => {
+    if (e.button !== 0) return; // left only
+    e.preventDefault();
+    e.stopPropagation();
+    const objId  = diamond.dataset.objectId;
+    const startT = parseInt(diamond.dataset.keyframeT, 10);
+    const startX = e.clientX;
+    const strip  = diamond.closest('.scene-track-strip');
+    const stripRect = strip.getBoundingClientRect();
+    const dur = activeScene()?.durationMs || 10000;
+    let moved = false;
+
+    const onMove = (mv) => {
+      const dx = mv.clientX - startX;
+      if (!moved && Math.abs(dx) > 3) moved = true;
+      if (!moved) return;
+      let newT = Math.round(startT + (dx / stripRect.width) * dur);
+      // Shift snaps to 100ms grid for tidy keyframe placement.
+      if (mv.shiftKey) newT = Math.round(newT / 100) * 100;
+      newT = Math.max(0, Math.min(dur, newT));
+      const track = activeScene()?.tracks.find(tr => tr.objectId === objId);
+      if (!track) return;
+      const kf = track.keyframes.find(k => k.t === parseInt(diamond.dataset.keyframeT, 10));
+      if (!kf) return;
+      // Refuse the move if there's already a keyframe at newT — the second
+      // would shadow the first and a re-sort would scramble interpolation.
+      // Player accepts only one kf per t.
+      if (newT !== kf.t && track.keyframes.some(k => k.t === newT && k !== kf)) return;
+      kf.t = newT;
+      diamond.dataset.keyframeT = String(newT);
+      diamond.style.left = ((newT / dur) * 100) + '%';
+    };
+    const onUp = () => {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup',   onUp);
+      if (moved) {
+        const track = activeScene()?.tracks.find(tr => tr.objectId === objId);
+        if (track) track.keyframes.sort((a, b) => a.t - b.t);
+        renderTimeline();
+        queueSave();
+      } else {
+        // Click — seek + select
+        selectObject(objId);
+        ed.currentTime = startT;
+        ed.isPlaying = false;
+        applyTracksAtTime(startT);
+        renderTimelineHead();
+        renderTimeDisplay();
+      }
+    };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup',   onUp);
+  });
+}
+
+function openKeyframeContextMenu(x, y, objectId, t) {
+  closeKeyframeContextMenu();
+  const track = activeScene()?.tracks.find(tr => tr.objectId === objectId);
+  const kf    = track?.keyframes.find(k => k.t === t);
+  if (!kf) return;
+
+  const menu = document.createElement('div');
+  menu.id = 'scene-kf-menu';
+  menu.style.cssText = `position:fixed; left:${x}px; top:${y}px; background:var(--surface); border:1px solid var(--border); border-radius:6px; padding:6px 0; box-shadow:0 8px 24px rgba(0,0,0,0.5); z-index:99999; font-size:.72rem; min-width:200px; max-height:80vh; overflow-y:auto;`;
+
+  const head = document.createElement('div');
+  head.textContent = `Keyframe at ${fmtMs(t)}`;
+  head.style.cssText = 'padding:4px 12px; color:var(--text-dim); font-size:.6rem; text-transform:uppercase; letter-spacing:.05em; border-bottom:1px solid var(--border);';
+  menu.appendChild(head);
+
+  const easingHead = document.createElement('div');
+  easingHead.textContent = 'Easing → next keyframe:';
+  easingHead.style.cssText = 'padding:6px 12px 2px; color:var(--text-dim); font-size:.6rem;';
+  menu.appendChild(easingHead);
+
+  const currentEasing = kf.easing || 'linear';
+  EASING_NAMES.forEach(name => {
+    const item = document.createElement('div');
+    item.textContent = (currentEasing === name ? '✓ ' : '  ') + name;
+    item.style.cssText = 'padding:4px 12px; cursor:pointer; user-select:none;';
+    item.addEventListener('mouseenter', () => { item.style.background = 'var(--surface2)'; });
+    item.addEventListener('mouseleave', () => { item.style.background = ''; });
+    item.addEventListener('click', () => {
+      // Store nothing when reverting to linear — keeps scenes.json minimal
+      // for the common case and matches the schema's "missing = linear".
+      if (name === 'linear') delete kf.easing;
+      else kf.easing = name;
+      renderTimeline();
+      queueSave();
+      closeKeyframeContextMenu();
+    });
+    menu.appendChild(item);
+  });
+
+  const divider = document.createElement('div');
+  divider.style.cssText = 'height:1px; background:var(--border); margin:4px 0;';
+  menu.appendChild(divider);
+
+  const del = document.createElement('div');
+  del.textContent = '✕ Delete keyframe';
+  del.style.cssText = 'padding:6px 12px; cursor:pointer; color:var(--red); user-select:none;';
+  del.addEventListener('mouseenter', () => { del.style.background = 'var(--surface2)'; });
+  del.addEventListener('mouseleave', () => { del.style.background = ''; });
+  del.addEventListener('click', () => {
+    track.keyframes = track.keyframes.filter(k => k.t !== t);
+    renderTimeline();
+    queueSave();
+    closeKeyframeContextMenu();
+  });
+  menu.appendChild(del);
+
+  document.body.appendChild(menu);
+  // Dismiss on outside click. Attach one tick later so the originating
+  // right-click doesn't immediately close the menu.
+  setTimeout(() => {
+    const off = (ev) => {
+      if (!menu.contains(ev.target)) {
+        closeKeyframeContextMenu();
+        document.removeEventListener('mousedown', off);
+      }
+    };
+    document.addEventListener('mousedown', off);
+  }, 0);
+}
+
+function closeKeyframeContextMenu() {
+  document.getElementById('scene-kf-menu')?.remove();
 }
 
 // ── Utilities ────────────────────────────────────────────────────────

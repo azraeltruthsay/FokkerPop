@@ -1,3 +1,5 @@
+import { resolveEasing } from './easing.js';
+
 // FokkerPop scene player. Lazy-loaded on first 'scene-play' effect, then
 // reused for subsequent scenes. Renders a scene JSON (see
 // server/pipeline/scenes.js for the schema) into a fullscreen Three.js
@@ -190,8 +192,12 @@ function applyKeyframeAt(obj, keyframes, t) {
   while (i < keyframes.length - 1 && keyframes[i + 1].t < t) i++;
   const a = keyframes[i];
   const b = keyframes[i + 1];
-  const span  = b.t - a.t;
-  const alpha = span > 0 ? (t - a.t) / span : 0;
+  const span     = b.t - a.t;
+  const rawAlpha = span > 0 ? (t - a.t) / span : 0;
+  // FROM keyframe's easing shapes the segment from a → b. Unknown/missing
+  // names fall back to linear so a hand-edited scenes.json doesn't blow
+  // up the player.
+  const alpha    = resolveEasing(a.easing)(rawAlpha);
 
   if (a.position && b.position) obj.position.set(
     lerp(a.position[0], b.position[0], alpha),

@@ -1,3 +1,5 @@
+import { EASING_NAMES } from '../../shared/easing.js';
+
 // Scene schema + helpers.
 //
 // A Scene is a named, schedulable composition rendered as a Three.js
@@ -19,6 +21,9 @@
 //   durationMs: number,                   // total scene length in ms
 //   mountMode:  'fullscreen' | 'widget',  // 'widget' is stubbed for Phase 7
 //   targetWidgetId?: string,              // required when mountMode === 'widget'
+//   aspectRatio?: number,                 // editor-only guide overlay (e.g. 16/9
+//                                          // = 1.7778). Doesn't affect runtime.
+//                                          // Missing = no guide shown.
 //   camera: {
 //     type:     'perspective',            // 'orthographic' deferred to Phase 4
 //     position: [x, y, z],
@@ -30,6 +35,7 @@
 //       id:    string,                    // unique within scene
 //       type:  'model' | 'image-plane',   // Phase 4+: text/sticker-emitter/light/audio-emitter/group
 //       asset: string,                    // filename in assets/{models,images}; resolved by type at load
+//       name?: string,                    // display label in editor; defaults to asset basename
 //       transform: {                      // initial pose; tracks override per-frame
 //         position: [x, y, z],
 //         rotation: [x, y, z],            // euler radians, XYZ order
@@ -46,7 +52,12 @@
 //           position?: [x, y, z],
 //           rotation?: [x, y, z],
 //           scale?:    [x, y, z],
-//           opacity?:  number             // 0..1
+//           opacity?:  number,            // 0..1
+//           easing?:   string             // see shared/easing.js;
+//                                          // missing = 'linear'. Determines
+//                                          // the curve from THIS keyframe
+//                                          // to the NEXT one (Blender FCurve
+//                                          // convention).
 //         }
 //       ]
 //     }
@@ -56,6 +67,7 @@
 const VALID_MOUNT_MODES   = new Set(['fullscreen', 'widget']);
 const VALID_OBJECT_TYPES  = new Set(['model', 'image-plane']);
 const VALID_CAMERA_TYPES  = new Set(['perspective']);
+const VALID_EASING_NAMES  = new Set(EASING_NAMES);
 
 function isVec3(v) {
   return Array.isArray(v) && v.length === 3 && v.every(n => typeof n === 'number' && Number.isFinite(n));
@@ -80,6 +92,9 @@ export function validateScene(scene) {
   }
   if (scene.mountMode === 'widget' && !isNonEmptyString(scene.targetWidgetId)) {
     return { ok: false, error: `scene "${scene.id}": targetWidgetId required for widget mount mode` };
+  }
+  if (scene.aspectRatio != null && !(typeof scene.aspectRatio === 'number' && scene.aspectRatio > 0 && Number.isFinite(scene.aspectRatio))) {
+    return { ok: false, error: `scene "${scene.id}": aspectRatio must be a positive number` };
   }
 
   // Camera — defaults applied if absent (lets the editor save scenes before
@@ -124,6 +139,9 @@ export function validateScene(scene) {
       if (kf.opacity != null && !(typeof kf.opacity === 'number' && kf.opacity >= 0 && kf.opacity <= 1)) {
         return { ok: false, error: `scene "${scene.id}" track "${tr.objectId}" t=${kf.t}: opacity must be 0..1` };
       }
+      if (kf.easing != null && !VALID_EASING_NAMES.has(kf.easing)) {
+        return { ok: false, error: `scene "${scene.id}" track "${tr.objectId}" t=${kf.t}: easing must be one of ${[...VALID_EASING_NAMES].join('|')}` };
+      }
     }
   }
 
@@ -139,6 +157,7 @@ export function defaultScene(id, name = 'Untitled Scene') {
     name,
     durationMs: 10000,
     mountMode: 'fullscreen',
+    aspectRatio: 16 / 9,
     camera: {
       type: 'perspective',
       position: [0, 1.2, 4],
