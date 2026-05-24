@@ -227,6 +227,12 @@ function bindToolbar() {
     startEditorPreview();
   });
   document.getElementById('scenes-cam-key').addEventListener('click', captureCameraKeyframe);
+  document.getElementById('scenes-add-fork').addEventListener('click', addForkAtScrubber);
+  document.getElementById('scenes-mount-widget-id').addEventListener('change', (e) => {
+    const s = activeScene(); if (!s) return;
+    s.targetWidgetId = e.target.value || undefined;
+    queueSave();
+  });
   document.getElementById('scenes-audio-add').addEventListener('click', addAudioEntry);
   document.getElementById('scenes-new-btn').addEventListener('click', newScene);
   document.getElementById('scenes-duration-input').addEventListener('change', (e) => {
@@ -241,6 +247,7 @@ function bindToolbar() {
     const s = activeScene();
     if (!s) return;
     s.mountMode = e.target.value;
+    refreshMountWidgetPicker();
     queueSave();
   });
   document.getElementById('scenes-aspect-select').addEventListener('change', (e) => {
@@ -1347,6 +1354,7 @@ function setActiveScene(id) {
     document.getElementById('scenes-duration-input').value = s.durationMs;
     document.getElementById('scenes-mount-mode').value     = s.mountMode || 'fullscreen';
     document.getElementById('scenes-aspect-select').value  = s.aspectRatio ? String(s.aspectRatio) : '';
+    refreshMountWidgetPicker();
     hideEmptyViewportHint(s.objects.length > 0);
   }
   rebuildViewportFromActive();
@@ -1397,6 +1405,7 @@ function renderTimeline() {
   }
   const dur = s.durationMs || 10000;
   const cameraKfs = s.cameraTrack?.keyframes || [];
+  const forkClips = s.forkClips || [];
   // Camera track always renders, even with zero keyframes — gives the
   // streamer a visible target for the "📷 Key Camera" button. Object
   // tracks below it appear only when at least one object exists.
@@ -1420,12 +1429,34 @@ function renderTimeline() {
       </div>
     </div>`;
 
+  // Fork-clip row: green diamonds, distinct from camera (gold) and object
+  // (purple/orange) keyframes. Always rendered so the "+ Add Fork" button
+  // has a visible target row even when no forks exist yet.
+  const forksRowHtml = `
+    <div class="scene-track-row"
+         style="display:flex; align-items:center; height:32px; border-bottom:1px solid rgba(255,255,255,0.08); background:rgba(80,220,120,0.06);">
+      <div style="width:160px; padding:0 10px; font-size:.7rem; color:var(--text); flex-shrink:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">🔀 Forks</div>
+      <div class="scene-track-strip" data-fork-strip="1" style="flex:1; position:relative; height:100%; cursor:crosshair;">
+        ${forkClips.map(fc => {
+          const pct = Math.max(0, Math.min(100, (fc.start / dur) * 100));
+          const targetLabel = fc.target ? `${fc.target.type}${fc.target.flowId ? ':'+fc.target.flowId : ''}${fc.target.sceneId ? ':'+fc.target.sceneId : ''}${fc.target.eventType ? ':'+fc.target.eventType : ''}${fc.target.effect ? ':'+fc.target.effect : ''}` : '(unset)';
+          return `<div class="scene-fork-keyframe"
+                       data-fork-id="${esc(fc.id)}"
+                       title="Fork @ ${fc.start}ms → ${esc(targetLabel)} (drag to retime, right-click for options)"
+                       style="position:absolute; left:${pct}%; top:50%; transform:translate(-50%,-50%) rotate(45deg);
+                              width:10px; height:10px; background:#66dd88;
+                              border:1px solid #000; cursor:ew-resize;"></div>`;
+        }).join('')}
+      </div>
+    </div>`;
+
   if (s.tracks.length === 0) {
-    body.innerHTML = cameraRowHtml + `<div style="padding:20px; color:var(--text-dim); font-size:.72rem; opacity:.6;">Add an object to the scene to start a track.</div>`;
+    body.innerHTML = cameraRowHtml + forksRowHtml + `<div style="padding:20px; color:var(--text-dim); font-size:.72rem; opacity:.6;">Add an object to the scene to start a track.</div>`;
     bindCameraKeyframes(body);
+    bindForkKeyframes(body);
     return;
   }
-  body.innerHTML = cameraRowHtml + s.tracks.map(track => {
+  body.innerHTML = cameraRowHtml + forksRowHtml + s.tracks.map(track => {
     const obj = s.objects.find(o => o.id === track.objectId);
     const label = obj ? `${esc(obj.name || obj.asset)} <span style="opacity:.5;">(${obj.type})</span>` : track.objectId;
     const isSelected = track.objectId === ed.selectedObjectId;
@@ -1460,6 +1491,7 @@ function renderTimeline() {
   });
   body.querySelectorAll('.scene-keyframe').forEach(diamond => bindKeyframeDiamond(diamond));
   bindCameraKeyframes(body);
+  bindForkKeyframes(body);
 
   renderTimelineHead();
 }
@@ -1655,6 +1687,203 @@ function stopEditorPreviewAudio() {
   for (const h of ed.audioPreview.handles) { try { h?.stop?.(); } catch {} }
   ed.audioPreview.timeouts = [];
   ed.audioPreview.handles  = [];
+}
+
+// ── Fork clips ───────────────────────────────────────────────────────
+// Fire-and-forget timeline markers. Reach into the flow engine / bus
+// from a scene mid-playback. v0.4.6 supports four target types:
+//   - effect: broadcast an overlay effect (e.g. sticker-rain)
+//   - flow:   fire a flow by id (server side runs its chain)
+//   - event:  publish a bus event (so other flows can trigger on it)
+//   - scene:  play another scene (replaces the current one)
+// Branch clips (pause-and-wait, with loop region) deferred to v0.4.7 —
+// the runtime path needs a server↔overlay event bridge that's its own
+// architecture. CYOA in v0.4.6 works via scene-end → awaitResult flow.
+
+function addForkAtScrubber() {
+  const s = activeScene();
+  if (!s) return;
+  if (!s.forkClips) s.forkClips = [];
+  // Default to firing the lightest no-config effect (confetti) so a
+  // newly-added fork doesn't look like a no-op. The streamer edits the
+  // target via right-click to pick what they actually want.
+  s.forkClips.push({
+    id: 'fork-' + Math.random().toString(36).slice(2, 10),
+    start: Math.max(0, Math.round(ed.currentTime)),
+    target: { type: 'effect', effect: 'confetti', payload: {} },
+  });
+  renderTimeline();
+  queueSave();
+}
+
+function bindForkKeyframes(body) {
+  body.querySelectorAll('.scene-fork-keyframe').forEach(diamond => bindForkDiamond(diamond));
+}
+
+function bindForkDiamond(diamond) {
+  diamond.addEventListener('contextmenu', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    openForkContextMenu(e.clientX, e.clientY, diamond.dataset.forkId);
+  });
+  diamond.addEventListener('mousedown', (e) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const forkId = diamond.dataset.forkId;
+    const startX = e.clientX;
+    const startT = (activeScene()?.forkClips || []).find(f => f.id === forkId)?.start ?? 0;
+    const strip = diamond.closest('.scene-track-strip');
+    const stripRect = strip.getBoundingClientRect();
+    const dur = activeScene()?.durationMs || 10000;
+    let moved = false;
+    const onMove = (mv) => {
+      const dx = mv.clientX - startX;
+      if (!moved && Math.abs(dx) > 3) moved = true;
+      if (!moved) return;
+      let newT = Math.round(startT + (dx / stripRect.width) * dur);
+      if (mv.shiftKey) newT = Math.round(newT / 100) * 100;
+      newT = Math.max(0, Math.min(dur, newT));
+      const fc = (activeScene()?.forkClips || []).find(f => f.id === forkId);
+      if (!fc) return;
+      fc.start = newT;
+      diamond.style.left = ((newT / dur) * 100) + '%';
+    };
+    const onUp = () => {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup',   onUp);
+      if (moved) { renderTimeline(); queueSave(); }
+      else {
+        // Click = open menu (no separate seek behavior since forks have
+        // no playhead semantic the way object/camera keyframes do).
+        const rect = diamond.getBoundingClientRect();
+        openForkContextMenu(rect.left + rect.width, rect.top, forkId);
+      }
+    };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup',   onUp);
+  });
+}
+
+function openForkContextMenu(x, y, forkId) {
+  closeKeyframeContextMenu();
+  const s = activeScene();
+  const fc = s?.forkClips?.find(f => f.id === forkId);
+  if (!fc) return;
+
+  const menu = document.createElement('div');
+  menu.id = 'scene-kf-menu';
+  menu.style.cssText = `position:fixed; left:${x}px; top:${y}px; background:var(--surface); border:1px solid var(--border); border-radius:6px; padding:8px 10px; box-shadow:0 8px 24px rgba(0,0,0,0.5); z-index:99999; font-size:.72rem; min-width:240px; display:flex; flex-direction:column; gap:6px;`;
+
+  // studio.js owns the flow list; expose it via window so we can populate
+  // the dropdown without re-fetching. Falls back to an empty list if the
+  // Studio tab hasn't been opened yet.
+  const flowList = window.flows || [];
+  const sceneList = (ed.scenes || []).filter(sc => sc.id !== s.id);
+  menu.innerHTML = `
+    <div style="font-size:.6rem; color:var(--text-dim); text-transform:uppercase; letter-spacing:.05em;">🔀 Fork @ ${fmtMs(fc.start)}</div>
+    <label style="display:flex; align-items:center; gap:6px;">Type
+      <select id="fork-type" class="input-field" style="flex:1; margin:0; padding:2px 4px;">
+        <option value="effect" ${fc.target?.type === 'effect' ? 'selected' : ''}>Effect</option>
+        <option value="flow"   ${fc.target?.type === 'flow'   ? 'selected' : ''}>Flow</option>
+        <option value="scene"  ${fc.target?.type === 'scene'  ? 'selected' : ''}>Scene</option>
+        <option value="event"  ${fc.target?.type === 'event'  ? 'selected' : ''}>Event</option>
+      </select>
+    </label>
+    <div id="fork-config"></div>
+    <div style="display:flex; gap:8px; margin-top:4px;">
+      <button class="btn btn-ghost btn-sm" id="fork-delete" style="color:var(--red); flex:1;">✕ Delete</button>
+      <button class="btn btn-primary btn-sm" id="fork-done" style="flex:1;">Done</button>
+    </div>
+  `;
+  document.body.appendChild(menu);
+
+  const cfgEl = menu.querySelector('#fork-config');
+  const renderCfg = () => {
+    const type = menu.querySelector('#fork-type').value;
+    if (type === 'effect') {
+      cfgEl.innerHTML = `
+        <label style="display:flex; align-items:center; gap:6px;">Effect
+          <input id="fork-effect" class="input-field" style="flex:1; margin:0; padding:2px 4px;" value="${esc(fc.target?.effect || 'confetti')}">
+        </label>`;
+    } else if (type === 'flow') {
+      cfgEl.innerHTML = `
+        <label style="display:flex; align-items:center; gap:6px;">Flow
+          <select id="fork-flow" class="input-field" style="flex:1; margin:0; padding:2px 4px;">
+            ${flowList.map(f => `<option value="${esc(f.id)}" ${f.id === fc.target?.flowId ? 'selected' : ''}>${esc(f.name || f.id)}</option>`).join('') || `<option value="">(no flows)</option>`}
+          </select>
+        </label>`;
+    } else if (type === 'scene') {
+      cfgEl.innerHTML = `
+        <label style="display:flex; align-items:center; gap:6px;">Scene
+          <select id="fork-scene" class="input-field" style="flex:1; margin:0; padding:2px 4px;">
+            ${sceneList.map(sc => `<option value="${esc(sc.id)}" ${sc.id === fc.target?.sceneId ? 'selected' : ''}>${esc(sc.name || sc.id)}</option>`).join('') || `<option value="">(no other scenes)</option>`}
+          </select>
+        </label>`;
+    } else if (type === 'event') {
+      cfgEl.innerHTML = `
+        <label style="display:flex; align-items:center; gap:6px;">Type
+          <input id="fork-event-type" class="input-field" style="flex:1; margin:0; padding:2px 4px;" value="${esc(fc.target?.eventType || 'custom')}">
+        </label>`;
+    }
+  };
+  renderCfg();
+  menu.querySelector('#fork-type').addEventListener('change', renderCfg);
+  menu.querySelector('#fork-done').addEventListener('click', () => {
+    const type = menu.querySelector('#fork-type').value;
+    const t = { type };
+    if (type === 'effect') { t.effect = menu.querySelector('#fork-effect').value.trim() || 'confetti'; t.payload = {}; }
+    if (type === 'flow')   t.flowId  = menu.querySelector('#fork-flow')?.value || '';
+    if (type === 'scene')  t.sceneId = menu.querySelector('#fork-scene')?.value || '';
+    if (type === 'event')  { t.eventType = menu.querySelector('#fork-event-type').value.trim() || 'custom'; t.payload = {}; }
+    fc.target = t;
+    renderTimeline();
+    queueSave();
+    closeKeyframeContextMenu();
+  });
+  menu.querySelector('#fork-delete').addEventListener('click', () => {
+    activeScene().forkClips = (activeScene().forkClips || []).filter(f => f.id !== forkId);
+    renderTimeline();
+    queueSave();
+    closeKeyframeContextMenu();
+  });
+  setTimeout(() => {
+    const off = (ev) => {
+      if (!menu.contains(ev.target)) { closeKeyframeContextMenu(); document.removeEventListener('mousedown', off); }
+    };
+    document.addEventListener('mousedown', off);
+  }, 0);
+}
+
+// ── Mount-mode widget picker ─────────────────────────────────────────
+async function refreshMountWidgetPicker() {
+  const wrap = document.getElementById('scenes-mount-widget-wrap');
+  const sel  = document.getElementById('scenes-mount-widget-id');
+  if (!wrap || !sel) return;
+  const s = activeScene();
+  if (s?.mountMode !== 'widget') {
+    wrap.style.display = 'none';
+    return;
+  }
+  wrap.style.display = 'inline-flex';
+  // Pull the live widget list every time the picker opens. Cheap (small
+  // JSON) and avoids stale-id problems if the user just added a widget
+  // in the Layout tab without refreshing the dashboard.
+  let widgets = [];
+  try { widgets = await (await fetch('/api/widgets')).json(); } catch {}
+  const current = s.targetWidgetId || '';
+  if (widgets.length === 0) {
+    sel.innerHTML = `<option value="">(no widgets — add one in Layout first)</option>`;
+  } else {
+    sel.innerHTML = widgets.map(w => {
+      const label = `${w.type}${w.config?.label ? ' · ' + w.config.label : ''} (${w.id.slice(0, 8)})`;
+      return `<option value="${esc(w.id)}" ${w.id === current ? 'selected' : ''}>${esc(label)}</option>`;
+    }).join('');
+    if (!current && widgets[0]) {
+      s.targetWidgetId = widgets[0].id;
+      queueSave();
+    }
+  }
 }
 
 // ── Camera track ─────────────────────────────────────────────────────

@@ -120,6 +120,9 @@ const VALID_LIGHT_KINDS   = new Set(['ambient', 'directional', 'point']);
 const VALID_CAMERA_TYPES  = new Set(['perspective']);
 const VALID_EASING_NAMES  = new Set(EASING_NAMES);
 const VALID_AUDIO_POLICIES = new Set(['mix', 'duck-below', 'solo', 'cancel-below']);
+const VALID_FORK_TARGETS   = new Set(['flow', 'event', 'scene', 'effect']);
+const VALID_BRANCH_TARGETS = new Set(['jump', 'scene', 'scene-end', 'flow', 'effect']);
+const VALID_WAIT_KINDS     = new Set(['event']);
 
 // Accepts #rgb and #rrggbb. Used in keyframe channel validation so a
 // typo'd color (missing #, hex letter beyond f, wrong length) gets
@@ -314,6 +317,66 @@ export function validateScene(scene) {
     }
   }
 
+  // Fork clips (optional) — fire-and-forget at time T. Used to chain a
+  // scene into a flow/event/another-scene/effect mid-playback without
+  // pausing. Phase 7.
+  if (scene.forkClips != null) {
+    if (!Array.isArray(scene.forkClips)) return { ok: false, error: `scene "${scene.id}": forkClips must be an array` };
+    const ids = new Set();
+    for (const fc of scene.forkClips) {
+      if (!isNonEmptyString(fc.id)) return { ok: false, error: `scene "${scene.id}": every forkClip needs an id` };
+      if (ids.has(fc.id))           return { ok: false, error: `scene "${scene.id}": duplicate forkClip id "${fc.id}"` };
+      ids.add(fc.id);
+      if (!(typeof fc.start === 'number' && fc.start >= 0)) {
+        return { ok: false, error: `scene "${scene.id}" forkClip "${fc.id}": start must be a non-negative number` };
+      }
+      const tErr = validateTarget(scene.id, `forkClip "${fc.id}"`, fc.target, VALID_FORK_TARGETS);
+      if (tErr) return { ok: false, error: tErr };
+    }
+  }
+
+  // Branch clips (optional) — pause-and-wait at time T, branch to a
+  // target based on the next matching bus event. Phase 7. The wait
+  // kind is restricted to 'event' in v0.4.6; chat-command/redeem/vote
+  // kinds land as derived event matchers in a later phase.
+  if (scene.branchClips != null) {
+    if (!Array.isArray(scene.branchClips)) return { ok: false, error: `scene "${scene.id}": branchClips must be an array` };
+    const ids = new Set();
+    for (const bc of scene.branchClips) {
+      if (!isNonEmptyString(bc.id)) return { ok: false, error: `scene "${scene.id}": every branchClip needs an id` };
+      if (ids.has(bc.id))           return { ok: false, error: `scene "${scene.id}": duplicate branchClip id "${bc.id}"` };
+      ids.add(bc.id);
+      if (!(typeof bc.start === 'number' && bc.start >= 0)) {
+        return { ok: false, error: `scene "${scene.id}" branchClip "${bc.id}": start must be a non-negative number` };
+      }
+      if (bc.loopRegion != null) {
+        const lr = bc.loopRegion;
+        if (!(typeof lr.from === 'number' && lr.from >= 0)) return { ok: false, error: `scene "${scene.id}" branchClip "${bc.id}": loopRegion.from must be ≥0` };
+        if (!(typeof lr.to   === 'number' && lr.to > lr.from)) return { ok: false, error: `scene "${scene.id}" branchClip "${bc.id}": loopRegion.to must be > from` };
+      }
+      if (!bc.wait || typeof bc.wait !== 'object') return { ok: false, error: `scene "${scene.id}" branchClip "${bc.id}": wait is required` };
+      if (!VALID_WAIT_KINDS.has(bc.wait.kind))     return { ok: false, error: `scene "${scene.id}" branchClip "${bc.id}": wait.kind must be one of ${[...VALID_WAIT_KINDS].join('|')}` };
+      if (bc.wait.kind === 'event' && !isNonEmptyString(bc.wait.eventType)) {
+        return { ok: false, error: `scene "${scene.id}" branchClip "${bc.id}": wait.eventType is required for kind='event'` };
+      }
+      if (!Array.isArray(bc.branches) || bc.branches.length === 0) {
+        return { ok: false, error: `scene "${scene.id}" branchClip "${bc.id}": branches must be a non-empty array` };
+      }
+      for (const br of bc.branches) {
+        if (br.match != null && typeof br.match !== 'object') return { ok: false, error: `scene "${scene.id}" branchClip "${bc.id}": branch.match must be an object` };
+        const tErr = validateTarget(scene.id, `branchClip "${bc.id}" branch`, br.target, VALID_BRANCH_TARGETS);
+        if (tErr) return { ok: false, error: tErr };
+      }
+      if (bc.timeout != null) {
+        if (!(typeof bc.timeout.ms === 'number' && bc.timeout.ms > 0)) {
+          return { ok: false, error: `scene "${scene.id}" branchClip "${bc.id}": timeout.ms must be > 0` };
+        }
+        const tErr = validateTarget(scene.id, `branchClip "${bc.id}" timeout`, bc.timeout.target, VALID_BRANCH_TARGETS);
+        if (tErr) return { ok: false, error: tErr };
+      }
+    }
+  }
+
   // Camera track (optional) — animates the scene camera. When present and
   // non-empty, the player drives the camera from its keyframes; otherwise
   // the camera stays at the initial scene.camera{} pose.
@@ -338,6 +401,22 @@ export function validateScene(scene) {
   }
 
   return { ok: true, scene };
+}
+
+// Shared target validation for forkClips, branchClips, and branch timeouts.
+// validTypes is the per-context Set of allowed target.type values. Returns
+// an error string on failure or null on success.
+function validateTarget(sceneId, ctxLabel, target, validTypes) {
+  if (!target || typeof target !== 'object') return `scene "${sceneId}" ${ctxLabel}: target is required`;
+  if (!validTypes.has(target.type)) return `scene "${sceneId}" ${ctxLabel}: target.type must be one of ${[...validTypes].join('|')}`;
+  if (target.type === 'flow'  && !isNonEmptyString(target.flowId))    return `scene "${sceneId}" ${ctxLabel}: target.flowId required for type='flow'`;
+  if (target.type === 'scene' && !isNonEmptyString(target.sceneId))   return `scene "${sceneId}" ${ctxLabel}: target.sceneId required for type='scene'`;
+  if (target.type === 'event' && !isNonEmptyString(target.eventType)) return `scene "${sceneId}" ${ctxLabel}: target.eventType required for type='event'`;
+  if (target.type === 'effect'&& !isNonEmptyString(target.effect))    return `scene "${sceneId}" ${ctxLabel}: target.effect required for type='effect'`;
+  if (target.type === 'jump'  && !(typeof target.time === 'number' && target.time >= 0)) {
+    return `scene "${sceneId}" ${ctxLabel}: target.time must be ≥0 for type='jump'`;
+  }
+  return null;
 }
 
 // Returns a blank scene with sensible defaults. Used by the editor's "+ New

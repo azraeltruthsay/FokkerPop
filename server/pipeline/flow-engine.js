@@ -1,5 +1,5 @@
 import log from '../logger.js';
-import bus from '../bus.js';
+import bus, { awaitBusEvent } from '../bus.js';
 import state from '../state.js';
 import { makeCtx, resolveDeep, resolve } from '../template.js';
 import { setRollId } from '../index.js';
@@ -45,6 +45,12 @@ export class FlowEngine {
         const flowTitle  = String(f.rewardTitle).toLowerCase();
         const eventTitle = String(event.payload?.rewardTitle || '').toLowerCase();
         if (flowTitle !== eventTitle) return false;
+      }
+      // Symmetric scene-end scoping: a flow with sceneId set fires only
+      // for that scene's completion; empty = "any scene end" (same
+      // back-compat pattern as redeem's rewardTitle).
+      if (event.type === 'scene-end' && f.sceneId) {
+        if (String(f.sceneId) !== String(event.payload?.sceneId || '')) return false;
       }
       return true;
     });
@@ -159,6 +165,12 @@ export class FlowEngine {
             const roll  = Math.floor(Math.random() * sides) + 1;
             ctx.exprCtx.roll = roll; // Inject into context for future nodes
             broadcastEffect('dice-roll', { result: roll, sides, user: event.payload?.user }, event.isTest);
+            // Phase 7: emit the result onto the bus so awaitResult nodes
+            // (and scene branch clips) can listen for it. Mirrors the
+            // dice-tray.rolled feedback path that v0.3.30 added — gives
+            // the simpler rollDice action the same primitive without
+            // pulling in the heavier physics tray.
+            bus.publish({ source: 'flow-engine', type: 'dice-rolled', payload: { value: roll, sides, user: event.payload?.user }, isTest: event.isTest });
           } else if (node.action === 'rollDiceTray') {
             // Kick off a dice-tray widget roll. The overlay widget produces the
             // authentic physics-based result and publishes dice-tray.rolled
@@ -216,6 +228,21 @@ export class FlowEngine {
         case 'logic':
           if (node.action === 'delay') {
             await new Promise(r => setTimeout(r, data.ms || 1000));
+          } else if (node.action === 'awaitResult') {
+            // Pause flow execution until a matching event arrives on the
+            // bus. Default 30s timeout so a stalled wait can't hang a
+            // flow forever; downstream nodes see ctx.result = the
+            // awaited event (or null on timeout, so flows can branch
+            // via filter/match nodes on the absence of a result).
+            const eventType = String(data.eventType || 'dice-rolled');
+            const timeoutMs = Number(data.timeoutMs ?? 30000);
+            try {
+              const result = await awaitBusEvent(eventType, null, timeoutMs);
+              ctx.exprCtx.result = result.payload ?? result;
+            } catch (err) {
+              log.debug(`awaitResult [${node.id}] ${eventType}: ${err.message}`);
+              ctx.exprCtx.result = null;
+            }
           } else if (node.action === 'chance') {
             const prob = (data.probability ?? 50) / 100;
             outputPort = Math.random() < prob ? 'true' : 'false';
@@ -291,6 +318,7 @@ export const TEST_PAYLOADS = {
   'hype-train.progress': { level: 1, total: 100, progress: 50, goal: 100 },
   'hype-train.end':      { level: 2, total: 250 },
   'dice-tray-roll':      { user: 'TestUser', dice: [{ sides: 20, result: 12 }], rollId: 'test', sum: 12, total: { 20: 12 } },
+  'scene-end':           { sceneId: 'test-scene', sceneName: 'Test Scene' },
 };
 
 const engine = new FlowEngine();

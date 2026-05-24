@@ -1494,6 +1494,34 @@ wss.on('connection', (ws, req) => {
           broadcastEffect(w.config.effect, w.config.payload ?? {}, true);
         }
       }
+      // Generic overlay→server event injection. Used by scene-player on
+      // scene completion to fire a 'scene-end' bus event flows can trigger
+      // on. Mirrors _dashboard.test-event in shape; isTest passes through
+      // so test fires from the Studio preview don't leak onto live overlay.
+      if (msg.type === '_overlay.event' && msg.event && typeof msg.event.type === 'string') {
+        const ev = { source: 'overlay', ...msg.event };
+        bus.publish(ev);
+        flowEngine.processEvent(ev, broadcastEffect);
+      }
+      // Scene fork-clip commands. Each routes to the same primitive the
+      // dashboard's existing endpoints / flow actions use, so a fork
+      // from a scene has the same semantics as the same action from a
+      // flow or a manual API call. Multi-overlay safe (server-side
+      // primitives broadcast to every overlay, not just the sender).
+      if (msg.type === '_overlay.run-flow' && typeof msg.flowId === 'string') {
+        const flow = flows.find(f => f.id === msg.flowId);
+        if (flow) {
+          const event = { type: flow.trigger || 'manual', source: 'overlay-fork', payload: {} };
+          flowEngine.testFlow(flow.id, event, broadcastEffect).catch(err => log.error('overlay fork-flow failed:', err.message));
+        }
+      }
+      if (msg.type === '_overlay.fire-effect' && typeof msg.effect === 'string') {
+        broadcastEffect(msg.effect, msg.payload ?? {}, false);
+      }
+      if (msg.type === '_overlay.play-scene' && typeof msg.sceneId === 'string') {
+        const sc = scenes.find(s => s.id === msg.sceneId);
+        if (sc) broadcastEffect('scene-play', { scene: sc }, false);
+      }
       if (msg.type === '_overlay.dice-rolled' && typeof msg.result === 'number') {
         // Overlay dice settled and read a face — rebroadcast as a bus event so
         // Studio flows with trigger="dice.rolled" can branch on the result.

@@ -1522,6 +1522,7 @@ html, body {
           </select>
         </label>
         <button class="btn btn-ghost btn-sm" id="scenes-cam-key" title="Capture the current camera pose as a keyframe on the camera track at the current scrubber time">📷 Key Camera</button>
+        <button class="btn btn-ghost btn-sm" id="scenes-add-fork" title="Add a fork clip at the scrubber time — fires a flow/event/effect/scene without pausing the scene">🔀 Add Fork</button>
         <button class="btn btn-ghost btn-sm" id="scenes-test-btn" title="Plays the active scene in this viewport from t=0">▶ Test</button>
         <span id="scenes-save-status" style="font-size:.65rem; color:var(--accent); font-weight:800; opacity:0; transition:opacity 0.3s;">✅ SAVED</span>
       </div>
@@ -1572,8 +1573,11 @@ html, body {
             <label style="display:inline-flex; align-items:center; gap:4px;" title="Where new scenes mount on the overlay">Mount:
               <select id="scenes-mount-mode" class="input-field" style="margin:0; padding:2px 6px; font-size:.75rem; width:auto;">
                 <option value="fullscreen">Fullscreen</option>
-                <option value="widget" disabled>Widget (Phase 7)</option>
+                <option value="widget">Widget</option>
               </select>
+            </label>
+            <label id="scenes-mount-widget-wrap" style="display:none; align-items:center; gap:4px;" title="Which placed widget to render this scene into">Widget:
+              <select id="scenes-mount-widget-id" class="input-field" style="margin:0; padding:2px 6px; font-size:.75rem; width:auto; max-width:180px;"></select>
             </label>
             <span style="margin-left:auto; opacity:.7; font-size:.65rem;">Click the strip to seek. Selected track is highlighted.</span>
           </div>

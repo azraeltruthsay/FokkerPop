@@ -6,6 +6,7 @@
  */
 
 let flows = [];
+window.flows = flows;   // exposed for the Scenes editor fork-target picker
 let activeFlow = null;
 let activeNode = null;
 let clipboardNode = null;
@@ -108,7 +109,7 @@ window.addEventListener('keydown', (e) => {
 (async () => {
   try {
     const res = await fetch('/api/flows');
-    if (res.ok) flows = await res.json();
+    if (res.ok) { flows = await res.json(); window.flows = flows; }
   } catch {}
 })();
 

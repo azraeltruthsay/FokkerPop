@@ -30,12 +30,27 @@ async function ensureLibs() {
   if (!GLTFLoader) GLTFLoader = (await import('/vendor/three/loaders/GLTFLoader.js')).GLTFLoader;
 }
 
-export async function stopScene() {
+export async function stopScene(opts = {}) {
   if (!currentScene) return;
+  // Emit a scene-end bus event so flows with trigger='scene-end' can fire.
+  // The overlay's WS sends this; the server's _overlay.event handler
+  // forwards it to bus + flow-engine. Skipped on { silent: true } stops
+  // (used when one scene preempts another — we don't want both endings).
+  if (!opts.silent && currentScene.sceneJson) {
+    sendOverlayEvent({
+      type: 'scene-end',
+      payload: {
+        sceneId:   currentScene.sceneJson.id,
+        sceneName: currentScene.sceneJson.name,
+      },
+    });
+  }
   if (currentScene.rafId) cancelAnimationFrame(currentScene.rafId);
-  // Clear scheduled audio timeouts and stop any still-playing handles.
-  // Without this, a scene that ends early (e.g., another scene preempts
-  // it) would leak audio that started but was scoped to the prior scene.
+  // Cancel scheduled fork clips + audio so a preempted scene doesn't leak
+  // late-firing side effects past its end. Without this an audio loop or
+  // delayed flow fork from scene A would still trigger while scene B
+  // is playing.
+  for (const id of currentScene.forkTimeouts || []) clearTimeout(id);
   for (const id of currentScene.audioTimeouts || []) clearTimeout(id);
   for (const handle of currentScene.audioHandles || []) {
     try { handle?.stop?.(); } catch {}
@@ -59,17 +74,40 @@ export async function stopScene() {
 
 export async function playScene(sceneJson) {
   await ensureLibs();
-  await stopScene();
+  // Preempt previous scene silently — don't fire its scene-end event, since
+  // it was interrupted rather than completing naturally. Flows wanting to
+  // catch every-scene-end can still observe the new scene's end.
+  await stopScene({ silent: true });
 
-  const container = document.createElement('div');
-  container.id = 'fokker-scene-stage';
-  // pointer-events:none so the scene layer never steals clicks from widgets
-  // or layout-mode handles underneath. z-index above standard widget layer.
-  container.style.cssText = 'position:fixed; inset:0; pointer-events:none; z-index:9999; overflow:hidden;';
-  document.body.appendChild(container);
+  // Mount mode decides whether the renderer lives in a fullscreen overlay
+  // layer or inside a placed widget. Widget mode finds the widget element
+  // by data-id and uses its dimensions; if the widget can't be found the
+  // player falls back to fullscreen so the scene still renders rather
+  // than failing silently.
+  let container, mountedInWidget = false;
+  if (sceneJson.mountMode === 'widget' && sceneJson.targetWidgetId) {
+    const widgetEl = document.querySelector(`.custom-widget[data-id="${sceneJson.targetWidgetId}"], #${CSS.escape(sceneJson.targetWidgetId)}`);
+    if (widgetEl) {
+      container = document.createElement('div');
+      container.className = 'fokker-scene-stage-widget';
+      container.style.cssText = 'position:absolute; inset:0; pointer-events:none; overflow:hidden;';
+      widgetEl.appendChild(container);
+      mountedInWidget = true;
+    } else {
+      console.warn(`[scene-player] mountMode='widget' but no widget with id "${sceneJson.targetWidgetId}" — falling back to fullscreen`);
+    }
+  }
+  if (!container) {
+    container = document.createElement('div');
+    container.id = 'fokker-scene-stage';
+    // pointer-events:none so the scene layer never steals clicks from widgets
+    // or layout-mode handles underneath. z-index above standard widget layer.
+    container.style.cssText = 'position:fixed; inset:0; pointer-events:none; z-index:9999; overflow:hidden;';
+    document.body.appendChild(container);
+  }
 
-  const w = window.innerWidth;
-  const h = window.innerHeight;
+  const w = mountedInWidget ? (container.clientWidth  || container.parentElement.clientWidth)  : window.innerWidth;
+  const h = mountedInWidget ? (container.clientHeight || container.parentElement.clientHeight) : window.innerHeight;
 
   const scene  = new THREE.Scene();
   const camCfg = sceneJson.camera || {};
@@ -202,13 +240,30 @@ export async function playScene(sceneJson) {
 
   const stateRef = {
     container, renderer, scene, camera, objects, tracks, cameraKeyframes,
+    sceneJson,                  // kept so stopScene can emit scene-end with id+name
     startTime: performance.now(),
     durationMs: sceneJson.durationMs || 10000,
     rafId: null,
     audioTimeouts: [],
     audioHandles:  [],
+    forkTimeouts:  [],
   };
   currentScene = stateRef;
+
+  // Fork clips: scheduled fire-and-forget at their start times. Each
+  // target dispatches via a different mechanism — flow/event/effect
+  // round-trip through the server via WS; scene targets call playScene
+  // locally (replaces the current scene). isTest passes through so
+  // forks fired from a Studio test-preview behave consistently.
+  for (const fc of sceneJson.forkClips || []) {
+    const start = Math.max(0, fc.start || 0);
+    if (start >= stateRef.durationMs) continue;
+    const tid = setTimeout(() => {
+      if (currentScene !== stateRef) return;
+      dispatchForkTarget(fc.target, sceneJson);
+    }, start);
+    stateRef.forkTimeouts.push(tid);
+  }
 
   // Schedule scene audio entries. Each plays through the shared audio bus
   // with its configured priority + policy — duck-below/solo/cancel-below
@@ -438,6 +493,50 @@ function setOpacity(obj, op) {
 
 function lerp(a, b, t) {
   return a + (b - a) * t;
+}
+
+// Targets the player can dispatch from forkClips (and, in v0.4.7, from
+// branchClips). flow/event/effect targets round-trip through the server
+// because they need to reach flow-engine.processEvent or the broadcast
+// bus; scene targets are handled locally (replaces current scene).
+function dispatchForkTarget(target, srcSceneJson) {
+  if (!target) return;
+  switch (target.type) {
+    case 'flow':
+      sendWS({ type: '_overlay.run-flow', flowId: target.flowId });
+      break;
+    case 'event':
+      sendWS({ type: '_overlay.event', event: { type: target.eventType, payload: target.payload ?? {} } });
+      break;
+    case 'effect':
+      // Round-tripped (not dispatched locally) so OTHER overlays — a
+      // multi-monitor setup or split browser source — see the effect
+      // too, and the server's flow-engine can react if anything else
+      // is listening for it.
+      sendWS({ type: '_overlay.fire-effect', effect: target.effect, payload: target.payload ?? {} });
+      break;
+    case 'scene':
+      sendWS({ type: '_overlay.play-scene', sceneId: target.sceneId });
+      break;
+  }
+}
+
+// Send an event/command back to the server. Used by scene-end emission
+// and fork-clip dispatchers. Tolerant of missing window.ws (e.g., the
+// Studio preview iframe sometimes uses its own bridge) — caller just
+// no-ops in that case rather than failing the whole scene playback.
+function sendOverlayEvent(payload) {
+  sendWS({ type: '_overlay.event', event: payload });
+}
+function sendWS(payload) {
+  try {
+    const ws = window.ws || window.fokkerWs || null;
+    if (ws && ws.readyState === 1 /* OPEN */) {
+      ws.send(JSON.stringify(payload));
+    }
+  } catch (err) {
+    console.warn('[scene-player] sendWS failed:', err);
+  }
 }
 
 // Path-follow: object's position comes from curve.getPoint(alpha). speed

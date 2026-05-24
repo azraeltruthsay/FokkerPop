@@ -1627,6 +1627,10 @@ function connect() {
 
   clearTimeout(demoTimeout);
   ws = new WebSocket(WS_URL);
+  // Expose so shared/scene-player.js can send fork-clip and scene-end
+  // commands back to the server. Reassigned on reconnect so the player
+  // always picks up the live socket rather than a closed reference.
+  window.ws = ws;
 
   ws.addEventListener('open', () => {
     wsRetries = 0;
