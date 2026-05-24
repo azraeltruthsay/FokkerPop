@@ -156,6 +156,7 @@ function setupViewport() {
         ed.currentTime = elapsed;
       }
       applyTracksAtTime(ed.currentTime);
+      applyPathAndShake(ed.currentTime);
       applyCameraAtTime(ed.currentTime);
       renderTimelineHead();
       renderTimeDisplay();
@@ -395,6 +396,13 @@ function rebuildViewportFromActive() {
     });
   }
   ed.objectsByGuid.clear();
+  // Also drop any path-follow visualizers + light-helpers; rebuild will
+  // re-add them. Lights live on objectsByGuid so their cleanup happens
+  // above, but their helpers are siblings tagged via userData.
+  clearPathLines();
+  const helperRemovals = [];
+  ed.three.scene.traverse(o => { if (o.userData?.isLightHelper) helperRemovals.push(o); });
+  for (const h of helperRemovals) ed.three.scene.remove(h);
   ed.three.transform.detach();
   ed.selectedObjectId = null;
 
@@ -425,6 +433,21 @@ function rebuildViewportFromActive() {
         const center = box.getCenter(new THREE.Vector3()).multiplyScalar(fit);
         inner.position.sub(center);
         group.add(inner);
+        // Collect morph-capable meshes (Blender shape keys exported via
+        // glTF). The inspector reads this list to render one slider per
+        // shape key once the model is on-screen.
+        const morphMeshes = [];
+        inner.traverse(child => {
+          if (child.isMesh && child.morphTargetDictionary && child.morphTargetInfluences) {
+            morphMeshes.push({ mesh: child, dict: child.morphTargetDictionary });
+          }
+        });
+        if (morphMeshes.length) group.userData.morphMeshes = morphMeshes;
+        // If this object is currently selected and the inspector is open,
+        // re-render so the newly-discovered morph sliders show up. Without
+        // this the inspector would have rendered with zero morph rows
+        // before the GLB finished loading.
+        if (ed.selectedObjectId === obj.id) renderObjectInspector();
       }, undefined, (err) => {
         console.warn(`[scenes-editor] failed to load ${obj.asset}:`, err);
         const m = new THREE.Mesh(
@@ -464,17 +487,57 @@ function rebuildViewportFromActive() {
       if (l.kind === 'directional') {
         const helper = new THREE.DirectionalLightHelper(light, 0.4, 0xffff00);
         helper.userData.sceneObjectId = obj.id;
+        helper.userData.isLightHelper = true;
         helper.traverse(c => { c.userData.sceneObjectId = obj.id; });
         ed.three.scene.add(helper);
       } else if (l.kind === 'point') {
         const helper = new THREE.PointLightHelper(light, 0.2, 0xffff00);
         helper.userData.sceneObjectId = obj.id;
+        helper.userData.isLightHelper = true;
         helper.traverse(c => { c.userData.sceneObjectId = obj.id; });
         ed.three.scene.add(helper);
       }
       // Ambient lights have no position; no helper. The inspector is the
       // only way to find/edit them — the timeline row is too.
     }
+  }
+
+  // Build path-follow curves + visual lines. Mirrors the runtime player so
+  // editor preview matches what the overlay renders. Lines are added to
+  // the scene so the streamer can see the path while authoring; they're
+  // pointer-events-irrelevant (Three.js doesn't raycast them by default).
+  for (const obj of s.objects) {
+    if (!obj.pathFollow || !ed.objectsByGuid.has(obj.id)) continue;
+    const three = ed.objectsByGuid.get(obj.id);
+    const pts = obj.pathFollow.points.map(p => new THREE.Vector3(...p));
+    const curve = new THREE.CatmullRomCurve3(pts, !!obj.pathFollow.loop);
+    three.userData.pathCurve = curve;
+    three.userData.pathLoop  = !!obj.pathFollow.loop;
+    three.userData.pathSpeed = obj.pathFollow.speed ?? 1;
+
+    // Visual line: sample the curve at 64 points and draw it in cyan so
+    // the path is visible against most viewport backgrounds.
+    const samples = curve.getPoints(64);
+    const geom = new THREE.BufferGeometry().setFromPoints(samples);
+    const line = new THREE.Line(geom, new THREE.LineBasicMaterial({ color: 0x66ddff }));
+    line.userData.isPathLine = true;
+    line.userData.forObjectId = obj.id;
+    ed.three.scene.add(line);
+    three.userData.pathLine = line;
+  }
+}
+
+// Remove all path-visualization lines from the editor scene. Called when
+// the active scene changes or a path is edited, so stale lines don't pile
+// up. Same teardown pattern the light-helper cleanup uses.
+function clearPathLines() {
+  if (!ed.three) return;
+  const toRemove = [];
+  ed.three.scene.traverse(o => { if (o.userData?.isPathLine) toRemove.push(o); });
+  for (const o of toRemove) {
+    ed.three.scene.remove(o);
+    o.geometry?.dispose?.();
+    o.material?.dispose?.();
   }
 }
 
@@ -592,8 +655,113 @@ function renderModelInspectorHtml(obj, displayName, sub) {
         </label>
       </div>
     </details>
+    ${renderMorphSectionHtml(obj)}
+    ${renderPathSectionHtml(obj)}
+    ${renderShakeSectionHtml(obj)}
     <button class="btn btn-ghost btn-sm" id="scene-obj-delete" style="color:var(--red);">🗑️ Delete Object</button>
   `;
+}
+
+function renderMorphSectionHtml(obj) {
+  const three = ed.objectsByGuid.get(obj.id);
+  const morphMeshes = three?.userData?.morphMeshes;
+  if (!morphMeshes || morphMeshes.length === 0) return '';
+  // Union of names across all morph-capable meshes (a GLB can have shape
+  // keys on multiple meshes; same name on different meshes drives them
+  // together, matching how Blender exports them).
+  const names = new Set();
+  for (const { dict } of morphMeshes) Object.keys(dict).forEach(n => names.add(n));
+  const current = resolveCurrentMorphs(obj.id);
+  const rows = [...names].map(name => {
+    const v = current[name] ?? 0;
+    return `<div style="display:flex; align-items:center; gap:6px;">
+      <span style="font-size:.6rem; color:var(--text-dim); min-width:80px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${esc(name)}</span>
+      <input type="range" class="scene-morph-input" data-name="${esc(name)}" min="0" max="1" step="0.01" value="${v}" style="flex:1;">
+      <span class="scene-morph-val" data-name="${esc(name)}" style="font-size:.6rem; min-width:28px; text-align:right; font-family:monospace;">${v.toFixed(2)}</span>
+    </div>`;
+  }).join('');
+  return `
+    <details>
+      <summary style="font-size:.65rem; color:var(--text-dim); cursor:pointer; padding:2px 0;">▾ Morph Targets (${names.size})</summary>
+      <div style="display:flex; flex-direction:column; gap:4px; margin-top:6px; padding-left:4px;">${rows}</div>
+    </details>`;
+}
+
+function renderPathSectionHtml(obj) {
+  const pf = obj.pathFollow || null;
+  const pointsJson = pf ? JSON.stringify(pf.points) : '';
+  return `
+    <details ${pf ? 'open' : ''}>
+      <summary style="font-size:.65rem; color:var(--text-dim); cursor:pointer; padding:2px 0;">▾ Path Follow</summary>
+      <div style="display:flex; flex-direction:column; gap:4px; margin-top:6px; padding-left:4px;">
+        <div style="font-size:.55rem; color:var(--text-dim); opacity:.7;">Control points as JSON: [[x,y,z], [x,y,z], ...]. ≥2 points. Overrides position keyframes.</div>
+        <textarea id="scene-path-points" placeholder="[[0,0,0],[1,1,0],[2,0,-1]]" style="width:100%; min-height:44px; resize:vertical; font-family:monospace; font-size:.65rem; background:var(--surface); color:var(--text); border:1px solid var(--border); border-radius:3px; padding:4px;">${esc(pointsJson)}</textarea>
+        <div style="display:flex; gap:8px; align-items:center;">
+          <label style="display:inline-flex; align-items:center; gap:4px; font-size:.6rem; color:var(--text-dim);">
+            <input type="checkbox" id="scene-path-loop" ${pf?.loop ? 'checked' : ''}> Loop
+          </label>
+          <label style="display:inline-flex; align-items:center; gap:4px; font-size:.6rem; color:var(--text-dim);">Speed
+            <input type="number" id="scene-path-speed" min="0.1" step="0.1" value="${pf?.speed ?? 1}" style="width:50px; margin:0; padding:2px 4px; font-size:.6rem;">
+          </label>
+          <button class="btn btn-ghost btn-sm" id="scene-path-clear" title="Remove path-follow from this object" style="margin-left:auto; padding:2px 8px; font-size:.6rem;">Clear</button>
+        </div>
+      </div>
+    </details>`;
+}
+
+function renderShakeSectionHtml(obj) {
+  const sh = resolveCurrentShake(obj.id);
+  const has = sh.amplitude.some(v => v !== 0) || sh.frequency !== 0;
+  return `
+    <details ${has ? 'open' : ''}>
+      <summary style="font-size:.65rem; color:var(--text-dim); cursor:pointer; padding:2px 0;">▾ Shake</summary>
+      <div style="display:flex; flex-direction:column; gap:4px; margin-top:6px; padding-left:4px;">
+        <div style="display:flex; gap:4px; align-items:center;">
+          <span style="font-size:.6rem; color:var(--text-dim); min-width:18px;">X</span>
+          <input type="number" id="scene-shake-x" step="0.01" value="${sh.amplitude[0]}" style="flex:1; margin:0; padding:2px 4px; font-size:.65rem;">
+          <span style="font-size:.6rem; color:var(--text-dim); min-width:18px;">Y</span>
+          <input type="number" id="scene-shake-y" step="0.01" value="${sh.amplitude[1]}" style="flex:1; margin:0; padding:2px 4px; font-size:.65rem;">
+          <span style="font-size:.6rem; color:var(--text-dim); min-width:18px;">Z</span>
+          <input type="number" id="scene-shake-z" step="0.01" value="${sh.amplitude[2]}" style="flex:1; margin:0; padding:2px 4px; font-size:.65rem;">
+        </div>
+        <div style="display:flex; gap:4px; align-items:center;">
+          <span style="font-size:.6rem; color:var(--text-dim); min-width:54px;">Freq (Hz)</span>
+          <input type="number" id="scene-shake-freq" min="0" step="0.5" value="${sh.frequency}" style="flex:1; margin:0; padding:2px 4px; font-size:.65rem;">
+        </div>
+        <div style="font-size:.55rem; color:var(--text-dim); opacity:.7;">Sets a shake keyframe at the scrubber time. All zeros = no shake.</div>
+      </div>
+    </details>`;
+}
+
+function resolveCurrentMorphs(objectId) {
+  const out = {};
+  const s = activeScene();
+  const track = s?.tracks.find(tr => tr.objectId === objectId);
+  if (!track) return out;
+  const kfs = [...track.keyframes].sort((a, b) => a.t - b.t);
+  for (const kf of kfs) {
+    if (kf.t > ed.currentTime) break;
+    if (kf.morphTargets) {
+      for (const [name, w] of Object.entries(kf.morphTargets)) out[name] = w;
+    }
+  }
+  return out;
+}
+
+function resolveCurrentShake(objectId) {
+  const out = { amplitude: [0, 0, 0], frequency: 0 };
+  const s = activeScene();
+  const track = s?.tracks.find(tr => tr.objectId === objectId);
+  if (!track) return out;
+  const kfs = [...track.keyframes].sort((a, b) => a.t - b.t);
+  for (const kf of kfs) {
+    if (kf.t > ed.currentTime) break;
+    if (kf.shake) {
+      out.amplitude = [...kf.shake.amplitude];
+      out.frequency = kf.shake.frequency;
+    }
+  }
+  return out;
 }
 
 function bindModelInspector(obj) {
@@ -634,6 +802,75 @@ function bindModelInspector(obj) {
     onMaterialEdit({ roughness: v });
   });
   document.getElementById('scene-mat-wire').addEventListener('change',     (e) => onMaterialEdit({ wireframe: e.target.checked }));
+
+  // Morph target sliders — one slider per shape-key name discovered on the
+  // loaded GLB. Writes a morphTargets keyframe at scrubber time on every
+  // input event so the slider doubles as a keyframe-author tool.
+  document.querySelectorAll('.scene-morph-input').forEach(input => {
+    input.addEventListener('input', (e) => {
+      const name = input.dataset.name;
+      const v = parseFloat(e.target.value);
+      const valEl = document.querySelector(`.scene-morph-val[data-name="${CSS.escape(name)}"]`);
+      if (valEl) valEl.textContent = v.toFixed(2);
+      upsertKeyframe(obj.id, ed.currentTime, kf => {
+        kf.morphTargets = { ...(kf.morphTargets || {}), [name]: v };
+      });
+      const three = ed.objectsByGuid.get(obj.id);
+      if (three) setObjMorphs(three, { [name]: v });
+      queueSave();
+    });
+  });
+
+  // Path-follow controls. Edits go through commitPathEdit so we get the
+  // same validate-then-rebuild-viewport behavior whether the textarea,
+  // loop checkbox, or speed input changed.
+  const commitPathEdit = () => {
+    const pointsText = document.getElementById('scene-path-points').value.trim();
+    if (!pointsText) {
+      delete obj.pathFollow;
+    } else {
+      let pts;
+      try { pts = JSON.parse(pointsText); } catch { /* bad JSON — skip */ return; }
+      if (!Array.isArray(pts) || pts.length < 2) return;
+      const loop  = document.getElementById('scene-path-loop').checked;
+      const speed = parseFloat(document.getElementById('scene-path-speed').value) || 1;
+      obj.pathFollow = { points: pts, loop, speed };
+    }
+    // Curve + visual line live on the Three.js object; cheapest to just
+    // rebuild the viewport so the visualizer reflects the new path.
+    rebuildViewportFromActive();
+    selectObject(obj.id);
+    queueSave();
+  };
+  document.getElementById('scene-path-points').addEventListener('change', commitPathEdit);
+  document.getElementById('scene-path-loop').addEventListener('change', commitPathEdit);
+  document.getElementById('scene-path-speed').addEventListener('change', commitPathEdit);
+  document.getElementById('scene-path-clear').addEventListener('click', () => {
+    delete obj.pathFollow;
+    rebuildViewportFromActive();
+    selectObject(obj.id);
+    queueSave();
+  });
+
+  // Shake — all four inputs commit a single keyframe at scrubber time
+  // with the current amplitude vec3 + frequency.
+  const commitShakeEdit = () => {
+    const x = parseFloat(document.getElementById('scene-shake-x').value) || 0;
+    const y = parseFloat(document.getElementById('scene-shake-y').value) || 0;
+    const z = parseFloat(document.getElementById('scene-shake-z').value) || 0;
+    const f = Math.max(0, parseFloat(document.getElementById('scene-shake-freq').value) || 0);
+    upsertKeyframe(obj.id, ed.currentTime, kf => {
+      // All-zero amplitude + zero freq deletes the channel so the schema
+      // stays tidy (validator-wise, zeros are valid but pointless).
+      if (x === 0 && y === 0 && z === 0 && f === 0) delete kf.shake;
+      else kf.shake = { amplitude: [x, y, z], frequency: f };
+    });
+    queueSave();
+  };
+  ['scene-shake-x', 'scene-shake-y', 'scene-shake-z', 'scene-shake-freq'].forEach(id => {
+    document.getElementById(id).addEventListener('change', commitShakeEdit);
+  });
+
   document.getElementById('scene-obj-delete').addEventListener('click', () => deleteSelectedObject(obj));
 }
 
@@ -848,6 +1085,34 @@ function applyTracksAtTime(t) {
   }
 }
 
+// Path-follow overrides position, then shake adds sine displacement.
+// Same order the runtime player uses so the editor preview matches.
+function applyPathAndShake(t) {
+  const s = activeScene();
+  if (!s) return;
+  const dur = s.durationMs || 10000;
+  const elapsedSec = t / 1000;
+  for (const obj of s.objects) {
+    const three = ed.objectsByGuid.get(obj.id);
+    if (!three) continue;
+    if (three.userData?.pathCurve) {
+      const speed = three.userData.pathSpeed ?? 1;
+      let alpha = (t / Math.max(1, dur)) * speed;
+      if (three.userData.pathLoop) alpha = alpha - Math.floor(alpha);
+      else                          alpha = Math.max(0, Math.min(1, alpha));
+      const p = three.userData.pathCurve.getPoint(alpha);
+      three.position.set(p.x, p.y, p.z);
+    }
+    const sh = three.userData?.currentShake;
+    if (sh) {
+      const w = 2 * Math.PI * sh.frequency;
+      three.position.x += sh.amplitude[0] * Math.sin(w * elapsedSec + 0);
+      three.position.y += sh.amplitude[1] * Math.sin(w * elapsedSec + 1.7);
+      three.position.z += sh.amplitude[2] * Math.sin(w * elapsedSec + 3.4);
+    }
+  }
+}
+
 function applyKeyframesAt(obj, keyframes, t) {
   if (!keyframes || keyframes.length === 0) return;
   const sorted = keyframes;
@@ -891,6 +1156,23 @@ function applyKeyframesAt(obj, keyframes, t) {
     if (a.light.intensity != null && b.light.intensity != null) obj.intensity = lerp(a.light.intensity, b.light.intensity, alpha);
     if (a.light.color     != null && b.light.color     != null) obj.color.set(lerpHex(a.light.color, b.light.color, alpha));
   }
+  if (a.morphTargets || b.morphTargets) {
+    setObjMorphs(obj, mergedMorphAt(a.morphTargets, b.morphTargets, alpha));
+  }
+  if (a.shake || b.shake) {
+    const aAmp = a.shake?.amplitude || [0, 0, 0];
+    const bAmp = b.shake?.amplitude || [0, 0, 0];
+    obj.userData.currentShake = {
+      amplitude: [
+        lerp(aAmp[0], bAmp[0], alpha),
+        lerp(aAmp[1], bAmp[1], alpha),
+        lerp(aAmp[2], bAmp[2], alpha),
+      ],
+      frequency: lerp(a.shake?.frequency || 0, b.shake?.frequency || 0, alpha),
+    };
+  } else {
+    obj.userData.currentShake = null;
+  }
 }
 
 function applyKeyframe(obj, kf) {
@@ -902,6 +1184,33 @@ function applyKeyframe(obj, kf) {
   if (kf.light && obj.isLight) {
     if (kf.light.intensity != null) obj.intensity = kf.light.intensity;
     if (kf.light.color     != null) obj.color.set(kf.light.color);
+  }
+  if (kf.morphTargets) setObjMorphs(obj, kf.morphTargets);
+  if (kf.shake) {
+    obj.userData.currentShake = {
+      amplitude: [...kf.shake.amplitude],
+      frequency: kf.shake.frequency,
+    };
+  } else {
+    obj.userData.currentShake = null;
+  }
+}
+
+function mergedMorphAt(aM, bM, alpha) {
+  const names = new Set([...Object.keys(aM || {}), ...Object.keys(bM || {})]);
+  const out = {};
+  for (const n of names) out[n] = lerp(aM?.[n] ?? 0, bM?.[n] ?? 0, alpha);
+  return out;
+}
+
+function setObjMorphs(obj, weights) {
+  const meshes = obj.userData?.morphMeshes;
+  if (!meshes) return;
+  for (const { mesh, dict } of meshes) {
+    for (const [name, w] of Object.entries(weights)) {
+      const idx = dict[name];
+      if (idx != null) mesh.morphTargetInfluences[idx] = w;
+    }
   }
 }
 
@@ -1072,6 +1381,7 @@ function bindTimelineEvents() {
     ed.currentTime = Math.max(0, Math.min(dur, Math.round(ratio * dur)));
     ed.isPlaying = false;
     applyTracksAtTime(ed.currentTime);
+    applyPathAndShake(ed.currentTime);
     applyCameraAtTime(ed.currentTime);
     renderTimelineHead();
     renderTimeDisplay();
@@ -1426,6 +1736,7 @@ function bindCamKeyframeDiamond(diamond) {
         ed.currentTime = startT;
         ed.isPlaying = false;
         applyTracksAtTime(startT);
+        applyPathAndShake(startT);
         applyCameraAtTime(startT);
         renderTimelineHead();
         renderTimeDisplay();
@@ -1594,6 +1905,7 @@ function bindKeyframeDiamond(diamond) {
         ed.currentTime = startT;
         ed.isPlaying = false;
         applyTracksAtTime(startT);
+        applyPathAndShake(startT);
         applyCameraAtTime(startT);
         renderTimelineHead();
         renderTimeDisplay();

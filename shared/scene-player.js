@@ -129,6 +129,16 @@ export async function playScene(sceneJson) {
         const center = box.getCenter(new THREE.Vector3()).multiplyScalar(s);
         inner.position.sub(center);
         group.add(inner);
+        // Collect morph-capable meshes so per-frame keyframe application
+        // can look up indices by Blender shape-key name. Stashed on the
+        // group's userData so applyKeyframesAt can find them later.
+        const morphMeshes = [];
+        inner.traverse(child => {
+          if (child.isMesh && child.morphTargetDictionary && child.morphTargetInfluences) {
+            morphMeshes.push({ mesh: child, dict: child.morphTargetDictionary });
+          }
+        });
+        if (morphMeshes.length) group.userData.morphMeshes = morphMeshes;
       }, undefined, (err) => {
         console.warn(`[scene-player] failed to load model ${obj.asset}:`, err);
         // Magenta wireframe placeholder so the scene shape is still visible
@@ -164,6 +174,20 @@ export async function playScene(sceneJson) {
       if (l.kind !== 'ambient') applyTransform(light, obj.transform);
       scene.add(light);
     }
+  }
+
+  // Build path-follow curves once per object so the per-frame loop doesn't
+  // rebuild them. CatmullRomCurve3 handles smoothing between control points.
+  // Path-follow, when set, overrides position-keyframe interpolation for
+  // that object — runtime checks userData.pathCurve before falling back
+  // to keyframe lerp.
+  for (const obj of sceneJson.objects || []) {
+    if (!obj.pathFollow || !objects[obj.id]) continue;
+    const pts = obj.pathFollow.points.map(p => new THREE.Vector3(...p));
+    const curve = new THREE.CatmullRomCurve3(pts, !!obj.pathFollow.loop);
+    objects[obj.id].userData.pathCurve  = curve;
+    objects[obj.id].userData.pathLoop   = !!obj.pathFollow.loop;
+    objects[obj.id].userData.pathSpeed  = obj.pathFollow.speed ?? 1;
   }
 
   // Pre-sort keyframes once so the per-frame interpolation can do a tight
@@ -221,6 +245,15 @@ export async function playScene(sceneJson) {
       const target = stateRef.objects[track.objectId];
       if (!target) continue;
       applyKeyframeAt(target, track.keyframes, elapsed);
+    }
+    // After channel interpolation: path-follow overrides position, then
+    // shake adds a sine displacement on top. Done in this order so a
+    // path-followed object can still shake.
+    const elapsedSec = elapsed / 1000;
+    for (const id in stateRef.objects) {
+      const o = stateRef.objects[id];
+      if (o.userData?.pathCurve) applyPathFollow(o, elapsed, stateRef.durationMs);
+      if (o.userData?.currentShake) applyShakeDisplacement(o, elapsedSec);
     }
     if (stateRef.cameraKeyframes) applyCameraAt(camera, stateRef.cameraKeyframes, elapsed);
     renderer.render(scene, camera);
@@ -292,6 +325,50 @@ function applyKeyframeAt(obj, keyframes, t) {
     if (a.light.intensity != null && b.light.intensity != null) obj.intensity = lerp(a.light.intensity, b.light.intensity, alpha);
     if (a.light.color     != null && b.light.color     != null) obj.color.set(lerpHex(a.light.color, b.light.color, alpha));
   }
+  // Morph targets — per-name weights from the bracketing keyframes. A name
+  // present on only one side lerps from/to 0 so unspecified morphs settle
+  // back to neutral instead of holding stale weights forever.
+  if (a.morphTargets || b.morphTargets) {
+    setMorphs(obj, mergedMorphAt(a.morphTargets, b.morphTargets, alpha));
+  }
+  // Shake amplitude/frequency interpolate; the actual sine displacement
+  // is applied later (after path-follow) in applyShakeDisplacement so it
+  // can use real elapsed time rather than just the segment alpha.
+  if (a.shake || b.shake) {
+    const aAmp = a.shake?.amplitude || [0, 0, 0];
+    const bAmp = b.shake?.amplitude || [0, 0, 0];
+    obj.userData.currentShake = {
+      amplitude: [
+        lerp(aAmp[0], bAmp[0], alpha),
+        lerp(aAmp[1], bAmp[1], alpha),
+        lerp(aAmp[2], bAmp[2], alpha),
+      ],
+      frequency: lerp(a.shake?.frequency || 0, b.shake?.frequency || 0, alpha),
+    };
+  } else {
+    obj.userData.currentShake = null;
+  }
+}
+
+// Returns a merged morph-weight map for the interpolation step. Names
+// missing on either keyframe lerp from/to 0 so unspecified morphs go back
+// to neutral, matching how AE/Blender treat missing channels.
+function mergedMorphAt(aM, bM, alpha) {
+  const names = new Set([...Object.keys(aM || {}), ...Object.keys(bM || {})]);
+  const out = {};
+  for (const n of names) out[n] = lerp(aM?.[n] ?? 0, bM?.[n] ?? 0, alpha);
+  return out;
+}
+
+function setMorphs(obj, weights) {
+  const meshes = obj.userData?.morphMeshes;
+  if (!meshes) return;
+  for (const { mesh, dict } of meshes) {
+    for (const [name, w] of Object.entries(weights)) {
+      const idx = dict[name];
+      if (idx != null) mesh.morphTargetInfluences[idx] = w;
+    }
+  }
 }
 
 function applyKeyframe(obj, kf) {
@@ -303,6 +380,15 @@ function applyKeyframe(obj, kf) {
   if (kf.light && obj.isLight) {
     if (kf.light.intensity != null) obj.intensity = kf.light.intensity;
     if (kf.light.color     != null) obj.color.set(kf.light.color);
+  }
+  if (kf.morphTargets) setMorphs(obj, kf.morphTargets);
+  if (kf.shake) {
+    obj.userData.currentShake = {
+      amplitude: [...kf.shake.amplitude],
+      frequency: kf.shake.frequency,
+    };
+  } else {
+    obj.userData.currentShake = null;
   }
 }
 
@@ -352,6 +438,33 @@ function setOpacity(obj, op) {
 
 function lerp(a, b, t) {
   return a + (b - a) * t;
+}
+
+// Path-follow: object's position comes from curve.getPoint(alpha). speed
+// scales how fast the curve is traversed (default 1 = full curve over
+// scene duration); loop=true makes alpha wrap so the object cycles the
+// path. When loop=false and alpha exceeds 1, the object holds at the end.
+function applyPathFollow(obj, elapsed, durationMs) {
+  const curve = obj.userData.pathCurve;
+  const loop  = obj.userData.pathLoop;
+  const speed = obj.userData.pathSpeed ?? 1;
+  let alpha = (elapsed / Math.max(1, durationMs)) * speed;
+  if (loop) alpha = alpha - Math.floor(alpha);
+  else      alpha = Math.max(0, Math.min(1, alpha));
+  const p = curve.getPoint(alpha);
+  obj.position.set(p.x, p.y, p.z);
+}
+
+// Per-axis phase offsets so X/Y/Z aren't synchronized — synced motion
+// looks like a single 1D oscillation rather than chaotic shake.
+const SHAKE_PHASES = [0, 1.7, 3.4];
+function applyShakeDisplacement(obj, elapsedSec) {
+  const s = obj.userData.currentShake;
+  if (!s) return;
+  const w = 2 * Math.PI * s.frequency;
+  obj.position.x += s.amplitude[0] * Math.sin(w * elapsedSec + SHAKE_PHASES[0]);
+  obj.position.y += s.amplitude[1] * Math.sin(w * elapsedSec + SHAKE_PHASES[1]);
+  obj.position.z += s.amplitude[2] * Math.sin(w * elapsedSec + SHAKE_PHASES[2]);
 }
 
 // Camera keyframes drive the renderer camera each frame. Same bracketing

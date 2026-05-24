@@ -43,6 +43,13 @@ import { EASING_NAMES } from '../../shared/easing.js';
 //         color?:     string,             // hex, default '#ffffff'
 //         distance?:  number              // point only, default 0 = infinite
 //       },
+//       pathFollow?: {                    // overrides position-keyframe interp
+//         points: [[x,y,z], [x,y,z], ...],// ≥2 control points for CatmullRom
+//         loop?:  boolean,                // default false (one-shot 0..1)
+//         speed?: number                  // default 1 (full curve per scene
+//                                          //   duration). >1 = faster; with
+//                                          //   loop=true the curve repeats.
+//       },
 //       transform: {                      // initial pose; tracks override per-frame
 //         position: [x, y, z],
 //         rotation: [x, y, z],            // euler radians, XYZ order
@@ -89,6 +96,13 @@ import { EASING_NAMES } from '../../shared/easing.js';
 //             intensity?: number,         // 0..N
 //             color?:     string          // hex
 //           },
+//           morphTargets?: {              // shape-key weights for GLBs with
+//             [name: string]: number      // morph targets exported. Names
+//           },                            // match Blender shape-key names.
+//           shake?: {                     // additive sine displacement on
+//             amplitude: [x, y, z],       // top of position each frame.
+//             frequency: number           // Hz; [0,0,0] amp = no shake.
+//           },                            // Interpolated between keyframes.
 //           easing?:   string             // see shared/easing.js;
 //                                          // missing = 'linear'. Determines
 //                                          // the curve from THIS keyframe
@@ -191,6 +205,22 @@ export function validateScene(scene) {
       if (t.rotation && !isVec3(t.rotation))   return { ok: false, error: `scene "${scene.id}" object "${obj.id}": transform.rotation must be [x,y,z]` };
       if (t.scale    && !isVec3(t.scale))      return { ok: false, error: `scene "${scene.id}" object "${obj.id}": transform.scale must be [x,y,z]` };
     }
+    if (obj.pathFollow != null) {
+      const pf = obj.pathFollow;
+      if (typeof pf !== 'object') return { ok: false, error: `scene "${scene.id}" object "${obj.id}": pathFollow must be an object` };
+      if (!Array.isArray(pf.points) || pf.points.length < 2) {
+        return { ok: false, error: `scene "${scene.id}" object "${obj.id}": pathFollow.points must be ≥2 points` };
+      }
+      for (const p of pf.points) {
+        if (!isVec3(p)) return { ok: false, error: `scene "${scene.id}" object "${obj.id}": pathFollow.points must each be [x,y,z]` };
+      }
+      if (pf.loop != null && typeof pf.loop !== 'boolean') {
+        return { ok: false, error: `scene "${scene.id}" object "${obj.id}": pathFollow.loop must be boolean` };
+      }
+      if (pf.speed != null && !(typeof pf.speed === 'number' && pf.speed > 0)) {
+        return { ok: false, error: `scene "${scene.id}" object "${obj.id}": pathFollow.speed must be a positive number` };
+      }
+    }
   }
 
   // Audio (optional)
@@ -261,6 +291,24 @@ export function validateScene(scene) {
         }
         if (l.color != null && !isHexColor(l.color)) {
           return { ok: false, error: `scene "${scene.id}" track "${tr.objectId}" t=${kf.t}: light.color must be hex` };
+        }
+      }
+      if (kf.morphTargets != null) {
+        if (typeof kf.morphTargets !== 'object' || Array.isArray(kf.morphTargets)) {
+          return { ok: false, error: `scene "${scene.id}" track "${tr.objectId}" t=${kf.t}: morphTargets must be an object mapping name → weight` };
+        }
+        for (const [name, w] of Object.entries(kf.morphTargets)) {
+          if (!(typeof w === 'number' && Number.isFinite(w) && w >= 0 && w <= 1)) {
+            return { ok: false, error: `scene "${scene.id}" track "${tr.objectId}" t=${kf.t}: morphTargets["${name}"] must be 0..1` };
+          }
+        }
+      }
+      if (kf.shake != null) {
+        const sh = kf.shake;
+        if (typeof sh !== 'object') return { ok: false, error: `scene "${scene.id}" track "${tr.objectId}" t=${kf.t}: shake must be an object` };
+        if (!isVec3(sh.amplitude)) return { ok: false, error: `scene "${scene.id}" track "${tr.objectId}" t=${kf.t}: shake.amplitude must be [x,y,z]` };
+        if (!(typeof sh.frequency === 'number' && sh.frequency >= 0)) {
+          return { ok: false, error: `scene "${scene.id}" track "${tr.objectId}" t=${kf.t}: shake.frequency must be a non-negative number (Hz)` };
         }
       }
     }
