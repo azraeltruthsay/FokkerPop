@@ -114,9 +114,16 @@ function setupViewport() {
   orbit.update();
 
   const transform = new TransformControls(camera, renderer.domElement);
-  // TransformControls' API changed across three.js versions — newer builds
-  // require getHelper() to retrieve the visual gizmo; older ones return
-  // the gizmo directly. Try both so we work either way.
+  // TransformControls' default handle size in three.js r0.184 is small
+  // enough that the arrows often look like noise against a 1-unit
+  // auto-fit model — making it hard to tell where to click. Bumping
+  // size 1.0 → 1.5 makes the gizmo unmissable without overwhelming
+  // small scenes.
+  transform.size = 1.5;
+  // r0.184+ exposes the visual gizmo via getHelper() (TransformControls
+  // itself stopped being an Object3D when it moved to extending Controls);
+  // older builds return the gizmo directly from the controller. Try both
+  // so the editor doesn't silently render no handles after a three.js bump.
   const transformHelper = typeof transform.getHelper === 'function' ? transform.getHelper() : transform;
   scene.add(transformHelper);
   // While the gizmo is being dragged, suspend orbit so camera drag doesn't
@@ -1227,12 +1234,23 @@ function setObjMaterial(obj, m) {
     const mats = child.material ? (Array.isArray(child.material) ? child.material : [child.material]) : null;
     if (!mats) return;
     for (const mat of mats) {
-      if (m.color    != null && mat.color)    mat.color.set(m.color);
-      if (m.emissive != null && mat.emissive) mat.emissive.set(m.emissive);
-      if (m.emissiveIntensity != null && 'emissiveIntensity' in mat) mat.emissiveIntensity = m.emissiveIntensity;
-      if (m.metalness != null && 'metalness' in mat) mat.metalness = m.metalness;
-      if (m.roughness != null && 'roughness' in mat) mat.roughness = m.roughness;
-      if (m.wireframe != null && 'wireframe' in mat) mat.wireframe = m.wireframe;
+      // Guard every channel against per-frame re-assignment when the
+      // value hasn't changed. Color.set + dirty-flag-bearing properties
+      // (metalness, roughness, wireframe, emissiveIntensity) all force
+      // shader recompiles or buffer updates when written, which turns
+      // any frame-rate animation into stuttery jitter if we hammer them.
+      if (m.color != null && mat.color) {
+        const hex = '#' + mat.color.getHexString();
+        if (hex !== m.color) mat.color.set(m.color);
+      }
+      if (m.emissive != null && mat.emissive) {
+        const hex = '#' + mat.emissive.getHexString();
+        if (hex !== m.emissive) mat.emissive.set(m.emissive);
+      }
+      if (m.emissiveIntensity != null && 'emissiveIntensity' in mat && mat.emissiveIntensity !== m.emissiveIntensity) mat.emissiveIntensity = m.emissiveIntensity;
+      if (m.metalness != null && 'metalness' in mat && mat.metalness !== m.metalness) mat.metalness = m.metalness;
+      if (m.roughness != null && 'roughness' in mat && mat.roughness !== m.roughness) mat.roughness = m.roughness;
+      if (m.wireframe != null && 'wireframe' in mat && mat.wireframe !== m.wireframe) mat.wireframe = m.wireframe;
     }
   });
 }
@@ -1252,12 +1270,18 @@ function parseHex(hex) {
 }
 
 // Walks the subtree so opacity applies to all materials inside a loaded
-// GLB. Force-sets transparent=true (Three.js's opaque-by-default materials
-// would otherwise ignore opacity writes).
+// GLB. Force-sets transparent=true on first touch (Three.js's
+// opaque-by-default materials would otherwise ignore opacity writes),
+// but only when the value actually changes — otherwise every animation
+// frame would mark the material dirty and trigger shader recompiles,
+// which manifests as visible per-frame jitter while an object animates.
 function setObjOpacity(obj, op) {
   obj.traverse?.(child => {
     const mats = child.material ? (Array.isArray(child.material) ? child.material : [child.material]) : null;
-    mats?.forEach(m => { m.transparent = true; m.opacity = op; });
+    mats?.forEach(m => {
+      if (!m.transparent) m.transparent = true;
+      if (m.opacity !== op) m.opacity = op;
+    });
   });
 }
 

@@ -598,19 +598,28 @@ function applyKeyframe(obj, kf) {
 }
 
 // Walks the subtree so material updates land on every mesh inside a
-// loaded GLB. Uses Three.js's Color.set(hex-string) which handles #rgb
-// and #rrggbb identically.
+// loaded GLB. Each channel is guarded against per-frame re-assignment
+// when the value hasn't changed — without this, opacity/material
+// interpolation marks the material dirty every animation frame and
+// triggers shader recompiles on overlays, producing visible stutter
+// during animated scenes.
 function setMaterial(obj, m) {
   obj.traverse?.(child => {
     const mats = child.material ? (Array.isArray(child.material) ? child.material : [child.material]) : null;
     if (!mats) return;
     for (const mat of mats) {
-      if (m.color    != null && mat.color)    mat.color.set(m.color);
-      if (m.emissive != null && mat.emissive) mat.emissive.set(m.emissive);
-      if (m.emissiveIntensity != null && 'emissiveIntensity' in mat) mat.emissiveIntensity = m.emissiveIntensity;
-      if (m.metalness != null && 'metalness' in mat) mat.metalness = m.metalness;
-      if (m.roughness != null && 'roughness' in mat) mat.roughness = m.roughness;
-      if (m.wireframe != null && 'wireframe' in mat) mat.wireframe = m.wireframe;
+      if (m.color != null && mat.color) {
+        const hex = '#' + mat.color.getHexString();
+        if (hex !== m.color) mat.color.set(m.color);
+      }
+      if (m.emissive != null && mat.emissive) {
+        const hex = '#' + mat.emissive.getHexString();
+        if (hex !== m.emissive) mat.emissive.set(m.emissive);
+      }
+      if (m.emissiveIntensity != null && 'emissiveIntensity' in mat && mat.emissiveIntensity !== m.emissiveIntensity) mat.emissiveIntensity = m.emissiveIntensity;
+      if (m.metalness != null && 'metalness' in mat && mat.metalness !== m.metalness) mat.metalness = m.metalness;
+      if (m.roughness != null && 'roughness' in mat && mat.roughness !== m.roughness) mat.roughness = m.roughness;
+      if (m.wireframe != null && 'wireframe' in mat && mat.wireframe !== m.wireframe) mat.wireframe = m.wireframe;
     }
   });
 }
@@ -637,7 +646,10 @@ function parseHex(hex) {
 function setOpacity(obj, op) {
   obj.traverse?.(child => {
     const mats = child.material ? (Array.isArray(child.material) ? child.material : [child.material]) : null;
-    mats?.forEach(m => { m.transparent = true; m.opacity = op; });
+    mats?.forEach(m => {
+      if (!m.transparent) m.transparent = true;
+      if (m.opacity !== op) m.opacity = op;
+    });
   });
 }
 
