@@ -43,6 +43,18 @@ import { EASING_NAMES } from '../../shared/easing.js';
 //       }
 //     }
 //   ],
+//   audio?: [                              // optional list of scene sounds
+//     {
+//       id:       string,
+//       src:      string,                   // filename in assets/sounds
+//       start:    number,                   // ms from scene start
+//       priority?: number,                  // 0..100, default 50
+//       policy?:  'mix' | 'duck-below' |    // default 'mix'
+//                 'solo' | 'cancel-below',
+//       vol?:     number,                   // 0..1, default 1
+//       loop?:    boolean                   // default false
+//     }
+//   ],
 //   tracks: [
 //     {
 //       objectId: string,                 // must match an objects[].id
@@ -68,6 +80,7 @@ const VALID_MOUNT_MODES   = new Set(['fullscreen', 'widget']);
 const VALID_OBJECT_TYPES  = new Set(['model', 'image-plane']);
 const VALID_CAMERA_TYPES  = new Set(['perspective']);
 const VALID_EASING_NAMES  = new Set(EASING_NAMES);
+const VALID_AUDIO_POLICIES = new Set(['mix', 'duck-below', 'solo', 'cancel-below']);
 
 function isVec3(v) {
   return Array.isArray(v) && v.length === 3 && v.every(n => typeof n === 'number' && Number.isFinite(n));
@@ -120,6 +133,33 @@ export function validateScene(scene) {
       if (t.position && !isVec3(t.position))   return { ok: false, error: `scene "${scene.id}" object "${obj.id}": transform.position must be [x,y,z]` };
       if (t.rotation && !isVec3(t.rotation))   return { ok: false, error: `scene "${scene.id}" object "${obj.id}": transform.rotation must be [x,y,z]` };
       if (t.scale    && !isVec3(t.scale))      return { ok: false, error: `scene "${scene.id}" object "${obj.id}": transform.scale must be [x,y,z]` };
+    }
+  }
+
+  // Audio (optional)
+  if (scene.audio != null) {
+    if (!Array.isArray(scene.audio)) return { ok: false, error: `scene "${scene.id}": audio must be an array` };
+    const audioIds = new Set();
+    for (const a of scene.audio) {
+      if (!isNonEmptyString(a.id))     return { ok: false, error: `scene "${scene.id}": every audio entry needs an id` };
+      if (audioIds.has(a.id))          return { ok: false, error: `scene "${scene.id}": duplicate audio id "${a.id}"` };
+      audioIds.add(a.id);
+      if (!isNonEmptyString(a.src))    return { ok: false, error: `scene "${scene.id}" audio "${a.id}": src is required` };
+      if (!(typeof a.start === 'number' && Number.isFinite(a.start) && a.start >= 0)) {
+        return { ok: false, error: `scene "${scene.id}" audio "${a.id}": start must be a non-negative number` };
+      }
+      if (a.priority != null && !(typeof a.priority === 'number' && a.priority >= 0 && a.priority <= 100)) {
+        return { ok: false, error: `scene "${scene.id}" audio "${a.id}": priority must be 0..100` };
+      }
+      if (a.policy != null && !VALID_AUDIO_POLICIES.has(a.policy)) {
+        return { ok: false, error: `scene "${scene.id}" audio "${a.id}": policy must be one of ${[...VALID_AUDIO_POLICIES].join('|')}` };
+      }
+      if (a.vol != null && !(typeof a.vol === 'number' && a.vol >= 0 && a.vol <= 1)) {
+        return { ok: false, error: `scene "${scene.id}" audio "${a.id}": vol must be 0..1` };
+      }
+      if (a.loop != null && typeof a.loop !== 'boolean') {
+        return { ok: false, error: `scene "${scene.id}" audio "${a.id}": loop must be boolean` };
+      }
     }
   }
 

@@ -1547,10 +1547,17 @@ html, body {
           </div>
         </div>
 
-        <div style="grid-row:1/2; background:var(--surface); border-left:1px solid var(--border); padding:10px; display:flex; flex-direction:column; gap:8px; min-height:0;">
+        <div style="grid-row:1/2; background:var(--surface); border-left:1px solid var(--border); padding:10px; display:flex; flex-direction:column; gap:8px; min-height:0; overflow-y:auto;">
           <div id="scenes-inspector" style="display:none; padding:10px; background:var(--surface2); border-radius:4px; border:1px solid var(--border); flex-direction:column; gap:8px;"></div>
+          <div id="scenes-audio-panel" style="padding:8px; background:var(--surface2); border-radius:4px; border:1px solid var(--border); display:flex; flex-direction:column; gap:6px;">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+              <span style="font-size:.65rem; color:var(--text-dim); text-transform:uppercase; letter-spacing:.05em;">🎵 Scene Audio</span>
+              <button class="btn btn-ghost btn-sm" id="scenes-audio-add" style="padding:2px 8px; font-size:.65rem;">+ Add</button>
+            </div>
+            <div id="scenes-audio-list" style="display:flex; flex-direction:column; gap:6px; max-height:280px; overflow-y:auto;"></div>
+          </div>
           <div style="font-size:.7rem; color:var(--text-dim); text-transform:uppercase; letter-spacing:.05em;">Scenes</div>
-          <div id="scenes-list" style="flex:1; overflow-y:auto; display:flex; flex-direction:column; gap:4px;"></div>
+          <div id="scenes-list" style="overflow-y:auto; display:flex; flex-direction:column; gap:4px;"></div>
           <button class="btn btn-primary btn-sm" id="scenes-new-btn">+ New Scene</button>
         </div>
 

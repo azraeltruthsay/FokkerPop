@@ -1100,31 +1100,62 @@ const BALLOON_COLORS = [
 const $mid = document.getElementById('layer-fx-mid');
 
 // ── Audio Manager ──
+// Sounds route through shared/audio-bus.js (Web Audio + priority/ducking)
+// when it's loaded. The bus is lazy-imported the first time playSound
+// fires so the import cost is paid only on overlays that actually emit
+// audio. The legacy HTMLAudioElement path stays as a fallback in case
+// Web Audio is blocked (browsers occasionally do this until user gesture)
+// or the module fails to load — sounds still happen, they just don't get
+// hierarchy/ducking.
 const audioCache = new Map();
 let globalVolume = 0.5;
+let _audioBus = null;
+let _audioBusPromise = null;
+function _ensureBus() {
+  if (_audioBus || _audioBusPromise) return;
+  _audioBusPromise = import('/shared/audio-bus.js')
+    .then(mod => {
+      _audioBus = mod.audioBus;
+      _audioBus.setMasterVolume(globalVolume);
+    })
+    .catch(err => { console.warn('[overlay] audio-bus load failed; legacy playback only:', err); });
+}
+window.fokkerAudioBus = () => _audioBus;   // exposed for scene-player
 
-function playSound(file, vol = 1.0) {
-  if (!file) return;
-  // encodeURIComponent so filenames with spaces or other URL-unsafe chars
-  // ('my dice sound.wav', 'yay!.mp3', etc.) round-trip cleanly. The server
-  // decodes these transparently when resolving /assets/sounds/* paths.
+function playSound(file, vol = 1.0, opts = {}) {
+  if (!file) return null;
+  _ensureBus();
+  if (_audioBus) {
+    // Defaults match the convention documented in shared/audio-bus.js —
+    // existing call sites pass no opts, so they get priority=50 / mix
+    // and continue to layer freely the way they always have.
+    return _audioBus.play({
+      src: file,
+      vol,
+      priority: opts.priority,
+      policy:   opts.policy,
+      loop:     opts.loop,
+      id:       opts.id,
+    });
+  }
+  // Fallback: legacy HTMLAudioElement path. Used before the bus module
+  // finishes loading (first ~tens of ms after boot) or if Web Audio is
+  // unavailable. Same encodeURIComponent treatment so filenames with
+  // spaces or other URL-unsafe chars round-trip cleanly.
   const path = `/assets/sounds/${encodeURIComponent(file)}`;
-  
-  // Reuse audio objects for the same file to avoid excessive memory usage
   let audio = audioCache.get(path);
   if (!audio) {
     audio = new Audio(path);
     audioCache.set(path, audio);
   } else {
-    // If already playing, clone it to allow overlapping sounds
     const clone = audio.cloneNode();
     clone.volume = globalVolume * vol;
     clone.play().catch(() => {});
-    return;
+    return null;
   }
-  
   audio.volume = globalVolume * vol;
   audio.play().catch(err => console.warn('Audio play blocked:', err));
+  return null;
 }
 
 function spawnBalloon(count = 1, p = {}) {
@@ -1877,6 +1908,9 @@ function handleState(path, value) {
   switch (path) {
     case 'overlay.volume':
       globalVolume = Math.max(0, Math.min(1, value));
+      // Also push to the bus so future plays + currently-ducked sounds
+      // both respect the new master.
+      _audioBus?.setMasterVolume(globalVolume);
       break;
     case 'overlay.layoutMode':
       // Live overlays (?live=1, the OBS browser source URL) intentionally

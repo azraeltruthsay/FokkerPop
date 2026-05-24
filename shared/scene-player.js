@@ -1,4 +1,5 @@
 import { resolveEasing } from './easing.js';
+import { audioBus }      from './audio-bus.js';
 
 // FokkerPop scene player. Lazy-loaded on first 'scene-play' effect, then
 // reused for subsequent scenes. Renders a scene JSON (see
@@ -32,6 +33,13 @@ async function ensureLibs() {
 export async function stopScene() {
   if (!currentScene) return;
   if (currentScene.rafId) cancelAnimationFrame(currentScene.rafId);
+  // Clear scheduled audio timeouts and stop any still-playing handles.
+  // Without this, a scene that ends early (e.g., another scene preempts
+  // it) would leak audio that started but was scoped to the prior scene.
+  for (const id of currentScene.audioTimeouts || []) clearTimeout(id);
+  for (const handle of currentScene.audioHandles || []) {
+    try { handle?.stop?.(); } catch {}
+  }
   try {
     currentScene.scene?.traverse?.(obj => {
       if (obj.geometry) obj.geometry.dispose?.();
@@ -151,8 +159,33 @@ export async function playScene(sceneJson) {
     startTime: performance.now(),
     durationMs: sceneJson.durationMs || 10000,
     rafId: null,
+    audioTimeouts: [],
+    audioHandles:  [],
   };
   currentScene = stateRef;
+
+  // Schedule scene audio entries. Each plays through the shared audio bus
+  // with its configured priority + policy — duck-below/solo/cancel-below
+  // automatically affect existing playSound emissions (alerts, sfx) for
+  // the duration the scene audio is live. Entries whose start time is
+  // beyond the scene duration are skipped (silent — likely a misconfig).
+  for (const a of sceneJson.audio || []) {
+    const start = Math.max(0, a.start || 0);
+    if (start >= stateRef.durationMs) continue;
+    const tid = setTimeout(() => {
+      if (currentScene !== stateRef) return; // scene was preempted
+      const handle = audioBus.play({
+        src: a.src,
+        vol:      a.vol ?? 1,
+        priority: a.priority ?? 60,   // scene-audio convention default
+        policy:   a.policy   ?? 'mix',
+        loop:     a.loop     ?? false,
+        id:       `scene-${a.id}`,
+      });
+      if (handle) stateRef.audioHandles.push(handle);
+    }, start);
+    stateRef.audioTimeouts.push(tid);
+  }
 
   function loop() {
     const elapsed = performance.now() - stateRef.startTime;

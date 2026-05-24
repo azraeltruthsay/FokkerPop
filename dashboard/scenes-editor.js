@@ -1,4 +1,7 @@
 import { resolveEasing, EASING_NAMES } from '/shared/easing.js';
+import { audioBus }                    from '/shared/audio-bus.js';
+
+const AUDIO_POLICIES = ['mix', 'duck-below', 'solo', 'cancel-below'];
 
 // Studio Scenes editor — Phase 1 (v0.4.0).
 //
@@ -35,6 +38,7 @@ const ed = {
   three: null,                // { scene, camera, renderer, orbit, transform }
   objectsByGuid: new Map(),   // sceneObjectId -> THREE.Object3D
   assets: { models: [], images: [], sounds: [], stickers: [] },
+  audioPreview: { timeouts: [], handles: [] }, // editor ▶ Test mix preview
 };
 window.scenesEditor = ed;     // for debugging via DevTools
 
@@ -145,6 +149,9 @@ function setupViewport() {
       if (elapsed >= dur) {
         ed.isPlaying = false;
         ed.currentTime = dur;
+        // Tear down any in-flight preview audio so a looped track doesn't
+        // keep playing after the visible timeline finishes.
+        stopEditorPreviewAudio();
       } else {
         ed.currentTime = elapsed;
       }
@@ -210,10 +217,9 @@ function bindToolbar() {
     ed.autoKey = e.target.checked;
   });
   document.getElementById('scenes-test-btn').addEventListener('click', () => {
-    ed.currentTime = 0;
-    ed.playStartTime = performance.now();
-    ed.isPlaying = true;
+    startEditorPreview();
   });
+  document.getElementById('scenes-audio-add').addEventListener('click', addAudioEntry);
   document.getElementById('scenes-new-btn').addEventListener('click', newScene);
   document.getElementById('scenes-duration-input').addEventListener('change', (e) => {
     const s = activeScene();
@@ -257,6 +263,7 @@ async function refreshAssets() {
     console.warn('Failed to load assets:', err);
   }
   renderAssetList();
+  renderAudioList();
 }
 
 function renderAssetList() {
@@ -716,6 +723,7 @@ function setActiveScene(id) {
   ed.activeId = id;
   ed.currentTime = 0;
   ed.isPlaying = false;
+  stopEditorPreviewAudio();
   const s = activeScene();
   if (s) {
     document.getElementById('scenes-duration-input').value = s.durationMs;
@@ -725,6 +733,7 @@ function setActiveScene(id) {
   }
   rebuildViewportFromActive();
   renderScenesList();
+  renderAudioList();
   renderTimeline();
   renderTimeDisplay();
   updateAspectGuide();
@@ -868,6 +877,138 @@ function flashSaveStatus() {
   if (!el) return;
   el.style.opacity = '1';
   setTimeout(() => { el.style.opacity = '0'; }, 1200);
+}
+
+// ── Scene audio ──────────────────────────────────────────────────────
+function addAudioEntry() {
+  const s = activeScene();
+  if (!s) return;
+  if (!s.audio) s.audio = [];
+  const sounds = ed.assets.sounds || [];
+  s.audio.push({
+    id: 'aud-' + Math.random().toString(36).slice(2, 10),
+    src: sounds[0] || '',
+    start: 0,
+    priority: 60,           // scene-audio convention
+    policy: 'mix',
+    vol: 1,
+    loop: false,
+  });
+  renderAudioList();
+  queueSave();
+}
+
+function renderAudioList() {
+  const root = document.getElementById('scenes-audio-list');
+  if (!root) return;
+  const s = activeScene();
+  if (!s) { root.innerHTML = ''; return; }
+  const entries = s.audio || [];
+  if (entries.length === 0) {
+    root.innerHTML = `<div style="font-size:.65rem; color:var(--text-dim); opacity:.6; padding:4px 0;">No audio. Click + Add.</div>`;
+    return;
+  }
+  const sounds = ed.assets.sounds || [];
+  root.innerHTML = entries.map((a, idx) => `
+    <div data-audio-id="${a.id}" style="background:var(--surface); padding:6px; border-radius:4px; display:flex; flex-direction:column; gap:4px; font-size:.65rem;">
+      <div style="display:flex; gap:4px; align-items:center;">
+        <select class="aud-src input-field" style="flex:1; margin:0; padding:2px; font-size:.65rem;">
+          ${sounds.map(snd => `<option value="${esc(snd)}" ${snd === a.src ? 'selected' : ''}>${esc(snd)}</option>`).join('')}
+          ${sounds.includes(a.src) ? '' : `<option value="${esc(a.src)}" selected>${esc(a.src || '(none)')}</option>`}
+        </select>
+        <button class="aud-delete btn btn-ghost btn-sm" title="Delete" style="padding:2px 6px; font-size:.65rem; color:var(--red);">✕</button>
+      </div>
+      <div style="display:flex; gap:6px; align-items:center;">
+        <span style="opacity:.7; min-width:36px;">start</span>
+        <input type="number" class="aud-start" value="${a.start ?? 0}" min="0" step="100" style="width:70px; margin:0; padding:2px 4px; font-size:.65rem;">ms
+      </div>
+      <div style="display:flex; gap:6px; align-items:center;">
+        <span style="opacity:.7; min-width:36px;">vol</span>
+        <input type="range" class="aud-vol" min="0" max="1" step="0.01" value="${a.vol ?? 1}" style="flex:1;">
+        <span class="aud-vol-val" style="min-width:28px; text-align:right; font-family:monospace;">${(a.vol ?? 1).toFixed(2)}</span>
+      </div>
+      <div style="display:flex; gap:6px; align-items:center;">
+        <span style="opacity:.7; min-width:36px;">prio</span>
+        <input type="range" class="aud-pri" min="0" max="100" step="1" value="${a.priority ?? 60}" style="flex:1;">
+        <span class="aud-pri-val" style="min-width:28px; text-align:right; font-family:monospace;">${a.priority ?? 60}</span>
+      </div>
+      <div style="display:flex; gap:6px; align-items:center;">
+        <select class="aud-policy input-field" style="flex:1; margin:0; padding:2px; font-size:.65rem;">
+          ${AUDIO_POLICIES.map(p => `<option value="${p}" ${p === (a.policy || 'mix') ? 'selected' : ''}>${p}</option>`).join('')}
+        </select>
+        <label style="display:inline-flex; align-items:center; gap:4px;">
+          <input type="checkbox" class="aud-loop" ${a.loop ? 'checked' : ''}> loop
+        </label>
+      </div>
+    </div>
+  `).join('');
+
+  root.querySelectorAll('[data-audio-id]').forEach(row => {
+    const aid = row.dataset.audioId;
+    const get = () => activeScene()?.audio?.find(x => x.id === aid);
+    row.querySelector('.aud-src')?.addEventListener('change', (e) => { const a = get(); if (a) { a.src = e.target.value; queueSave(); } });
+    row.querySelector('.aud-start')?.addEventListener('change', (e) => {
+      const a = get(); if (!a) return;
+      a.start = Math.max(0, parseInt(e.target.value, 10) || 0);
+      queueSave();
+    });
+    row.querySelector('.aud-vol')?.addEventListener('input', (e) => {
+      const a = get(); if (!a) return;
+      a.vol = parseFloat(e.target.value);
+      row.querySelector('.aud-vol-val').textContent = a.vol.toFixed(2);
+      queueSave();
+    });
+    row.querySelector('.aud-pri')?.addEventListener('input', (e) => {
+      const a = get(); if (!a) return;
+      a.priority = parseInt(e.target.value, 10);
+      row.querySelector('.aud-pri-val').textContent = a.priority;
+      queueSave();
+    });
+    row.querySelector('.aud-policy')?.addEventListener('change', (e) => { const a = get(); if (a) { a.policy = e.target.value; queueSave(); } });
+    row.querySelector('.aud-loop')?.addEventListener('change', (e) => { const a = get(); if (a) { a.loop = e.target.checked; queueSave(); } });
+    row.querySelector('.aud-delete')?.addEventListener('click', () => {
+      const s = activeScene(); if (!s) return;
+      s.audio = (s.audio || []).filter(x => x.id !== aid);
+      renderAudioList();
+      queueSave();
+    });
+  });
+}
+
+// Editor ▶ Test — drives the viewport playhead from currentTime and
+// schedules scene audio through the same bus the runtime uses, so the
+// mix Fokker hears in the editor matches what plays on overlay.
+function startEditorPreview() {
+  stopEditorPreviewAudio();
+  const s = activeScene();
+  if (!s) return;
+  ed.currentTime = 0;
+  ed.playStartTime = performance.now();
+  ed.isPlaying = true;
+  for (const a of s.audio || []) {
+    const start = Math.max(0, a.start || 0);
+    if (start >= s.durationMs) continue;
+    const tid = setTimeout(() => {
+      if (!ed.isPlaying) return; // user stopped before this fired
+      const handle = audioBus.play({
+        src: a.src,
+        vol:      a.vol ?? 1,
+        priority: a.priority ?? 60,
+        policy:   a.policy ?? 'mix',
+        loop:     a.loop ?? false,
+        id:       `editor-${a.id}`,
+      });
+      if (handle) ed.audioPreview.handles.push(handle);
+    }, start);
+    ed.audioPreview.timeouts.push(tid);
+  }
+}
+
+function stopEditorPreviewAudio() {
+  for (const t of ed.audioPreview.timeouts) clearTimeout(t);
+  for (const h of ed.audioPreview.handles) { try { h?.stop?.(); } catch {} }
+  ed.audioPreview.timeouts = [];
+  ed.audioPreview.handles  = [];
 }
 
 // ── Keyframe interaction ─────────────────────────────────────────────
