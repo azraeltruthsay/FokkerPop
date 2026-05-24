@@ -53,6 +53,11 @@ function connect() {
     window.initCustomDicePickers?.();
     if (typeof renderWidgetList === 'function') renderWidgetList();
   }).catch(() => {});
+  // Scene index for Studio's playScene action dropdown. Loaded lazily here
+  // so the flow editor can show scene names even when the user hasn't
+  // opened the 🎬 Scenes tab yet (the editor module populates this too
+  // after saves; we just seed it from the server on boot).
+  fetch('/api/scenes').then(r => r.json()).then(s => { window.scenesCache = s; }).catch(() => { window.scenesCache = []; });
   
   document.getElementById('overlay-url').textContent = `http://localhost:${location.port || 4747}/?live=1`;
 

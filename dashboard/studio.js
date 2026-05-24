@@ -704,6 +704,7 @@ function onContextMenu(e) {
       <div class="ctx-item" onclick="addNode('action', 'spawnEffect', ${x}, ${y})">🎇 Effect</div>
       <div class="ctx-item" onclick="addNode('action', 'showBanner', ${x}, ${y})">📢 Banner</div>
       <div class="ctx-item" onclick="addNode('action', 'showImage', ${x}, ${y})">🖼️ Show Image</div>
+      <div class="ctx-item" onclick="addNode('action', 'playScene', ${x}, ${y})">🎬 Play Scene</div>
       <div class="ctx-item" onclick="addNode('action', 'playSound', ${x}, ${y})">🔊 Sound</div>
       <div class="ctx-item" onclick="addNode('action', 'fireEvent', ${x}, ${y})">🚀 Fire Event</div>
       <div class="ctx-item" onclick="addNode('action', 'rollDice', ${x}, ${y})">🎲 Roll Dice</div>
@@ -1087,6 +1088,19 @@ function renderProps() {
   if (n.action === 'updateStat') {
     html += exprField('Path (e.g. session.subCount)', 'path', n.data.path || '');
     html += exprField('Increment By', 'by', n.data.by ?? 1);
+  }
+
+  if (n.action === 'playScene') {
+    const sceneList = window.scenesCache || [];
+    html += `
+      <div class="prop-field">
+        <label>Scene</label>
+        <select class="input-field" oninput="activeNode.data.sceneId=this.value; window.queueStudioSave()">
+          <option value="">— Pick a scene —</option>
+          ${sceneList.map(s => `<option value="${esc(s.id)}" ${s.id === (n.data.sceneId || '') ? 'selected' : ''}>${esc(s.name)}</option>`).join('')}
+        </select>
+        <div style="font-size:0.6rem; color:var(--text-dim); margin-top:4px;">Author scenes in the 🎬 Scenes tab. Mounts the scene on the overlay when this flow fires.</div>
+      </div>`;
   }
 
   if (n.action === 'showImage') {

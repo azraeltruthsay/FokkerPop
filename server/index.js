@@ -623,6 +623,10 @@ const httpServer = createServer((req, res) => {
     '/vendor/three/loaders/GLTFLoader.js':            'three/examples/jsm/loaders/GLTFLoader.js',
     '/vendor/three/utils/BufferGeometryUtils.js':     'three/examples/jsm/utils/BufferGeometryUtils.js',
     '/vendor/three/utils/SkeletonUtils.js':           'three/examples/jsm/utils/SkeletonUtils.js',
+    // Editor-only — used by the Studio Scenes tab's 3D viewport for camera
+    // orbit and per-object transform gizmos. Not needed on the overlay.
+    '/vendor/three/controls/OrbitControls.js':        'three/examples/jsm/controls/OrbitControls.js',
+    '/vendor/three/controls/TransformControls.js':    'three/examples/jsm/controls/TransformControls.js',
     // Back-compat aliases for any downstream code that still points at the
     // flat paths. Safe to remove once everything uses /vendor/three/...
     '/vendor/GLTFLoader.js':                          'three/examples/jsm/loaders/GLTFLoader.js',

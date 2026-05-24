@@ -41,6 +41,7 @@ const EXPECTED_PAGES = [
   { label: 'Layout',       id: 'page-layout' },
   { label: 'Config',       id: 'page-config' },
   { label: 'Studio',       id: 'page-studio' },
+  { label: 'Scenes',       id: 'page-scenes' },
   { label: 'Event Log',    id: 'page-log' },
   { label: 'Setup',        id: 'page-setup' },
 ];
