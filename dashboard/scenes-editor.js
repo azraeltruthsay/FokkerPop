@@ -1531,11 +1531,17 @@ function renderTimeline() {
                           width:10px; height:10px; background:${fillColor};
                           border:${borderWidth} solid ${borderColor}; cursor:ew-resize;"></div>`;
     }).join('');
+    const motionPath = computeMotionPath(track.keyframes, dur);
+    const motionSvg = motionPath
+      ? `<svg style="position:absolute; inset:0; pointer-events:none; width:100%; height:100%;" viewBox="0 0 100 100" preserveAspectRatio="none">
+           <path d="${motionPath}" fill="none" stroke="rgba(145,71,255,0.45)" stroke-width="1.2" vector-effect="non-scaling-stroke" stroke-linecap="round" stroke-linejoin="round"/>
+         </svg>`
+      : '';
     return `
       <div class="scene-track-row" data-object-id="${track.objectId}"
            style="display:flex; align-items:center; height:32px; border-bottom:1px solid rgba(255,255,255,0.04); ${isSelected ? 'background:rgba(145,71,255,0.15);' : ''}">
         <div style="width:160px; padding:0 10px; font-size:.7rem; color:var(--text); flex-shrink:0; cursor:pointer; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${label}</div>
-        <div class="scene-track-strip" style="flex:1; position:relative; height:100%; cursor:crosshair;">${kfs}</div>
+        <div class="scene-track-strip" style="flex:1; position:relative; height:100%; cursor:crosshair;">${motionSvg}${kfs}</div>
       </div>`;
   }).join('') + `<div id="scene-playhead" style="position:absolute; top:0; bottom:0; left:0; width:2px; background:#ff6;
                        transform:translateX(0); pointer-events:none; box-shadow:0 0 4px #ff6;"></div>`;
@@ -1550,6 +1556,61 @@ function renderTimeline() {
   bindBranchKeyframes(body);
 
   renderTimelineHead();
+}
+
+// Build a small SVG path showing the shape of an object's position
+// movement across the scene duration. Visible behind the keyframe
+// diamonds as a faint purple line — gives the streamer an at-a-glance
+// preview of which tracks are animating, and the general shape of the
+// motion, without scrubbing through to find out. Tracks with only one
+// or zero position keyframes return '' (no motion to draw).
+function computeMotionPath(keyframes, dur) {
+  if (!keyframes || keyframes.length < 2 || dur <= 0) return '';
+  const positionKfs = keyframes.filter(kf => kf.position).sort((a, b) => a.t - b.t);
+  if (positionKfs.length < 2) return '';
+
+  const N = 60;
+  const samples = [];
+  let min = Infinity, max = -Infinity;
+  for (let i = 0; i < N; i++) {
+    const t = (i / (N - 1)) * dur;
+    const pos = resolvePositionAtTime(positionKfs, t);
+    if (!pos) continue;
+    // Magnitude rather than per-axis so the line shape captures total
+    // motion regardless of which axis the object is moving along.
+    const mag = Math.hypot(pos[0], pos[1], pos[2]);
+    if (mag < min) min = mag;
+    if (mag > max) max = mag;
+    samples.push({ x: (i / (N - 1)) * 100, mag });
+  }
+  if (samples.length < 2 || max - min < 0.001) return '';
+
+  // Normalize magnitudes into the inner 60% of the row height (15..75
+  // in 0-100 viewBox space) so the line never touches the row borders.
+  return samples.map((s, i) => {
+    const norm = (s.mag - min) / (max - min);
+    const y = 75 - norm * 60;
+    return `${i === 0 ? 'M' : 'L'} ${s.x.toFixed(2)} ${y.toFixed(2)}`;
+  }).join(' ');
+}
+
+// Lerp the position vector at time t using only position-carrying
+// keyframes (sorted). Mirrors the player's interpolation but without
+// the easing curve so the sparkline shows the raw shape of motion —
+// easing nuance lives in the keyframe-diamond styling instead.
+function resolvePositionAtTime(sortedKfs, t) {
+  if (t <= sortedKfs[0].t) return sortedKfs[0].position;
+  if (t >= sortedKfs[sortedKfs.length - 1].t) return sortedKfs[sortedKfs.length - 1].position;
+  let i = 0;
+  while (i < sortedKfs.length - 1 && sortedKfs[i + 1].t < t) i++;
+  const a = sortedKfs[i], b = sortedKfs[i + 1];
+  const span = b.t - a.t;
+  const alpha = span > 0 ? (t - a.t) / span : 0;
+  return [
+    a.position[0] + (b.position[0] - a.position[0]) * alpha,
+    a.position[1] + (b.position[1] - a.position[1]) * alpha,
+    a.position[2] + (b.position[2] - a.position[2]) * alpha,
+  ];
 }
 
 function renderTimelineHead() {
