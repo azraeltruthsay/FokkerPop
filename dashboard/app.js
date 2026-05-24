@@ -174,6 +174,36 @@ window.populateGallery = function() {
 
 window.triggerUpload = (type) => { document.getElementById('upload-' + type).click(); };
 
+// Asset-conversion progress overlay. Lazy-created on first show so the
+// dashboard doesn't ship a hidden modal everyone scrolls past. Used by
+// the model upload path (FBX/OBJ/STL/PLY → GLB) to surface the parse +
+// export phases; the user sees what's happening when a multi-MB file
+// takes a few seconds rather than the dashboard looking frozen.
+function showUploadProgress(msg) {
+  let el = document.getElementById('upload-progress-overlay');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'upload-progress-overlay';
+    el.style.cssText = 'position:fixed; inset:0; background:rgba(0,0,0,0.6); display:flex; align-items:center; justify-content:center; z-index:99999; backdrop-filter:blur(4px);';
+    el.innerHTML = `<div style="background:var(--surface); padding:20px 30px; border-radius:8px; border:1px solid var(--border); display:flex; flex-direction:column; align-items:center; gap:10px; min-width:280px;">
+      <div style="width:32px; height:32px; border:3px solid var(--surface2); border-top-color:var(--accent); border-radius:50%; animation:fokker-spin 0.8s linear infinite;"></div>
+      <div id="upload-progress-msg" style="font-size:.85rem; color:var(--text); text-align:center;"></div>
+      <style>@keyframes fokker-spin { to { transform: rotate(360deg); } }</style>
+    </div>`;
+    document.body.appendChild(el);
+  }
+  el.style.display = 'flex';
+  document.getElementById('upload-progress-msg').textContent = msg;
+}
+function updateUploadProgress(msg) {
+  const m = document.getElementById('upload-progress-msg');
+  if (m) m.textContent = msg;
+}
+function hideUploadProgress() {
+  const el = document.getElementById('upload-progress-overlay');
+  if (el) el.style.display = 'none';
+}
+
 window.refreshAssets = function() {
   fetch('/api/assets').then(r => r.json()).then(a => {
     window.assets = a;
@@ -185,18 +215,38 @@ window.refreshAssets = function() {
 
 window.handleFileUpload = async function(type, file) {
   if (!file) return;
-  
+
   const status = document.getElementById('error-reporter');
   const msgEl = document.getElementById('error-msg');
 
   try {
+    // Model conversion path: FBX/OBJ/STL/PLY get parsed in the browser and
+    // re-exported as binary GLB before they reach the server. Conversion
+    // runs synchronously inline so a failure stops the upload entirely —
+    // no orphan files on disk, no silent-success-then-vanish (the bug
+    // shape v0.3.33 was guarding against on the server).
+    let uploadFile = file;
+    if (type === 'model') {
+      const conv = await import('/shared/asset-conversion.js');
+      const ext = conv.extensionOf(file.name);
+      if (ext && conv.CONVERTIBLE_EXTS.includes(ext)) {
+        showUploadProgress(`Converting ${file.name}…`);
+        try {
+          uploadFile = await conv.convertModelToGlb(file, msg => updateUploadProgress(msg));
+        } finally {
+          hideUploadProgress();
+        }
+      }
+    }
+
     const res = await fetch('/api/upload', {
       method:  'POST',
-      headers: { 'x-filename': file.name, 'x-type': type },
-      body:    file
+      headers: { 'x-filename': uploadFile.name, 'x-type': type },
+      body:    uploadFile,
     });
     if (res.ok) {
-      alert('Upload successful!');
+      const convertedNote = uploadFile !== file ? ` (auto-converted from ${file.name})` : '';
+      alert('Upload successful!' + convertedNote);
       fetch('/api/assets').then(r => r.json()).then(a => {
         window.assets = a;
         populateGallery();

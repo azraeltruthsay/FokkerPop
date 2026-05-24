@@ -627,6 +627,21 @@ const httpServer = createServer((req, res) => {
     // orbit and per-object transform gizmos. Not needed on the overlay.
     '/vendor/three/controls/OrbitControls.js':        'three/examples/jsm/controls/OrbitControls.js',
     '/vendor/three/controls/TransformControls.js':    'three/examples/jsm/controls/TransformControls.js',
+    // Phase 6 — in-browser conversion of FBX/OBJ/STL/PLY to GLB so the
+    // streamer can drop arbitrary model formats into the asset library
+    // without us shipping multiple loaders on the overlay. All conversion
+    // happens client-side in the dashboard upload flow; the overlay still
+    // only ever loads GLBs.
+    '/vendor/three/loaders/FBXLoader.js':             'three/examples/jsm/loaders/FBXLoader.js',
+    '/vendor/three/loaders/OBJLoader.js':             'three/examples/jsm/loaders/OBJLoader.js',
+    '/vendor/three/loaders/STLLoader.js':             'three/examples/jsm/loaders/STLLoader.js',
+    '/vendor/three/loaders/PLYLoader.js':             'three/examples/jsm/loaders/PLYLoader.js',
+    '/vendor/three/exporters/GLTFExporter.js':        'three/examples/jsm/exporters/GLTFExporter.js',
+    // FBXLoader transitive deps. fflate decompresses binary FBX; NURBS*
+    // are needed for FBX files that include curve data.
+    '/vendor/three/libs/fflate.module.js':            'three/examples/jsm/libs/fflate.module.js',
+    '/vendor/three/curves/NURBSCurve.js':             'three/examples/jsm/curves/NURBSCurve.js',
+    '/vendor/three/curves/NURBSUtils.js':             'three/examples/jsm/curves/NURBSUtils.js',
     // Back-compat aliases for any downstream code that still points at the
     // flat paths. Safe to remove once everything uses /vendor/three/...
     '/vendor/GLTFLoader.js':                          'three/examples/jsm/loaders/GLTFLoader.js',
@@ -1031,10 +1046,15 @@ const httpServer = createServer((req, res) => {
     // (and the dashboard's selection dropdowns) filter it back out — so
     // users see "upload succeeded" then can't find their file. Issue #8.
     const ALLOWED_EXTS = {
-      sound:     ['.wav', '.mp3', '.ogg', '.m4a'],
-      sticker:   ['.png', '.webp', '.gif', '.jpg', '.jpeg', '.svg'],
-      image:     ['.png', '.webp', '.gif', '.jpg', '.jpeg', '.svg'],
-      character: ['.png', '.webp', '.jpg', '.jpeg'],
+      // v0.4.5 expanded sound + image lists: flac/opus are common modern
+      // codecs both Chrome+Firefox decode natively, and avif is the
+      // increasingly-default web image format. Models stay glb/gltf only
+      // because the dashboard's upload flow converts other 3D formats
+      // (fbx/obj/stl/ply) client-side before they ever reach the server.
+      sound:     ['.wav', '.mp3', '.ogg', '.m4a', '.flac', '.opus'],
+      sticker:   ['.png', '.webp', '.gif', '.jpg', '.jpeg', '.svg', '.avif'],
+      image:     ['.png', '.webp', '.gif', '.jpg', '.jpeg', '.svg', '.avif'],
+      character: ['.png', '.webp', '.jpg', '.jpeg', '.avif'],
       model:     ['.glb', '.gltf'],
     };
     const allowed = ALLOWED_EXTS[type];
@@ -1044,7 +1064,7 @@ const httpServer = createServer((req, res) => {
         log.warn(`Upload rejected: ${name} (type=${type}, ext=${ext || '(none)'}) — not in allowed list ${allowed.join(', ')}`);
         res.writeHead(400);
         res.end(`This ${type} format isn't supported. Allowed: ${allowed.join(', ')}. ` +
-          (type === 'model' ? 'Re-export from your modeling tool as .glb (the universal "JPEG of 3D" format) — Three.js loads it natively. .fbx/.obj/.stl/.usd/.abc/.ply aren\'t supported.' : ''));
+          (type === 'model' ? 'The dashboard auto-converts .fbx/.obj/.stl/.ply to .glb when you upload through the Assets tab; this error only appears if the file reached the server without conversion. Either drop the file into the dashboard\'s upload button, or re-export as .glb yourself.' : ''));
         return;
       }
     }
