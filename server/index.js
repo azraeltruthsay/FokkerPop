@@ -1391,6 +1391,25 @@ async function handleOAuthCallback(params, res) {
     if (token.access_token) {
       settings.twitch.accessToken  = token.access_token;
       settings.twitch.refreshToken = token.refresh_token ?? '';
+      // Resolve the broadcaster's user id from the new token. EventSub's
+      // isConfigured check requires it, and without this lookup a fresh
+      // install (or one where settings.twitch.userId was missing for any
+      // reason) would save the token, call connect(), hit the
+      // "Offline mode active" no-op, and silently stay disconnected —
+      // exactly the symptom of "OAuth succeeded but badge never turns
+      // green." Fetched here so the user never has to paste their
+      // channel into a separate Setup step.
+      try {
+        const me = await helix.getAuthenticatedUser(token.access_token);
+        if (me?.id) {
+          settings.twitch.userId = me.id;
+          if (me.login) settings.twitch.userLogin = me.login;
+        } else {
+          log.warn('Twitch OAuth: /users returned no user — EventSub will stay disconnected. Check that the access token has the user:read:email or basic scope.');
+        }
+      } catch (err) {
+        log.warn(`Twitch OAuth: failed to look up user id (${err.message}). EventSub will stay disconnected until the next successful lookup.`);
+      }
       saveSettings();
       log.info(`Twitch OAuth success. Token stored; reconnecting EventSub.`);
       res.writeHead(200, { 'Content-Type': 'text/html' });

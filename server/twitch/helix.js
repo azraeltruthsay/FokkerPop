@@ -19,6 +19,16 @@ export async function getUser(login, accessToken) {
   return data.data?.[0] ?? null;
 }
 
+// /users with no login param returns the authenticated user — the account
+// whose access token is on the request. Used right after OAuth completes
+// to resolve the user's broadcaster id (which EventSub.isConfigured needs
+// before it'll dial out) without making the user paste their channel name
+// into a separate Setup step.
+export async function getAuthenticatedUser(accessToken) {
+  const data = await helixGet('/users', accessToken);
+  return data.data?.[0] ?? null;
+}
+
 // Live-stream info for the broadcaster. Empty array → offline. When live,
 // returns one entry with viewer_count, title, game_name, started_at, etc.
 // Used by the stream-stats poller to keep state.twitch.live in sync.
