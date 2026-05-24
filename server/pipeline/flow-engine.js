@@ -12,6 +12,7 @@ import { parseTraySpec, expandPercentile } from '../../shared/dice.js';
 
 export class FlowEngine {
   #flows = [];
+  #scenes = [];
 
   constructor(flows = []) {
     this.#flows = flows;
@@ -19,6 +20,13 @@ export class FlowEngine {
 
   setFlows(flows) {
     this.#flows = flows;
+  }
+
+  // Registered so the playScene action can look up the full scene JSON by id.
+  // Kept optional on the engine surface (callers use setScenes?.(...)) so old
+  // call-sites in tests don't break.
+  setScenes(scenes) {
+    this.#scenes = scenes || [];
   }
 
   /**
@@ -119,6 +127,18 @@ export class FlowEngine {
               src: data.file,
               durationMs: Number(data.durationMs) || 5000,
             }, event.isTest);
+          } else if (node.action === 'playScene') {
+            // Look up the scene by id and ship the whole JSON to overlays.
+            // Sending the full scene (rather than just the id) means the
+            // overlay's scene-player doesn't have to re-fetch /api/scenes,
+            // and avoids a race where the scene was edited between the flow
+            // firing and the overlay loading it.
+            const scene = this.#scenes.find(s => s.id === data.sceneId);
+            if (!scene) {
+              log.warn(`playScene: no scene with id "${data.sceneId}" — flow [${node.id}] skipped`);
+            } else {
+              broadcastEffect('scene-play', { scene }, event.isTest);
+            }
           } else if (node.action === 'adjustEnergy') {
             const current = state.get('crowd.energy') ?? 0;
             const amount  = Number(data.amount);

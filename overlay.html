@@ -1821,6 +1821,19 @@ const EFFECT_DEFAULT_SOUNDS = {
   'dice-roll':       'coin.wav',
 };
 
+// Lazy-loaded on first scene-play to keep Three.js out of the initial
+// overlay bundle for setups that never use scenes.
+let _scenePlayerPromise = null;
+function playScenePayload(sceneJson) {
+  if (!sceneJson) return;
+  if (!_scenePlayerPromise) {
+    _scenePlayerPromise = import('/shared/scene-player.js');
+  }
+  _scenePlayerPromise.then(mod => mod.playScene(sceneJson)).catch(err => {
+    console.warn('[scene-play] failed:', err);
+  });
+}
+
 function dispatchEffect(effect, p) {
   const explicit = Object.prototype.hasOwnProperty.call(p, 'sound');
   const sound = explicit ? p.sound : EFFECT_DEFAULT_SOUNDS[effect];
@@ -1843,6 +1856,7 @@ function dispatchEffect(effect, p) {
     case 'confetti':        spawnConfetti();                     break;
     case 'sticker-rain':    spawnStickerRain(p.duration ?? 7000, p.pool); break;
     case 'image-show':      enqueueImageShow(p.src, p.durationMs ?? 5000); break;
+    case 'scene-play':      playScenePayload(p.scene);           break;
     case 'crowd-explosion': spawnCrowdExplosion();               break;
     case 'alert-banner':    alertQueue.push(p);                  break;
     case 'floating-text':   spawnFloatingText(p.text, p.x, p.y); break;

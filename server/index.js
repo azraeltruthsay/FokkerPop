@@ -9,6 +9,7 @@ import state                      from './state.js';
 import { applyPipeline }          from './pipeline/index.js';
 import { TwitchEventSub }         from './twitch/eventsub.js';
 import flowEngine, { TEST_PAYLOADS } from './pipeline/flow-engine.js';
+import { validateScene }             from './pipeline/scenes.js';
 import obs                   from './obs.js';
 import * as helix            from './twitch/helix.js';
 import settings, { ROOT, loadedFrom, saveSettings } from './settings-loader.js';
@@ -51,9 +52,11 @@ const redeems  = loadAndEnsureJson('redeems.json', {});
 const commands = loadAndEnsureJson('commands.json', {});
 const flows    = loadAndEnsureJson('flows.json',   []);
 const widgets  = loadAndEnsureJson('widgets.json', []);
+const scenes   = loadAndEnsureJson('scenes.json',  []);
 state.set('goals', goals);
 state.set('overlay.widgets', widgets);
 flowEngine.setFlows(flows);
+flowEngine.setScenes?.(scenes);
 
 const commandCooldowns = new Map();
 
@@ -1088,6 +1091,37 @@ const httpServer = createServer((req, res) => {
         flows.push(...newFlows);
         flowEngine.setFlows(flows);
         writeFileSync(join(ROOT, 'flows.json'), JSON.stringify(flows, null, 2));
+        res.writeHead(200); res.end('{"ok":true}');
+      } catch (err) { res.writeHead(400); res.end(err.message); }
+    });
+    return;
+  }
+
+  if (path === '/api/scenes' && req.method === 'GET') {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    return res.end(JSON.stringify(scenes));
+  }
+
+  // Whole-array replace, mirroring /api/flows. Each scene is validated before
+  // we accept the write; a single bad scene aborts the whole save with a 400
+  // and a human message so the dashboard's error-reporter banner can surface
+  // it inline (same path v0.3.33 added for the upload extension rejection).
+  if (path === '/api/scenes' && req.method === 'POST') {
+    let body = '';
+    req.on('data', d => { body += d; if (body.length > 4_000_000) req.destroy(); });
+    req.on('end', () => {
+      try {
+        const incoming = JSON.parse(body);
+        if (!Array.isArray(incoming)) throw new Error('scenes must be an array');
+        for (const s of incoming) {
+          const result = validateScene(s);
+          if (!result.ok) { res.writeHead(400); return res.end(result.error); }
+        }
+        scenes.length = 0;
+        scenes.push(...incoming);
+        flowEngine.setScenes?.(scenes);
+        writeFileSync(join(ROOT, 'scenes.json'), JSON.stringify(scenes, null, 2));
+        broadcast(dashboards, { type: 'scenes-updated' });
         res.writeHead(200); res.end('{"ok":true}');
       } catch (err) { res.writeHead(400); res.end(err.message); }
     });
