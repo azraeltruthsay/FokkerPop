@@ -55,6 +55,17 @@ export async function stopScene(opts = {}) {
   for (const handle of currentScene.audioHandles || []) {
     try { handle?.stop?.(); } catch {}
   }
+  // Tear down the branch-wait WS listener + any active subscription so a
+  // late event from the server doesn't trip an already-dead wait state.
+  if (currentScene.busMsgListener && window.ws) {
+    try { window.ws.removeEventListener('message', currentScene.busMsgListener); } catch {}
+  }
+  if (currentScene.waitState) {
+    clearTimeout(currentScene.waitState.timeoutId);
+    for (const t of currentScene.waitState.subscribedTypes || []) {
+      sendWS({ type: '_overlay.unsubscribe-bus', eventType: t });
+    }
+  }
   try {
     currentScene.scene?.traverse?.(obj => {
       if (obj.geometry) obj.geometry.dispose?.();
@@ -247,8 +258,29 @@ export async function playScene(sceneJson) {
     audioTimeouts: [],
     audioHandles:  [],
     forkTimeouts:  [],
+    // Branch clips sorted by start so the per-frame "did we just cross
+    // one?" check is a forward linear scan. _fired is mutated in-place
+    // on the clip to mark already-triggered clips (cleared at scene end).
+    branchClips: [...(sceneJson.branchClips || [])].sort((a, b) => a.start - b.start).map(c => ({ ...c, _fired: false })),
+    waitState: null,             // { clip, enteredAt, timeoutId, subscribedTypes }
+    busMsgListener: null,
   };
   currentScene = stateRef;
+
+  // Listen for bus events forwarded by the server while the scene is in
+  // a branch-clip wait state. Filters by stateRef so a stale message
+  // arriving after teardown can't accidentally resolve a wait from a
+  // since-preempted scene.
+  if (window.ws) {
+    stateRef.busMsgListener = (e) => {
+      if (currentScene !== stateRef || !stateRef.waitState) return;
+      let msg;
+      try { msg = JSON.parse(e.data); } catch { return; }
+      if (msg.type !== 'bus-event' || !msg.event) return;
+      handleBusEventForWait(stateRef, msg.event);
+    };
+    window.ws.addEventListener('message', stateRef.busMsgListener);
+  }
 
   // Fork clips: scheduled fire-and-forget at their start times. Each
   // target dispatches via a different mechanism — flow/event/effect
@@ -289,8 +321,38 @@ export async function playScene(sceneJson) {
   }
 
   function loop() {
-    const elapsed = performance.now() - stateRef.startTime;
-    if (elapsed >= stateRef.durationMs) {
+    const realElapsed = performance.now() - stateRef.startTime;
+
+    // Check if we just crossed a branch clip's start time and need to
+    // enter a wait state. Skipped if we're already waiting (one branch
+    // at a time). Forward linear scan since branchClips is pre-sorted.
+    if (!stateRef.waitState) {
+      for (const bc of stateRef.branchClips) {
+        if (bc._fired) continue;
+        if (realElapsed >= bc.start) {
+          bc._fired = true;
+          enterBranchWait(stateRef, bc);
+          break;
+        }
+      }
+    }
+
+    // In wait state, animation uses a folded displayElapsed that cycles
+    // within the loop region (or freezes at clip.start if no loop region
+    // was authored). Real elapsed keeps advancing in performance.now()
+    // terms — needed so the wait's timeout can fire on schedule.
+    let displayElapsed = realElapsed;
+    if (stateRef.waitState) {
+      const { clip, enteredAt } = stateRef.waitState;
+      if (clip.loopRegion) {
+        const len = Math.max(1, clip.loopRegion.to - clip.loopRegion.from);
+        displayElapsed = clip.loopRegion.from + ((performance.now() - enteredAt) % len);
+      } else {
+        displayElapsed = clip.start;
+      }
+    } else if (realElapsed >= stateRef.durationMs) {
+      // Only natural scene end when not waiting — a wait that outlasts
+      // the scene's durationMs holds the scene open until it resolves.
       stopScene();
       return;
     }
@@ -299,21 +361,109 @@ export async function playScene(sceneJson) {
     for (const track of stateRef.tracks) {
       const target = stateRef.objects[track.objectId];
       if (!target) continue;
-      applyKeyframeAt(target, track.keyframes, elapsed);
+      applyKeyframeAt(target, track.keyframes, displayElapsed);
     }
-    // After channel interpolation: path-follow overrides position, then
-    // shake adds a sine displacement on top. Done in this order so a
-    // path-followed object can still shake.
-    const elapsedSec = elapsed / 1000;
+    const elapsedSec = displayElapsed / 1000;
     for (const id in stateRef.objects) {
       const o = stateRef.objects[id];
-      if (o.userData?.pathCurve) applyPathFollow(o, elapsed, stateRef.durationMs);
+      if (o.userData?.pathCurve) applyPathFollow(o, displayElapsed, stateRef.durationMs);
       if (o.userData?.currentShake) applyShakeDisplacement(o, elapsedSec);
     }
-    if (stateRef.cameraKeyframes) applyCameraAt(camera, stateRef.cameraKeyframes, elapsed);
+    if (stateRef.cameraKeyframes) applyCameraAt(camera, stateRef.cameraKeyframes, displayElapsed);
     renderer.render(scene, camera);
   }
   loop();
+}
+
+// Entered when realElapsed crosses a branch clip's start. Subscribes to
+// the wait's event type via the server's bus-subscription bridge, and
+// arms a setTimeout for the timeout target (if configured). The wait
+// resolves on the first matching event whose payload satisfies any
+// branch's match (first-match-wins; empty match = unconditional
+// fallback) — see handleBusEventForWait for resolution logic.
+function enterBranchWait(stateRef, clip) {
+  if (!clip.wait || !clip.wait.eventType) return;
+  const eventType = clip.wait.eventType;
+  sendWS({ type: '_overlay.subscribe-bus', eventType });
+  const subscribedTypes = new Set([eventType]);
+  let timeoutId = null;
+  if (clip.timeout?.ms > 0) {
+    timeoutId = setTimeout(() => {
+      // Skip if another path already resolved us (the listener cleared
+      // waitState first) or if the scene was preempted.
+      if (currentScene !== stateRef || stateRef.waitState?.clip !== clip) return;
+      resolveBranchWait(stateRef, clip, clip.timeout.target);
+    }, clip.timeout.ms);
+  }
+  stateRef.waitState = { clip, enteredAt: performance.now(), timeoutId, subscribedTypes };
+}
+
+function handleBusEventForWait(stateRef, event) {
+  const ws = stateRef.waitState;
+  if (!ws) return;
+  const clip = ws.clip;
+  if (event.type !== clip.wait.eventType) return;
+  // First-match-wins. Empty match {} matches anything (fallback branch).
+  // Match keys check against event.payload first, then top-level event
+  // — covers both `{ value: 6 }` (payload) and `{ user: 'X' }` if
+  // somebody declared a top-level user field.
+  const branches = clip.branches || [];
+  for (const br of branches) {
+    if (matchesEvent(br.match, event)) {
+      resolveBranchWait(stateRef, clip, br.target);
+      return;
+    }
+  }
+  // No branch matched the event. The simplest call is to ignore it and
+  // keep waiting — gives the streamer "any event that matches NO branch
+  // is invalid input" semantics. Timeout still applies.
+}
+
+function matchesEvent(match, event) {
+  if (!match || Object.keys(match).length === 0) return true;
+  const payload = event.payload || {};
+  for (const [k, v] of Object.entries(match)) {
+    const actual = payload[k] !== undefined ? payload[k] : event[k];
+    if (actual !== v) return false;
+  }
+  return true;
+}
+
+function resolveBranchWait(stateRef, clip, target) {
+  // Tear down subscriptions + timeout regardless of target type so a
+  // late-arriving second event can't double-fire the resolution.
+  if (stateRef.waitState) {
+    clearTimeout(stateRef.waitState.timeoutId);
+    for (const t of stateRef.waitState.subscribedTypes || []) {
+      sendWS({ type: '_overlay.unsubscribe-bus', eventType: t });
+    }
+    stateRef.waitState = null;
+  }
+  if (!target) return;
+  switch (target.type) {
+    case 'jump':
+      // Resume scene at target.time by shifting startTime so
+      // performance.now() - startTime == target.time. The branch clip's
+      // _fired flag stays true so we don't re-enter the same wait if
+      // the jump lands before its start (unusual but tolerated).
+      stateRef.startTime = performance.now() - (target.time || 0);
+      break;
+    case 'scene':
+      sendWS({ type: '_overlay.play-scene', sceneId: target.sceneId });
+      break;
+    case 'scene-end':
+      stopScene();
+      break;
+    case 'flow':
+      sendWS({ type: '_overlay.run-flow', flowId: target.flowId });
+      // Resume scene from clip.start so post-branch content plays next.
+      stateRef.startTime = performance.now() - clip.start;
+      break;
+    case 'effect':
+      sendWS({ type: '_overlay.fire-effect', effect: target.effect, payload: target.payload ?? {} });
+      stateRef.startTime = performance.now() - clip.start;
+      break;
+  }
 }
 
 function applyTransform(obj, t) {

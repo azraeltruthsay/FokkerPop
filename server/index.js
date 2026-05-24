@@ -349,6 +349,22 @@ function sampleResources() {
 }
 setInterval(sampleResources, RESOURCE_SAMPLE_MS);
 
+// ── Bus → overlay subscription bridge (Phase 7b) ──────────────────────────────
+// Overlays that have entered a scene branch-clip wait state subscribe to a
+// specific event type via _overlay.subscribe-bus. This listener forwards
+// matching events back as { type:'bus-event', event } so the scene-player
+// can resolve its wait. Subscriptions are per-WS (live on ws._busSubs)
+// and torn down on disconnect — we never broadcast bus events to overlays
+// that aren't actively waiting, so the firehose stays contained.
+bus.on('*', (event) => {
+  if (!event?.type) return;
+  for (const ws of overlays) {
+    if (ws._busSubs?.has(event.type)) {
+      send(ws, { type: 'bus-event', event });
+    }
+  }
+});
+
 // ── Event → state + effects ───────────────────────────────────────────────────
 bus.on('*', async (event) => {
   if (isShuttingDown) return;
@@ -1521,6 +1537,15 @@ wss.on('connection', (ws, req) => {
       if (msg.type === '_overlay.play-scene' && typeof msg.sceneId === 'string') {
         const sc = scenes.find(s => s.id === msg.sceneId);
         if (sc) broadcastEffect('scene-play', { scene: sc }, false);
+      }
+      // Branch-clip wait subscriptions. The scene-player calls these as
+      // it enters/exits wait state. ws._busSubs is lazily allocated so
+      // overlays that never use scenes don't carry the empty set.
+      if (msg.type === '_overlay.subscribe-bus' && typeof msg.eventType === 'string') {
+        (ws._busSubs ||= new Set()).add(msg.eventType);
+      }
+      if (msg.type === '_overlay.unsubscribe-bus' && typeof msg.eventType === 'string') {
+        ws._busSubs?.delete(msg.eventType);
       }
       if (msg.type === '_overlay.dice-rolled' && typeof msg.result === 'number') {
         // Overlay dice settled and read a face — rebroadcast as a bus event so

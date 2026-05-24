@@ -228,6 +228,7 @@ function bindToolbar() {
   });
   document.getElementById('scenes-cam-key').addEventListener('click', captureCameraKeyframe);
   document.getElementById('scenes-add-fork').addEventListener('click', addForkAtScrubber);
+  document.getElementById('scenes-add-branch').addEventListener('click', addBranchAtScrubber);
   document.getElementById('scenes-mount-widget-id').addEventListener('change', (e) => {
     const s = activeScene(); if (!s) return;
     s.targetWidgetId = e.target.value || undefined;
@@ -1406,6 +1407,7 @@ function renderTimeline() {
   const dur = s.durationMs || 10000;
   const cameraKfs = s.cameraTrack?.keyframes || [];
   const forkClips = s.forkClips || [];
+  const branchClips = s.branchClips || [];
   // Camera track always renders, even with zero keyframes — gives the
   // streamer a visible target for the "📷 Key Camera" button. Object
   // tracks below it appear only when at least one object exists.
@@ -1450,13 +1452,42 @@ function renderTimeline() {
       </div>
     </div>`;
 
+  // Branch-clip row: red diamonds. Pinned alongside forks so all
+  // control-flow markers are visually adjacent. Loop region (if set)
+  // renders as a faint horizontal bar under the diamond to make it
+  // obvious which clips have authored wait loops vs. freeze-frame
+  // waits.
+  const branchesRowHtml = `
+    <div class="scene-track-row"
+         style="display:flex; align-items:center; height:32px; border-bottom:1px solid rgba(255,255,255,0.08); background:rgba(220,80,120,0.06);">
+      <div style="width:160px; padding:0 10px; font-size:.7rem; color:var(--text); flex-shrink:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">🌿 Branches</div>
+      <div class="scene-track-strip" data-branch-strip="1" style="flex:1; position:relative; height:100%; cursor:crosshair;">
+        ${branchClips.map(bc => {
+          const pct = Math.max(0, Math.min(100, (bc.start / dur) * 100));
+          const loopBarHtml = bc.loopRegion ? (() => {
+            const lf = Math.max(0, Math.min(100, (bc.loopRegion.from / dur) * 100));
+            const lt = Math.max(0, Math.min(100, (bc.loopRegion.to   / dur) * 100));
+            return `<div style="position:absolute; left:${lf}%; width:${lt - lf}%; top:60%; height:4px; background:rgba(220,80,120,0.5); border-radius:2px; pointer-events:none;"></div>`;
+          })() : '';
+          const branchCount = (bc.branches || []).length;
+          return `${loopBarHtml}<div class="scene-branch-keyframe"
+                       data-branch-id="${esc(bc.id)}"
+                       title="Branch @ ${bc.start}ms · wait ${esc(bc.wait?.eventType || '?')} · ${branchCount} branches (drag to retime, right-click to edit)"
+                       style="position:absolute; left:${pct}%; top:40%; transform:translate(-50%,-50%) rotate(45deg);
+                              width:11px; height:11px; background:#dd5078;
+                              border:1px solid #000; cursor:ew-resize;"></div>`;
+        }).join('')}
+      </div>
+    </div>`;
+
   if (s.tracks.length === 0) {
-    body.innerHTML = cameraRowHtml + forksRowHtml + `<div style="padding:20px; color:var(--text-dim); font-size:.72rem; opacity:.6;">Add an object to the scene to start a track.</div>`;
+    body.innerHTML = cameraRowHtml + forksRowHtml + branchesRowHtml + `<div style="padding:20px; color:var(--text-dim); font-size:.72rem; opacity:.6;">Add an object to the scene to start a track.</div>`;
     bindCameraKeyframes(body);
     bindForkKeyframes(body);
+    bindBranchKeyframes(body);
     return;
   }
-  body.innerHTML = cameraRowHtml + forksRowHtml + s.tracks.map(track => {
+  body.innerHTML = cameraRowHtml + forksRowHtml + branchesRowHtml + s.tracks.map(track => {
     const obj = s.objects.find(o => o.id === track.objectId);
     const label = obj ? `${esc(obj.name || obj.asset)} <span style="opacity:.5;">(${obj.type})</span>` : track.objectId;
     const isSelected = track.objectId === ed.selectedObjectId;
@@ -1492,6 +1523,7 @@ function renderTimeline() {
   body.querySelectorAll('.scene-keyframe').forEach(diamond => bindKeyframeDiamond(diamond));
   bindCameraKeyframes(body);
   bindForkKeyframes(body);
+  bindBranchKeyframes(body);
 
   renderTimelineHead();
 }
@@ -1853,6 +1885,328 @@ function openForkContextMenu(x, y, forkId) {
     };
     document.addEventListener('mousedown', off);
   }, 0);
+}
+
+// ── Branch clips ─────────────────────────────────────────────────────
+// Pause-and-wait timeline markers. Authored at a time T with an optional
+// loop region (animation cycles while waiting), a wait config (event
+// type to listen for), an ordered branches list (first-match-wins on
+// the event payload), and an optional timeout. v0.4.7 supports
+// wait.kind='event' only — derived kinds (chat-command, redeem) land
+// in a later phase as match-shortcut sugar over the event primitive.
+
+function addBranchAtScrubber() {
+  const s = activeScene();
+  if (!s) return;
+  if (!s.branchClips) s.branchClips = [];
+  const t = Math.max(0, Math.round(ed.currentTime));
+  s.branchClips.push({
+    id: 'branch-' + Math.random().toString(36).slice(2, 10),
+    start: t,
+    // Default loop region of 1 second past the clip start so the scene
+    // doesn't freeze on a single frame while waiting — the streamer
+    // tunes from there.
+    loopRegion: { from: t, to: Math.min(s.durationMs, t + 1000) },
+    wait: { kind: 'event', eventType: 'dice-rolled' },
+    // Single fallback branch jumping to scene-end. Streamers add their
+    // real branches via the editor; the default exists so an unedited
+    // branch clip still completes the scene rather than waiting forever.
+    branches: [{ match: {}, target: { type: 'scene-end' } }],
+    timeout: { ms: 30000, target: { type: 'scene-end' } },
+  });
+  renderTimeline();
+  queueSave();
+}
+
+function bindBranchKeyframes(body) {
+  body.querySelectorAll('.scene-branch-keyframe').forEach(d => bindBranchDiamond(d));
+}
+
+function bindBranchDiamond(diamond) {
+  diamond.addEventListener('contextmenu', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    openBranchEditor(e.clientX, e.clientY, diamond.dataset.branchId);
+  });
+  diamond.addEventListener('mousedown', (e) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const branchId = diamond.dataset.branchId;
+    const startX = e.clientX;
+    const startT = (activeScene()?.branchClips || []).find(b => b.id === branchId)?.start ?? 0;
+    const strip = diamond.closest('.scene-track-strip');
+    const stripRect = strip.getBoundingClientRect();
+    const dur = activeScene()?.durationMs || 10000;
+    let moved = false;
+    const onMove = (mv) => {
+      const dx = mv.clientX - startX;
+      if (!moved && Math.abs(dx) > 3) moved = true;
+      if (!moved) return;
+      let newT = Math.round(startT + (dx / stripRect.width) * dur);
+      if (mv.shiftKey) newT = Math.round(newT / 100) * 100;
+      newT = Math.max(0, Math.min(dur, newT));
+      const bc = (activeScene()?.branchClips || []).find(b => b.id === branchId);
+      if (!bc) return;
+      // Slide the loop region by the same delta so it stays anchored
+      // around the branch clip — the streamer's typical authoring
+      // intent is "the loop happens right before this branch fires."
+      if (bc.loopRegion) {
+        const delta = newT - bc.start;
+        bc.loopRegion.from = Math.max(0, bc.loopRegion.from + delta);
+        bc.loopRegion.to   = Math.max(bc.loopRegion.from + 100, bc.loopRegion.to + delta);
+      }
+      bc.start = newT;
+      diamond.style.left = ((newT / dur) * 100) + '%';
+    };
+    const onUp = () => {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup',   onUp);
+      if (moved) { renderTimeline(); queueSave(); }
+      else {
+        const rect = diamond.getBoundingClientRect();
+        openBranchEditor(rect.left + rect.width, rect.top, branchId);
+      }
+    };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup',   onUp);
+  });
+}
+
+// Branch clip editor — wider than the simple right-click menus since
+// it has to surface wait config + loop region + multiple branches +
+// timeout. Built as a floating panel so it can grow as branches are
+// added. Closes on outside click (after a one-tick delay).
+function openBranchEditor(x, y, branchId) {
+  closeKeyframeContextMenu();
+  const s = activeScene();
+  const bc = s?.branchClips?.find(b => b.id === branchId);
+  if (!bc) return;
+
+  const menu = document.createElement('div');
+  menu.id = 'scene-kf-menu';
+  // Position so the editor stays on-screen if the click was near the
+  // right or bottom edge of the viewport. Cap height so the branch
+  // list scrolls inside the panel rather than overflowing.
+  const left = Math.min(x, window.innerWidth - 380);
+  const top  = Math.min(y, window.innerHeight - 360);
+  menu.style.cssText = `position:fixed; left:${left}px; top:${top}px; background:var(--surface); border:1px solid var(--border); border-radius:6px; padding:10px 12px; box-shadow:0 8px 24px rgba(0,0,0,0.5); z-index:99999; font-size:.7rem; width:360px; max-height:80vh; overflow-y:auto; display:flex; flex-direction:column; gap:8px;`;
+  document.body.appendChild(menu);
+  renderBranchEditor(menu, bc);
+
+  setTimeout(() => {
+    const off = (ev) => {
+      if (!menu.contains(ev.target)) { closeKeyframeContextMenu(); document.removeEventListener('mousedown', off); }
+    };
+    document.addEventListener('mousedown', off);
+  }, 0);
+}
+
+function renderBranchEditor(menu, bc) {
+  const dur = activeScene()?.durationMs || 10000;
+  const sceneList = (ed.scenes || []).filter(sc => sc.id !== activeScene().id);
+  const flowList  = window.flows || [];
+
+  menu.innerHTML = `
+    <div style="font-size:.6rem; color:var(--text-dim); text-transform:uppercase; letter-spacing:.05em;">🌿 Branch @ ${fmtMs(bc.start)}</div>
+
+    <fieldset style="border:1px solid var(--border); border-radius:4px; padding:6px 8px; display:flex; flex-direction:column; gap:4px;">
+      <legend style="font-size:.6rem; color:var(--text-dim); padding:0 4px;">Wait For</legend>
+      <label style="display:flex; align-items:center; gap:6px;">Event type
+        <input id="bc-wait-type" class="input-field" style="flex:1; margin:0; padding:2px 4px;" value="${esc(bc.wait?.eventType || 'dice-rolled')}">
+      </label>
+      <div style="font-size:.55rem; color:var(--text-dim); opacity:.7;">e.g. dice-rolled (from rollDice), chat (from chat messages), or any custom event your flows publish.</div>
+    </fieldset>
+
+    <fieldset style="border:1px solid var(--border); border-radius:4px; padding:6px 8px; display:flex; flex-direction:column; gap:4px;">
+      <legend style="font-size:.6rem; color:var(--text-dim); padding:0 4px;">Loop Region</legend>
+      <label style="display:inline-flex; align-items:center; gap:6px;">
+        <input type="checkbox" id="bc-loop-on" ${bc.loopRegion ? 'checked' : ''}> Cycle animation while waiting
+      </label>
+      <div id="bc-loop-range" style="display:${bc.loopRegion ? 'flex' : 'none'}; gap:6px; align-items:center;">
+        <span>from</span>
+        <input type="number" id="bc-loop-from" min="0" max="${dur}" step="100" value="${bc.loopRegion?.from ?? bc.start}" style="width:80px; margin:0; padding:2px 4px;">
+        <span>to</span>
+        <input type="number" id="bc-loop-to"   min="0" max="${dur}" step="100" value="${bc.loopRegion?.to ?? (bc.start + 1000)}" style="width:80px; margin:0; padding:2px 4px;">
+        <span style="opacity:.7;">ms</span>
+      </div>
+    </fieldset>
+
+    <fieldset style="border:1px solid var(--border); border-radius:4px; padding:6px 8px; display:flex; flex-direction:column; gap:4px;">
+      <legend style="font-size:.6rem; color:var(--text-dim); padding:0 4px;">Branches (first match wins)</legend>
+      <div id="bc-branches" style="display:flex; flex-direction:column; gap:6px;"></div>
+      <button id="bc-add-branch" class="btn btn-ghost btn-sm" style="padding:2px 8px; align-self:flex-start; font-size:.65rem;">+ Add Branch</button>
+    </fieldset>
+
+    <fieldset style="border:1px solid var(--border); border-radius:4px; padding:6px 8px; display:flex; flex-direction:column; gap:4px;">
+      <legend style="font-size:.6rem; color:var(--text-dim); padding:0 4px;">Timeout</legend>
+      <label style="display:inline-flex; align-items:center; gap:6px;">
+        <input type="checkbox" id="bc-to-on" ${bc.timeout ? 'checked' : ''}>
+        After <input type="number" id="bc-to-ms" min="100" step="500" value="${bc.timeout?.ms ?? 30000}" style="width:80px; margin:0; padding:2px 4px;"> ms
+      </label>
+      <div id="bc-to-target-wrap" style="display:${bc.timeout ? 'block' : 'none'};"></div>
+    </fieldset>
+
+    <div style="display:flex; gap:8px;">
+      <button class="btn btn-ghost btn-sm" id="bc-delete" style="color:var(--red); flex:1;">✕ Delete branch clip</button>
+      <button class="btn btn-primary btn-sm" id="bc-save"    style="flex:1;">Save</button>
+    </div>
+  `;
+
+  const branchListEl = menu.querySelector('#bc-branches');
+  const renderBranchList = () => {
+    branchListEl.innerHTML = (bc.branches || []).map((br, idx) => `
+      <div data-branch-idx="${idx}" style="background:var(--surface2); padding:6px; border-radius:4px; display:flex; flex-direction:column; gap:4px;">
+        <div style="display:flex; gap:4px; align-items:center;">
+          <span style="font-size:.55rem; color:var(--text-dim); min-width:36px;">match</span>
+          <input class="bc-match-json" data-idx="${idx}" style="flex:1; padding:2px 4px; font-family:monospace; font-size:.65rem; background:var(--surface); color:var(--text); border:1px solid var(--border); border-radius:3px;" value="${esc(JSON.stringify(br.match || {}))}" placeholder='{"value":6}'>
+          <button class="bc-del-branch btn btn-ghost btn-sm" data-idx="${idx}" style="padding:2px 6px; font-size:.6rem; color:var(--red);">✕</button>
+        </div>
+        <div class="bc-target-wrap" data-idx="${idx}"></div>
+      </div>
+    `).join('');
+    // Render target editor for each branch.
+    branchListEl.querySelectorAll('.bc-target-wrap').forEach(wrap => {
+      const idx = parseInt(wrap.dataset.idx, 10);
+      wrap.innerHTML = targetEditorHtml('branch-' + idx, bc.branches[idx].target, sceneList, flowList, dur);
+      bindTargetEditor(wrap, 'branch-' + idx, target => { bc.branches[idx].target = target; });
+    });
+    branchListEl.querySelectorAll('.bc-match-json').forEach(input => {
+      input.addEventListener('change', (e) => {
+        const idx = parseInt(e.target.dataset.idx, 10);
+        try { bc.branches[idx].match = JSON.parse(e.target.value || '{}'); }
+        catch { /* keep last good — input retains the bad text for fixing */ }
+      });
+    });
+    branchListEl.querySelectorAll('.bc-del-branch').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const idx = parseInt(btn.dataset.idx, 10);
+        bc.branches.splice(idx, 1);
+        if (bc.branches.length === 0) bc.branches.push({ match: {}, target: { type: 'scene-end' } });
+        renderBranchList();
+      });
+    });
+  };
+  renderBranchList();
+  menu.querySelector('#bc-add-branch').addEventListener('click', () => {
+    bc.branches.push({ match: {}, target: { type: 'jump', time: Math.min(dur, bc.start + 1000) } });
+    renderBranchList();
+  });
+
+  // Loop region toggle.
+  menu.querySelector('#bc-loop-on').addEventListener('change', (e) => {
+    const range = menu.querySelector('#bc-loop-range');
+    if (e.target.checked) {
+      range.style.display = 'flex';
+      if (!bc.loopRegion) bc.loopRegion = { from: bc.start, to: Math.min(dur, bc.start + 1000) };
+    } else {
+      range.style.display = 'none';
+      delete bc.loopRegion;
+    }
+  });
+
+  // Timeout toggle + target editor.
+  const renderTimeoutTarget = () => {
+    const wrap = menu.querySelector('#bc-to-target-wrap');
+    if (!bc.timeout) { wrap.innerHTML = ''; return; }
+    wrap.innerHTML = targetEditorHtml('to', bc.timeout.target, sceneList, flowList, dur);
+    bindTargetEditor(wrap, 'to', target => { bc.timeout.target = target; });
+  };
+  renderTimeoutTarget();
+  menu.querySelector('#bc-to-on').addEventListener('change', (e) => {
+    if (e.target.checked) {
+      bc.timeout = bc.timeout || { ms: 30000, target: { type: 'scene-end' } };
+      menu.querySelector('#bc-to-target-wrap').style.display = 'block';
+    } else {
+      delete bc.timeout;
+      menu.querySelector('#bc-to-target-wrap').style.display = 'none';
+    }
+    renderTimeoutTarget();
+  });
+
+  menu.querySelector('#bc-save').addEventListener('click', () => {
+    bc.wait = { kind: 'event', eventType: menu.querySelector('#bc-wait-type').value.trim() || 'dice-rolled' };
+    if (menu.querySelector('#bc-loop-on').checked) {
+      const lf = parseInt(menu.querySelector('#bc-loop-from').value, 10) || bc.start;
+      const lt = parseInt(menu.querySelector('#bc-loop-to').value,   10) || (bc.start + 1000);
+      bc.loopRegion = { from: Math.max(0, lf), to: Math.max(lf + 100, lt) };
+    }
+    if (menu.querySelector('#bc-to-on').checked) {
+      bc.timeout = bc.timeout || { ms: 30000, target: { type: 'scene-end' } };
+      bc.timeout.ms = Math.max(100, parseInt(menu.querySelector('#bc-to-ms').value, 10) || 30000);
+    }
+    renderTimeline();
+    queueSave();
+    closeKeyframeContextMenu();
+  });
+  menu.querySelector('#bc-delete').addEventListener('click', () => {
+    activeScene().branchClips = (activeScene().branchClips || []).filter(b => b.id !== bc.id);
+    renderTimeline();
+    queueSave();
+    closeKeyframeContextMenu();
+  });
+}
+
+// Reusable target editor HTML — used by branch[].target and timeout.target.
+// The prefix arg disambiguates IDs when multiple editors live in the same
+// container (each branch row + the timeout row).
+function targetEditorHtml(prefix, target, sceneList, flowList, dur) {
+  const t = target || { type: 'jump', time: 0 };
+  const types = ['jump', 'scene', 'scene-end', 'flow', 'effect'];
+  return `
+    <div style="display:flex; gap:4px; flex-direction:column;">
+      <div style="display:flex; gap:4px; align-items:center;">
+        <span style="font-size:.55rem; color:var(--text-dim); min-width:36px;">→</span>
+        <select id="tgt-type-${prefix}" class="input-field" style="flex:1; margin:0; padding:2px 4px; font-size:.65rem;">
+          ${types.map(tt => `<option value="${tt}" ${tt === t.type ? 'selected' : ''}>${tt}</option>`).join('')}
+        </select>
+      </div>
+      <div id="tgt-cfg-${prefix}" style="padding-left:42px; font-size:.65rem;"></div>
+    </div>
+  `;
+}
+
+function bindTargetEditor(wrap, prefix, onChange) {
+  const typeSel = wrap.querySelector(`#tgt-type-${prefix}`);
+  const cfgEl   = wrap.querySelector(`#tgt-cfg-${prefix}`);
+  const s = activeScene();
+  const sceneList = (ed.scenes || []).filter(sc => sc.id !== s.id);
+  const flowList  = window.flows || [];
+  const dur = s.durationMs || 10000;
+
+  const target = (() => {
+    // Recover current target from the enclosing data so re-renders keep
+    // selected values. Caller passes onChange; we mutate via the same.
+    return { type: typeSel.value };
+  })();
+
+  const renderCfg = () => {
+    const type = typeSel.value;
+    if (type === 'jump') {
+      cfgEl.innerHTML = `time <input id="tgt-${prefix}-time" type="number" min="0" max="${dur}" step="100" style="width:80px; padding:2px 4px;"> ms`;
+    } else if (type === 'scene') {
+      cfgEl.innerHTML = `<select id="tgt-${prefix}-scene" class="input-field" style="margin:0; padding:2px 4px; font-size:.65rem;">${sceneList.map(sc => `<option value="${esc(sc.id)}">${esc(sc.name || sc.id)}</option>`).join('') || '<option>(no other scenes)</option>'}</select>`;
+    } else if (type === 'flow') {
+      cfgEl.innerHTML = `<select id="tgt-${prefix}-flow" class="input-field" style="margin:0; padding:2px 4px; font-size:.65rem;">${flowList.map(f => `<option value="${esc(f.id)}">${esc(f.name || f.id)}</option>`).join('') || '<option>(no flows)</option>'}</select>`;
+    } else if (type === 'effect') {
+      cfgEl.innerHTML = `effect <input id="tgt-${prefix}-effect" class="input-field" style="width:140px; padding:2px 4px;" value="confetti">`;
+    } else {
+      cfgEl.innerHTML = '';
+    }
+    pushTarget();
+    cfgEl.querySelectorAll('input,select').forEach(el => el.addEventListener('change', pushTarget));
+  };
+  const pushTarget = () => {
+    const type = typeSel.value;
+    const out = { type };
+    if (type === 'jump')   out.time    = parseInt(document.getElementById(`tgt-${prefix}-time`)?.value, 10) || 0;
+    if (type === 'scene')  out.sceneId = document.getElementById(`tgt-${prefix}-scene`)?.value || '';
+    if (type === 'flow')   out.flowId  = document.getElementById(`tgt-${prefix}-flow`)?.value || '';
+    if (type === 'effect') { out.effect = document.getElementById(`tgt-${prefix}-effect`)?.value || 'confetti'; out.payload = {}; }
+    onChange(out);
+  };
+  typeSel.addEventListener('change', renderCfg);
+  renderCfg();
 }
 
 // ── Mount-mode widget picker ─────────────────────────────────────────
