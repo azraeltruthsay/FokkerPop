@@ -156,9 +156,15 @@ function setupViewport() {
         ed.currentTime = elapsed;
       }
       applyTracksAtTime(ed.currentTime);
+      applyCameraAtTime(ed.currentTime);
       renderTimelineHead();
       renderTimeDisplay();
     }
+    // Suspend OrbitControls while a cameraTrack drives the camera so
+    // user pan/zoom doesn't fight the animation. Re-enabled the instant
+    // playback stops or the track is empty.
+    const hasCamTrack = (activeScene()?.cameraTrack?.keyframes?.length || 0) > 0;
+    orbit.enabled = !(ed.isPlaying && hasCamTrack);
     orbit.update();
     renderer.render(scene, camera);
   }
@@ -219,6 +225,7 @@ function bindToolbar() {
   document.getElementById('scenes-test-btn').addEventListener('click', () => {
     startEditorPreview();
   });
+  document.getElementById('scenes-cam-key').addEventListener('click', captureCameraKeyframe);
   document.getElementById('scenes-audio-add').addEventListener('click', addAudioEntry);
   document.getElementById('scenes-new-btn').addEventListener('click', newScene);
   document.getElementById('scenes-duration-input').addEventListener('change', (e) => {
@@ -272,7 +279,7 @@ function renderAssetList() {
     ['models', '3D Models', 'model'],
     ['images', 'Images',    'image-plane'],
   ];
-  root.innerHTML = sections.map(([key, label, sceneType]) => {
+  let html = sections.map(([key, label, sceneType]) => {
     const items = ed.assets[key] || [];
     if (items.length === 0) {
       return `<div style="margin-bottom:12px;">
@@ -293,6 +300,18 @@ function renderAssetList() {
     </div>`;
   }).join('');
 
+  // Lights — not files, so click-to-add rather than drag-to-place. Three
+  // kinds covering 99% of scene-lighting needs; spot lights deferred to
+  // later phases (extra params + cone widget complexity).
+  html += `<div style="margin-bottom:12px;">
+    <div style="font-size:.65rem; color:var(--text-dim); text-transform:uppercase; margin-bottom:4px;">Lights</div>
+    <button class="btn btn-ghost btn-sm scene-add-light" data-light-kind="directional" style="width:100%; margin-bottom:3px; font-size:.65rem; text-align:left;">+ Directional</button>
+    <button class="btn btn-ghost btn-sm scene-add-light" data-light-kind="point"       style="width:100%; margin-bottom:3px; font-size:.65rem; text-align:left;">+ Point</button>
+    <button class="btn btn-ghost btn-sm scene-add-light" data-light-kind="ambient"     style="width:100%; margin-bottom:3px; font-size:.65rem; text-align:left;">+ Ambient</button>
+  </div>`;
+
+  root.innerHTML = html;
+
   root.querySelectorAll('.scene-asset-item').forEach(el => {
     el.addEventListener('dragstart', (e) => {
       e.dataTransfer.setData('text/plain', JSON.stringify({
@@ -303,6 +322,35 @@ function renderAssetList() {
     });
     el.addEventListener('dragend', (e) => { el.style.opacity = ''; });
   });
+  root.querySelectorAll('.scene-add-light').forEach(btn => {
+    btn.addEventListener('click', () => addLightToActiveScene(btn.dataset.lightKind));
+  });
+}
+
+function addLightToActiveScene(kind) {
+  const s = activeScene();
+  if (!s) return;
+  const id = 'light-' + Math.random().toString(36).slice(2, 10);
+  // Sensible per-kind defaults. Directional sits up + to the side so it
+  // throws a useful shadow direction; point sits above center; ambient
+  // is positionless. Intensity ~1 is Three.js's neutral starting point.
+  const defaults = {
+    'directional': { transform: { position: [3, 4, 2], rotation: [0,0,0], scale: [1,1,1] }, light: { kind, intensity: 1.0, color: '#ffffff' } },
+    'point':       { transform: { position: [0, 2, 2], rotation: [0,0,0], scale: [1,1,1] }, light: { kind, intensity: 1.0, color: '#ffffff', distance: 0 } },
+    'ambient':     { transform: { position: [0, 0, 0], rotation: [0,0,0], scale: [1,1,1] }, light: { kind, intensity: 0.4, color: '#ffffff' } },
+  }[kind] || { transform: { position: [0,0,0], rotation: [0,0,0], scale: [1,1,1] }, light: { kind, intensity: 1, color: '#ffffff' } };
+
+  s.objects.push({
+    id,
+    type: 'light',
+    name: `${kind} light`,
+    ...defaults,
+  });
+  rebuildViewportFromActive();
+  selectObject(id);
+  renderTimeline();
+  hideEmptyViewportHint(true);
+  queueSave();
 }
 
 function onViewportDrop(e) {
@@ -395,6 +443,37 @@ function rebuildViewportFromActive() {
       applyTransform(mesh, obj.transform);
       ed.three.scene.add(mesh);
       ed.objectsByGuid.set(obj.id, mesh);
+    } else if (obj.type === 'light') {
+      const l = obj.light || {};
+      const color = new THREE.Color(l.color || '#ffffff');
+      const intensity = l.intensity ?? 1;
+      let light;
+      if (l.kind === 'ambient')        light = new THREE.AmbientLight(color, intensity);
+      else if (l.kind === 'point')     light = new THREE.PointLight(color, intensity, l.distance ?? 0);
+      else                             light = new THREE.DirectionalLight(color, intensity);
+      light.userData.sceneObjectId = obj.id;
+      if (l.kind !== 'ambient') applyTransform(light, obj.transform);
+      ed.three.scene.add(light);
+      ed.objectsByGuid.set(obj.id, light);
+
+      // Visual gizmo so the streamer can see and select the light. Helpers
+      // attach as children of the light so they move with it during gizmo
+      // drags; raycast hits on the helper resolve back to the light id
+      // via userData.sceneObjectId set above (Three.Object3D traversal
+      // inherits userData on hit).
+      if (l.kind === 'directional') {
+        const helper = new THREE.DirectionalLightHelper(light, 0.4, 0xffff00);
+        helper.userData.sceneObjectId = obj.id;
+        helper.traverse(c => { c.userData.sceneObjectId = obj.id; });
+        ed.three.scene.add(helper);
+      } else if (l.kind === 'point') {
+        const helper = new THREE.PointLightHelper(light, 0.2, 0xffff00);
+        helper.userData.sceneObjectId = obj.id;
+        helper.traverse(c => { c.userData.sceneObjectId = obj.id; });
+        ed.three.scene.add(helper);
+      }
+      // Ambient lights have no position; no helper. The inspector is the
+      // only way to find/edit them — the timeline row is too.
     }
   }
 }
@@ -440,10 +519,11 @@ function selectObject(id) {
 }
 
 // Object inspector — surfaces in the right-hand panel when an object is
-// selected. Name (editable, defaults to asset basename), opacity slider
-// (writes a keyframe at scrubber time on every change), delete button.
-// Hidden when nothing is selected. Phase 4+ will extend with material/
-// light channels.
+// selected. Name (editable), type-specific controls, delete. For models/
+// image-planes: opacity slider + a Material section (color/emissive/
+// metalness/roughness/wireframe). For lights: kind label + intensity +
+// color + distance (point only). All edits write keyframes at scrubber
+// time and live-apply to the viewport.
 function renderObjectInspector() {
   const panel = document.getElementById('scenes-inspector');
   if (!panel) return;
@@ -456,34 +536,67 @@ function renderObjectInspector() {
   }
   panel.style.display = 'flex';
 
-  // Resolve current-frame opacity from the track (last keyframe at or
-  // before scrubber time). Lets the slider reflect what the player is
-  // actually showing at this instant.
-  const currentOpacity = (() => {
-    const track = s.tracks.find(tr => tr.objectId === obj.id);
-    if (!track) return 1;
-    const kfs = [...track.keyframes].sort((a, b) => a.t - b.t);
-    let val = 1;
-    for (const kf of kfs) {
-      if (kf.t > ed.currentTime) break;
-      if (kf.opacity != null) val = kf.opacity;
-    }
-    return val;
-  })();
+  const displayName = obj.name || obj.asset || obj.id;
+  const sub = obj.type === 'light' ? `light · ${esc(obj.light?.kind || 'directional')}` : `${esc(obj.type)} · ${esc(obj.asset || '')}`;
 
-  const displayName = obj.name || obj.asset;
-  panel.innerHTML = `
+  if (obj.type === 'light') {
+    panel.innerHTML = renderLightInspectorHtml(obj, displayName, sub);
+    bindLightInspector(obj);
+  } else {
+    panel.innerHTML = renderModelInspectorHtml(obj, displayName, sub);
+    bindModelInspector(obj);
+  }
+}
+
+function renderModelInspectorHtml(obj, displayName, sub) {
+  const current = resolveCurrentVisualProps(obj.id);
+  return `
     <div style="font-size:.65rem; color:var(--text-dim); text-transform:uppercase; letter-spacing:.05em;">Selected Object</div>
     <input type="text" id="scene-obj-name" class="input-field" value="${esc(displayName)}" placeholder="Name" style="margin:0; padding:4px 6px; font-size:.78rem;">
-    <div style="font-size:.6rem; color:var(--text-dim);">${esc(obj.type)} · <span style="opacity:.7;">${esc(obj.asset)}</span></div>
+    <div style="font-size:.6rem; color:var(--text-dim);">${sub}</div>
     <div style="display:flex; align-items:center; gap:6px;">
       <span style="font-size:.65rem; color:var(--text-dim); min-width:48px;">Opacity</span>
-      <input type="range" id="scene-obj-opacity" min="0" max="1" step="0.01" value="${currentOpacity}" style="flex:1;">
-      <span id="scene-obj-opacity-val" style="font-size:.65rem; min-width:28px; text-align:right; font-family:monospace;">${currentOpacity.toFixed(2)}</span>
+      <input type="range" id="scene-obj-opacity" min="0" max="1" step="0.01" value="${current.opacity}" style="flex:1;">
+      <span id="scene-obj-opacity-val" style="font-size:.65rem; min-width:28px; text-align:right; font-family:monospace;">${current.opacity.toFixed(2)}</span>
     </div>
+    <details ${current.hasMaterial ? 'open' : ''}>
+      <summary style="font-size:.65rem; color:var(--text-dim); cursor:pointer; padding:2px 0;">▾ Material</summary>
+      <div style="display:flex; flex-direction:column; gap:4px; margin-top:6px; padding-left:4px;">
+        <div style="display:flex; align-items:center; gap:6px;">
+          <span style="font-size:.6rem; color:var(--text-dim); min-width:54px;">Tint</span>
+          <input type="color" id="scene-mat-color" value="${current.color}" style="width:32px; height:22px; padding:0; border:none; background:none; cursor:pointer;">
+          <span style="font-size:.6rem; font-family:monospace; opacity:.6;">${current.color}</span>
+        </div>
+        <div style="display:flex; align-items:center; gap:6px;">
+          <span style="font-size:.6rem; color:var(--text-dim); min-width:54px;">Emissive</span>
+          <input type="color" id="scene-mat-emissive" value="${current.emissive}" style="width:32px; height:22px; padding:0; border:none; background:none; cursor:pointer;">
+          <span style="font-size:.6rem; font-family:monospace; opacity:.6;">${current.emissive}</span>
+        </div>
+        <div style="display:flex; align-items:center; gap:6px;">
+          <span style="font-size:.6rem; color:var(--text-dim); min-width:54px;">Glow</span>
+          <input type="range" id="scene-mat-emi-int" min="0" max="5" step="0.05" value="${current.emissiveIntensity}" style="flex:1;">
+          <span id="scene-mat-emi-int-val" style="font-size:.6rem; min-width:24px; text-align:right; font-family:monospace;">${current.emissiveIntensity.toFixed(2)}</span>
+        </div>
+        <div style="display:flex; align-items:center; gap:6px;">
+          <span style="font-size:.6rem; color:var(--text-dim); min-width:54px;">Metal</span>
+          <input type="range" id="scene-mat-metal" min="0" max="1" step="0.01" value="${current.metalness}" style="flex:1;">
+          <span id="scene-mat-metal-val" style="font-size:.6rem; min-width:24px; text-align:right; font-family:monospace;">${current.metalness.toFixed(2)}</span>
+        </div>
+        <div style="display:flex; align-items:center; gap:6px;">
+          <span style="font-size:.6rem; color:var(--text-dim); min-width:54px;">Rough</span>
+          <input type="range" id="scene-mat-rough" min="0" max="1" step="0.01" value="${current.roughness}" style="flex:1;">
+          <span id="scene-mat-rough-val" style="font-size:.6rem; min-width:24px; text-align:right; font-family:monospace;">${current.roughness.toFixed(2)}</span>
+        </div>
+        <label style="display:inline-flex; align-items:center; gap:6px; font-size:.6rem; color:var(--text-dim);">
+          <input type="checkbox" id="scene-mat-wire" ${current.wireframe ? 'checked' : ''}> Wireframe
+        </label>
+      </div>
+    </details>
     <button class="btn btn-ghost btn-sm" id="scene-obj-delete" style="color:var(--red);">🗑️ Delete Object</button>
   `;
+}
 
+function bindModelInspector(obj) {
   document.getElementById('scene-obj-name').addEventListener('change', (e) => {
     obj.name = e.target.value.trim() || undefined;
     renderTimeline();
@@ -492,39 +605,187 @@ function renderObjectInspector() {
   document.getElementById('scene-obj-opacity').addEventListener('input', (e) => {
     const v = parseFloat(e.target.value);
     document.getElementById('scene-obj-opacity-val').textContent = v.toFixed(2);
-    // Always commit an opacity keyframe at scrubber time — the slider is
-    // an explicit edit, not a transient gizmo drag, so auto-key on/off
-    // doesn't gate it.
     writeOpacityKeyframe(obj.id, ed.currentTime, v);
-    // Live-preview on the viewport object too.
     const three = ed.objectsByGuid.get(obj.id);
     if (three) setObjOpacity(three, v);
     queueSave();
   });
-  document.getElementById('scene-obj-delete').addEventListener('click', () => {
-    if (!confirm(`Delete "${displayName}"? (Removes its track too.)`)) return;
-    s.objects = s.objects.filter(o => o.id !== obj.id);
-    s.tracks  = s.tracks.filter(tr => tr.objectId !== obj.id);
-    // Tear down the Three.js object.
+  const onMaterialEdit = (patch) => {
+    writeMaterialKeyframe(obj.id, ed.currentTime, patch);
     const three = ed.objectsByGuid.get(obj.id);
-    if (three) {
-      ed.three.scene.remove(three);
-      three.traverse?.(child => {
-        if (child.geometry) child.geometry.dispose?.();
-        if (child.material) {
-          const mats = Array.isArray(child.material) ? child.material : [child.material];
-          mats.forEach(m => { m.map?.dispose?.(); m.dispose?.(); });
-        }
-      });
-    }
-    ed.objectsByGuid.delete(obj.id);
-    selectObject(null);
+    if (three) setObjMaterial(three, patch);
+    queueSave();
+  };
+  document.getElementById('scene-mat-color').addEventListener('input',     (e) => onMaterialEdit({ color: e.target.value }));
+  document.getElementById('scene-mat-emissive').addEventListener('input',  (e) => onMaterialEdit({ emissive: e.target.value }));
+  document.getElementById('scene-mat-emi-int').addEventListener('input',   (e) => {
+    const v = parseFloat(e.target.value);
+    document.getElementById('scene-mat-emi-int-val').textContent = v.toFixed(2);
+    onMaterialEdit({ emissiveIntensity: v });
+  });
+  document.getElementById('scene-mat-metal').addEventListener('input',     (e) => {
+    const v = parseFloat(e.target.value);
+    document.getElementById('scene-mat-metal-val').textContent = v.toFixed(2);
+    onMaterialEdit({ metalness: v });
+  });
+  document.getElementById('scene-mat-rough').addEventListener('input',     (e) => {
+    const v = parseFloat(e.target.value);
+    document.getElementById('scene-mat-rough-val').textContent = v.toFixed(2);
+    onMaterialEdit({ roughness: v });
+  });
+  document.getElementById('scene-mat-wire').addEventListener('change',     (e) => onMaterialEdit({ wireframe: e.target.checked }));
+  document.getElementById('scene-obj-delete').addEventListener('click', () => deleteSelectedObject(obj));
+}
+
+function renderLightInspectorHtml(obj, displayName, sub) {
+  const l = obj.light || {};
+  const current = resolveCurrentLightProps(obj.id);
+  const isPoint = (l.kind === 'point');
+  return `
+    <div style="font-size:.65rem; color:var(--text-dim); text-transform:uppercase; letter-spacing:.05em;">Selected Light</div>
+    <input type="text" id="scene-obj-name" class="input-field" value="${esc(displayName)}" placeholder="Name" style="margin:0; padding:4px 6px; font-size:.78rem;">
+    <div style="font-size:.6rem; color:var(--text-dim);">${sub}</div>
+    <div style="display:flex; align-items:center; gap:6px;">
+      <span style="font-size:.6rem; color:var(--text-dim); min-width:54px;">Intensity</span>
+      <input type="range" id="scene-light-intensity" min="0" max="5" step="0.05" value="${current.intensity}" style="flex:1;">
+      <span id="scene-light-intensity-val" style="font-size:.6rem; min-width:28px; text-align:right; font-family:monospace;">${current.intensity.toFixed(2)}</span>
+    </div>
+    <div style="display:flex; align-items:center; gap:6px;">
+      <span style="font-size:.6rem; color:var(--text-dim); min-width:54px;">Color</span>
+      <input type="color" id="scene-light-color" value="${current.color}" style="width:32px; height:22px; padding:0; border:none; background:none; cursor:pointer;">
+      <span style="font-size:.6rem; font-family:monospace; opacity:.6;">${current.color}</span>
+    </div>
+    ${isPoint ? `
+      <div style="display:flex; align-items:center; gap:6px;">
+        <span style="font-size:.6rem; color:var(--text-dim); min-width:54px;">Distance</span>
+        <input type="number" id="scene-light-distance" min="0" step="0.5" value="${l.distance ?? 0}" style="width:80px; margin:0; padding:2px 4px; font-size:.65rem;">
+        <span style="font-size:.55rem; opacity:.6;">(0 = infinite)</span>
+      </div>
+    ` : ''}
+    <button class="btn btn-ghost btn-sm" id="scene-obj-delete" style="color:var(--red);">🗑️ Delete Light</button>
+  `;
+}
+
+function bindLightInspector(obj) {
+  document.getElementById('scene-obj-name').addEventListener('change', (e) => {
+    obj.name = e.target.value.trim() || undefined;
     renderTimeline();
     queueSave();
   });
+  document.getElementById('scene-light-intensity').addEventListener('input', (e) => {
+    const v = parseFloat(e.target.value);
+    document.getElementById('scene-light-intensity-val').textContent = v.toFixed(2);
+    writeLightKeyframe(obj.id, ed.currentTime, { intensity: v });
+    const three = ed.objectsByGuid.get(obj.id);
+    if (three?.isLight) three.intensity = v;
+    queueSave();
+  });
+  document.getElementById('scene-light-color').addEventListener('input', (e) => {
+    writeLightKeyframe(obj.id, ed.currentTime, { color: e.target.value });
+    const three = ed.objectsByGuid.get(obj.id);
+    if (three?.isLight) three.color.set(e.target.value);
+    queueSave();
+  });
+  const distEl = document.getElementById('scene-light-distance');
+  if (distEl) {
+    distEl.addEventListener('change', (e) => {
+      const v = Math.max(0, parseFloat(e.target.value) || 0);
+      obj.light = { ...(obj.light || { kind: 'point' }), distance: v };
+      const three = ed.objectsByGuid.get(obj.id);
+      if (three?.isPointLight) three.distance = v;
+      queueSave();
+    });
+  }
+  document.getElementById('scene-obj-delete').addEventListener('click', () => deleteSelectedObject(obj));
+}
+
+// Common deletion path — used by both inspectors. Strips object + tracks
+// and tears down the Three.js object (and any helper attached to it).
+function deleteSelectedObject(obj) {
+  const s = activeScene();
+  if (!s) return;
+  if (!confirm(`Delete "${obj.name || obj.asset || obj.id}"?`)) return;
+  s.objects = s.objects.filter(o => o.id !== obj.id);
+  s.tracks  = s.tracks.filter(tr => tr.objectId !== obj.id);
+  const three = ed.objectsByGuid.get(obj.id);
+  if (three) {
+    ed.three.scene.remove(three);
+    three.traverse?.(child => {
+      if (child.geometry) child.geometry.dispose?.();
+      if (child.material) {
+        const mats = Array.isArray(child.material) ? child.material : [child.material];
+        mats.forEach(m => { m.map?.dispose?.(); m.dispose?.(); });
+      }
+    });
+  }
+  ed.objectsByGuid.delete(obj.id);
+  selectObject(null);
+  // Light helpers are siblings of the light; rebuild to drop them.
+  rebuildViewportFromActive();
+  renderTimeline();
+  queueSave();
+}
+
+// Walks the track from t=0 to ed.currentTime, returning the most recent
+// values for opacity + material channels. Lets the inspector reflect what
+// the viewport is actually showing (rather than defaulting to fresh values).
+function resolveCurrentVisualProps(objectId) {
+  const out = {
+    opacity: 1,
+    color: '#ffffff', emissive: '#000000',
+    emissiveIntensity: 0, metalness: 0.5, roughness: 0.5,
+    wireframe: false,
+    hasMaterial: false,
+  };
+  const s = activeScene();
+  const track = s?.tracks.find(tr => tr.objectId === objectId);
+  if (!track) return out;
+  const kfs = [...track.keyframes].sort((a, b) => a.t - b.t);
+  for (const kf of kfs) {
+    if (kf.t > ed.currentTime) break;
+    if (kf.opacity != null) out.opacity = kf.opacity;
+    if (kf.material) {
+      out.hasMaterial = true;
+      if (kf.material.color    != null) out.color    = kf.material.color;
+      if (kf.material.emissive != null) out.emissive = kf.material.emissive;
+      if (kf.material.emissiveIntensity != null) out.emissiveIntensity = kf.material.emissiveIntensity;
+      if (kf.material.metalness != null) out.metalness = kf.material.metalness;
+      if (kf.material.roughness != null) out.roughness = kf.material.roughness;
+      if (kf.material.wireframe != null) out.wireframe = kf.material.wireframe;
+    }
+  }
+  return out;
+}
+
+function resolveCurrentLightProps(objectId) {
+  const s = activeScene();
+  const obj = s?.objects.find(o => o.id === objectId);
+  const base = { intensity: obj?.light?.intensity ?? 1, color: obj?.light?.color ?? '#ffffff' };
+  const track = s?.tracks.find(tr => tr.objectId === objectId);
+  if (!track) return base;
+  const kfs = [...track.keyframes].sort((a, b) => a.t - b.t);
+  for (const kf of kfs) {
+    if (kf.t > ed.currentTime) break;
+    if (kf.light?.intensity != null) base.intensity = kf.light.intensity;
+    if (kf.light?.color     != null) base.color     = kf.light.color;
+  }
+  return base;
 }
 
 function writeOpacityKeyframe(objectId, t, opacity) {
+  upsertKeyframe(objectId, t, kf => { kf.opacity = opacity; });
+}
+function writeMaterialKeyframe(objectId, t, patch) {
+  upsertKeyframe(objectId, t, kf => { kf.material = { ...(kf.material || {}), ...patch }; });
+}
+function writeLightKeyframe(objectId, t, patch) {
+  upsertKeyframe(objectId, t, kf => { kf.light = { ...(kf.light || {}), ...patch }; });
+}
+
+// Shared upsert: find-or-create a track + find-or-create a keyframe at t,
+// then let the caller mutate the keyframe. Keeps the three writer wrappers
+// trivial and the sort-once-after-insert pattern in one place.
+function upsertKeyframe(objectId, t, mutate) {
   const s = activeScene();
   if (!s) return;
   let track = s.tracks.find(tr => tr.objectId === objectId);
@@ -533,13 +794,13 @@ function writeOpacityKeyframe(objectId, t, opacity) {
     s.tracks.push(track);
   }
   const tr = Math.max(0, Math.round(t));
-  const existing = track.keyframes.find(k => k.t === tr);
-  if (existing) {
-    existing.opacity = opacity;
-  } else {
-    track.keyframes.push({ t: tr, opacity });
+  let kf = track.keyframes.find(k => k.t === tr);
+  if (!kf) {
+    kf = { t: tr };
+    track.keyframes.push(kf);
     track.keyframes.sort((a, b) => a.t - b.t);
   }
+  mutate(kf);
   renderTimeline();
 }
 
@@ -616,6 +877,20 @@ function applyKeyframesAt(obj, keyframes, t) {
   if (a.opacity != null && b.opacity != null) {
     setObjOpacity(obj, lerp(a.opacity, b.opacity, alpha));
   }
+  if (a.material && b.material) {
+    const m = {};
+    if (a.material.color    != null && b.material.color    != null) m.color    = lerpHex(a.material.color, b.material.color, alpha);
+    if (a.material.emissive != null && b.material.emissive != null) m.emissive = lerpHex(a.material.emissive, b.material.emissive, alpha);
+    if (a.material.emissiveIntensity != null && b.material.emissiveIntensity != null) m.emissiveIntensity = lerp(a.material.emissiveIntensity, b.material.emissiveIntensity, alpha);
+    if (a.material.metalness != null && b.material.metalness != null) m.metalness = lerp(a.material.metalness, b.material.metalness, alpha);
+    if (a.material.roughness != null && b.material.roughness != null) m.roughness = lerp(a.material.roughness, b.material.roughness, alpha);
+    if (a.material.wireframe != null) m.wireframe = a.material.wireframe;
+    setObjMaterial(obj, m);
+  }
+  if (a.light && b.light && obj.isLight) {
+    if (a.light.intensity != null && b.light.intensity != null) obj.intensity = lerp(a.light.intensity, b.light.intensity, alpha);
+    if (a.light.color     != null && b.light.color     != null) obj.color.set(lerpHex(a.light.color, b.light.color, alpha));
+  }
 }
 
 function applyKeyframe(obj, kf) {
@@ -623,6 +898,40 @@ function applyKeyframe(obj, kf) {
   if (kf.rotation) obj.rotation.set(...kf.rotation);
   if (kf.scale)    obj.scale.set(...kf.scale);
   if (kf.opacity != null) setObjOpacity(obj, kf.opacity);
+  if (kf.material) setObjMaterial(obj, kf.material);
+  if (kf.light && obj.isLight) {
+    if (kf.light.intensity != null) obj.intensity = kf.light.intensity;
+    if (kf.light.color     != null) obj.color.set(kf.light.color);
+  }
+}
+
+function setObjMaterial(obj, m) {
+  obj.traverse?.(child => {
+    const mats = child.material ? (Array.isArray(child.material) ? child.material : [child.material]) : null;
+    if (!mats) return;
+    for (const mat of mats) {
+      if (m.color    != null && mat.color)    mat.color.set(m.color);
+      if (m.emissive != null && mat.emissive) mat.emissive.set(m.emissive);
+      if (m.emissiveIntensity != null && 'emissiveIntensity' in mat) mat.emissiveIntensity = m.emissiveIntensity;
+      if (m.metalness != null && 'metalness' in mat) mat.metalness = m.metalness;
+      if (m.roughness != null && 'roughness' in mat) mat.roughness = m.roughness;
+      if (m.wireframe != null && 'wireframe' in mat) mat.wireframe = m.wireframe;
+    }
+  });
+}
+
+function lerpHex(aHex, bHex, alpha) {
+  const a = parseHex(aHex), b = parseHex(bHex);
+  return '#' + [
+    Math.round(lerp(a[0], b[0], alpha)),
+    Math.round(lerp(a[1], b[1], alpha)),
+    Math.round(lerp(a[2], b[2], alpha)),
+  ].map(n => n.toString(16).padStart(2, '0')).join('');
+}
+function parseHex(hex) {
+  let h = hex.replace('#', '');
+  if (h.length === 3) h = h.split('').map(c => c + c).join('');
+  return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)];
 }
 
 // Walks the subtree so opacity applies to all materials inside a loaded
@@ -763,6 +1072,7 @@ function bindTimelineEvents() {
     ed.currentTime = Math.max(0, Math.min(dur, Math.round(ratio * dur)));
     ed.isPlaying = false;
     applyTracksAtTime(ed.currentTime);
+    applyCameraAtTime(ed.currentTime);
     renderTimelineHead();
     renderTimeDisplay();
   });
@@ -775,12 +1085,37 @@ function renderTimeline() {
     body.innerHTML = `<div style="padding:20px; color:var(--text-dim); font-size:.72rem; opacity:.6;">No active scene.</div>`;
     return;
   }
+  const dur = s.durationMs || 10000;
+  const cameraKfs = s.cameraTrack?.keyframes || [];
+  // Camera track always renders, even with zero keyframes — gives the
+  // streamer a visible target for the "📷 Key Camera" button. Object
+  // tracks below it appear only when at least one object exists.
+  const cameraRowHtml = `
+    <div class="scene-track-row" data-camera-track="1"
+         style="display:flex; align-items:center; height:32px; border-bottom:1px solid rgba(255,255,255,0.08); background:rgba(255,200,80,0.06);">
+      <div style="width:160px; padding:0 10px; font-size:.7rem; color:var(--text); flex-shrink:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">📷 Camera</div>
+      <div class="scene-track-strip" data-camera-strip="1" style="flex:1; position:relative; height:100%; cursor:crosshair;">
+        ${cameraKfs.map(kf => {
+          const pct = Math.max(0, Math.min(100, (kf.t / dur) * 100));
+          const easingHint = kf.easing ? ` • ${kf.easing}` : '';
+          const borderColor = kf.easing && kf.easing !== 'linear' ? '#ff9933' : '#000';
+          const borderWidth = kf.easing && kf.easing !== 'linear' ? '2px' : '1px';
+          return `<div class="scene-cam-keyframe"
+                       data-keyframe-t="${kf.t}"
+                       title="Camera t=${kf.t}ms${easingHint} (drag to retime, right-click for options)"
+                       style="position:absolute; left:${pct}%; top:50%; transform:translate(-50%,-50%) rotate(45deg);
+                              width:10px; height:10px; background:#ffcc55;
+                              border:${borderWidth} solid ${borderColor}; cursor:ew-resize;"></div>`;
+        }).join('')}
+      </div>
+    </div>`;
+
   if (s.tracks.length === 0) {
-    body.innerHTML = `<div style="padding:20px; color:var(--text-dim); font-size:.72rem; opacity:.6;">Add an object to the scene to start a track.</div>`;
+    body.innerHTML = cameraRowHtml + `<div style="padding:20px; color:var(--text-dim); font-size:.72rem; opacity:.6;">Add an object to the scene to start a track.</div>`;
+    bindCameraKeyframes(body);
     return;
   }
-  const dur = s.durationMs || 10000;
-  body.innerHTML = s.tracks.map(track => {
+  body.innerHTML = cameraRowHtml + s.tracks.map(track => {
     const obj = s.objects.find(o => o.id === track.objectId);
     const label = obj ? `${esc(obj.name || obj.asset)} <span style="opacity:.5;">(${obj.type})</span>` : track.objectId;
     const isSelected = track.objectId === ed.selectedObjectId;
@@ -814,6 +1149,7 @@ function renderTimeline() {
     label.addEventListener('click', () => selectObject(row.dataset.objectId));
   });
   body.querySelectorAll('.scene-keyframe').forEach(diamond => bindKeyframeDiamond(diamond));
+  bindCameraKeyframes(body);
 
   renderTimelineHead();
 }
@@ -1011,6 +1347,197 @@ function stopEditorPreviewAudio() {
   ed.audioPreview.handles  = [];
 }
 
+// ── Camera track ─────────────────────────────────────────────────────
+function captureCameraKeyframe() {
+  const s = activeScene();
+  if (!s) return;
+  if (!s.cameraTrack) s.cameraTrack = { keyframes: [] };
+  const cam = ed.three.camera;
+  const orbit = ed.three.orbit;
+  // OrbitControls keeps the target separate from camera.matrix; reading
+  // .target gives the lookAt point the user has been orbiting around.
+  const target = orbit.target;
+  const t = Math.max(0, Math.round(ed.currentTime));
+  const kf = {
+    t,
+    position: [cam.position.x, cam.position.y, cam.position.z],
+    lookAt:   [target.x, target.y, target.z],
+    fov:      cam.fov,
+  };
+  const existing = s.cameraTrack.keyframes.find(k => k.t === t);
+  if (existing) {
+    Object.assign(existing, kf);
+  } else {
+    s.cameraTrack.keyframes.push(kf);
+    s.cameraTrack.keyframes.sort((a, b) => a.t - b.t);
+  }
+  renderTimeline();
+  queueSave();
+}
+
+function bindCameraKeyframes(body) {
+  body.querySelectorAll('.scene-cam-keyframe').forEach(diamond => bindCamKeyframeDiamond(diamond));
+}
+
+// Camera keyframes use the same mousedown-driven click/drag pattern as
+// object keyframes, but write into scene.cameraTrack.keyframes and the
+// right-click menu's edits target the camera kf.
+function bindCamKeyframeDiamond(diamond) {
+  diamond.addEventListener('contextmenu', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    openCameraKeyframeMenu(e.clientX, e.clientY, parseInt(diamond.dataset.keyframeT, 10));
+  });
+  diamond.addEventListener('mousedown', (e) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const startT = parseInt(diamond.dataset.keyframeT, 10);
+    const startX = e.clientX;
+    const strip = diamond.closest('.scene-track-strip');
+    const stripRect = strip.getBoundingClientRect();
+    const dur = activeScene()?.durationMs || 10000;
+    let moved = false;
+    const onMove = (mv) => {
+      const dx = mv.clientX - startX;
+      if (!moved && Math.abs(dx) > 3) moved = true;
+      if (!moved) return;
+      let newT = Math.round(startT + (dx / stripRect.width) * dur);
+      if (mv.shiftKey) newT = Math.round(newT / 100) * 100;
+      newT = Math.max(0, Math.min(dur, newT));
+      const kfs = activeScene()?.cameraTrack?.keyframes;
+      if (!kfs) return;
+      const kf = kfs.find(k => k.t === parseInt(diamond.dataset.keyframeT, 10));
+      if (!kf) return;
+      if (newT !== kf.t && kfs.some(k => k.t === newT && k !== kf)) return;
+      kf.t = newT;
+      diamond.dataset.keyframeT = String(newT);
+      diamond.style.left = ((newT / dur) * 100) + '%';
+    };
+    const onUp = () => {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup',   onUp);
+      if (moved) {
+        const kfs = activeScene()?.cameraTrack?.keyframes;
+        if (kfs) kfs.sort((a, b) => a.t - b.t);
+        renderTimeline();
+        queueSave();
+      } else {
+        ed.currentTime = startT;
+        ed.isPlaying = false;
+        applyTracksAtTime(startT);
+        applyCameraAtTime(startT);
+        renderTimelineHead();
+        renderTimeDisplay();
+      }
+    };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup',   onUp);
+  });
+}
+
+function openCameraKeyframeMenu(x, y, t) {
+  closeKeyframeContextMenu();
+  const kfs = activeScene()?.cameraTrack?.keyframes;
+  const kf  = kfs?.find(k => k.t === t);
+  if (!kf) return;
+  const menu = document.createElement('div');
+  menu.id = 'scene-kf-menu';
+  menu.style.cssText = `position:fixed; left:${x}px; top:${y}px; background:var(--surface); border:1px solid var(--border); border-radius:6px; padding:6px 0; box-shadow:0 8px 24px rgba(0,0,0,0.5); z-index:99999; font-size:.72rem; min-width:200px; max-height:80vh; overflow-y:auto;`;
+  const head = document.createElement('div');
+  head.textContent = `📷 Camera @ ${fmtMs(t)}`;
+  head.style.cssText = 'padding:4px 12px; color:var(--text-dim); font-size:.6rem; text-transform:uppercase; letter-spacing:.05em; border-bottom:1px solid var(--border);';
+  menu.appendChild(head);
+  const easingHead = document.createElement('div');
+  easingHead.textContent = 'Easing → next keyframe:';
+  easingHead.style.cssText = 'padding:6px 12px 2px; color:var(--text-dim); font-size:.6rem;';
+  menu.appendChild(easingHead);
+  const currentEasing = kf.easing || 'linear';
+  EASING_NAMES.forEach(name => {
+    const item = document.createElement('div');
+    item.textContent = (currentEasing === name ? '✓ ' : '  ') + name;
+    item.style.cssText = 'padding:4px 12px; cursor:pointer; user-select:none;';
+    item.addEventListener('mouseenter', () => { item.style.background = 'var(--surface2)'; });
+    item.addEventListener('mouseleave', () => { item.style.background = ''; });
+    item.addEventListener('click', () => {
+      if (name === 'linear') delete kf.easing; else kf.easing = name;
+      renderTimeline();
+      queueSave();
+      closeKeyframeContextMenu();
+    });
+    menu.appendChild(item);
+  });
+  const divider = document.createElement('div');
+  divider.style.cssText = 'height:1px; background:var(--border); margin:4px 0;';
+  menu.appendChild(divider);
+  const del = document.createElement('div');
+  del.textContent = '✕ Delete keyframe';
+  del.style.cssText = 'padding:6px 12px; cursor:pointer; color:var(--red); user-select:none;';
+  del.addEventListener('mouseenter', () => { del.style.background = 'var(--surface2)'; });
+  del.addEventListener('mouseleave', () => { del.style.background = ''; });
+  del.addEventListener('click', () => {
+    activeScene().cameraTrack.keyframes = kfs.filter(k => k.t !== t);
+    renderTimeline();
+    queueSave();
+    closeKeyframeContextMenu();
+  });
+  menu.appendChild(del);
+  document.body.appendChild(menu);
+  setTimeout(() => {
+    const off = (ev) => {
+      if (!menu.contains(ev.target)) {
+        closeKeyframeContextMenu();
+        document.removeEventListener('mousedown', off);
+      }
+    };
+    document.addEventListener('mousedown', off);
+  }, 0);
+}
+
+// Applies the camera state at time t from cameraTrack keyframes. Skips if
+// the active scene has no cameraTrack (lets OrbitControls stay in charge).
+function applyCameraAtTime(t) {
+  const s = activeScene();
+  const kfs = s?.cameraTrack?.keyframes;
+  if (!kfs || kfs.length === 0) return;
+  const cam = ed.three.camera;
+  const sorted = [...kfs].sort((a, b) => a.t - b.t);
+  let from, to;
+  if (t <= sorted[0].t) from = to = sorted[0];
+  else if (t >= sorted[sorted.length - 1].t) from = to = sorted[sorted.length - 1];
+  else {
+    let i = 0;
+    while (i < sorted.length - 1 && sorted[i + 1].t < t) i++;
+    from = sorted[i]; to = sorted[i + 1];
+  }
+  if (from === to) {
+    if (from.position) cam.position.set(...from.position);
+    if (from.fov != null) { cam.fov = from.fov; cam.updateProjectionMatrix(); }
+    if (from.lookAt) { ed.three.orbit.target.set(...from.lookAt); cam.lookAt(...from.lookAt); }
+    return;
+  }
+  const span = to.t - from.t;
+  const alpha = resolveEasing(from.easing)((t - from.t) / Math.max(1, span));
+  if (from.position && to.position) cam.position.set(
+    lerp(from.position[0], to.position[0], alpha),
+    lerp(from.position[1], to.position[1], alpha),
+    lerp(from.position[2], to.position[2], alpha),
+  );
+  if (from.fov != null && to.fov != null) {
+    cam.fov = lerp(from.fov, to.fov, alpha);
+    cam.updateProjectionMatrix();
+  }
+  if (from.lookAt && to.lookAt) {
+    const lx = lerp(from.lookAt[0], to.lookAt[0], alpha);
+    const ly = lerp(from.lookAt[1], to.lookAt[1], alpha);
+    const lz = lerp(from.lookAt[2], to.lookAt[2], alpha);
+    // Sync OrbitControls' target so when playback ends and the user
+    // resumes orbit-control, the rotation pivot is where we left it.
+    ed.three.orbit.target.set(lx, ly, lz);
+    cam.lookAt(lx, ly, lz);
+  }
+}
+
 // ── Keyframe interaction ─────────────────────────────────────────────
 // Mousedown-driven so we can disambiguate click (seek) from drag (retime).
 // Right-click opens the easing+delete context menu instead of seeking.
@@ -1067,6 +1594,7 @@ function bindKeyframeDiamond(diamond) {
         ed.currentTime = startT;
         ed.isPlaying = false;
         applyTracksAtTime(startT);
+        applyCameraAtTime(startT);
         renderTimelineHead();
         renderTimeDisplay();
       }

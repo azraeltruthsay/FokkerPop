@@ -79,17 +79,21 @@ export async function playScene(sceneJson) {
   camera.position.set(cx, cy, cz);
   camera.lookAt(lx, ly, lz);
 
-  // Default 3-point-ish lighting — matches the model-3d widget so loaded
-  // PBR models don't render flat-black. Phase 4 turns lights into
-  // first-class scene objects with their own keyframe channels; until
-  // then these defaults always exist alongside whatever the scene loads.
-  scene.add(new THREE.AmbientLight(0xffffff, 0.65));
-  const key = new THREE.DirectionalLight(0xffffff, 1.15);
-  key.position.set(3, 4, 2);
-  scene.add(key);
-  const fill = new THREE.DirectionalLight(0x88aaff, 0.35);
-  fill.position.set(-3, 2, -2);
-  scene.add(fill);
+  // Default 3-point-ish lighting only if the scene didn't author its own
+  // lights. Once an author adds a light object the defaults step out so
+  // they don't double-light the stage. Matches the model-3d widget's
+  // lighting setup so loaded PBR models don't render flat-black in the
+  // no-author-lights case.
+  const sceneHasLights = (sceneJson.objects || []).some(o => o.type === 'light');
+  if (!sceneHasLights) {
+    scene.add(new THREE.AmbientLight(0xffffff, 0.65));
+    const key = new THREE.DirectionalLight(0xffffff, 1.15);
+    key.position.set(3, 4, 2);
+    scene.add(key);
+    const fill = new THREE.DirectionalLight(0x88aaff, 0.35);
+    fill.position.set(-3, 2, -2);
+    scene.add(fill);
+  }
 
   const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -144,6 +148,21 @@ export async function playScene(sceneJson) {
       objects[obj.id] = mesh;
       applyTransform(mesh, obj.transform);
       scene.add(mesh);
+    } else if (obj.type === 'light') {
+      const l = obj.light || {};
+      let light;
+      const color = new THREE.Color(l.color || '#ffffff');
+      const intensity = l.intensity ?? 1;
+      if (l.kind === 'ambient') {
+        light = new THREE.AmbientLight(color, intensity);
+      } else if (l.kind === 'point') {
+        light = new THREE.PointLight(color, intensity, l.distance ?? 0);
+      } else { // 'directional' default
+        light = new THREE.DirectionalLight(color, intensity);
+      }
+      objects[obj.id] = light;
+      if (l.kind !== 'ambient') applyTransform(light, obj.transform);
+      scene.add(light);
     }
   }
 
@@ -153,9 +172,12 @@ export async function playScene(sceneJson) {
     objectId: t.objectId,
     keyframes: [...(t.keyframes || [])].sort((a, b) => a.t - b.t),
   }));
+  const cameraKeyframes = sceneJson.cameraTrack?.keyframes
+    ? [...sceneJson.cameraTrack.keyframes].sort((a, b) => a.t - b.t)
+    : null;
 
   const stateRef = {
-    container, renderer, scene, camera, objects, tracks,
+    container, renderer, scene, camera, objects, tracks, cameraKeyframes,
     startTime: performance.now(),
     durationMs: sceneJson.durationMs || 10000,
     rafId: null,
@@ -200,6 +222,7 @@ export async function playScene(sceneJson) {
       if (!target) continue;
       applyKeyframeAt(target, track.keyframes, elapsed);
     }
+    if (stateRef.cameraKeyframes) applyCameraAt(camera, stateRef.cameraKeyframes, elapsed);
     renderer.render(scene, camera);
   }
   loop();
@@ -250,6 +273,25 @@ function applyKeyframeAt(obj, keyframes, t) {
   if (a.opacity != null && b.opacity != null) {
     setOpacity(obj, lerp(a.opacity, b.opacity, alpha));
   }
+  // Material channels interpolate float-wise; color/emissive lerp in RGB.
+  // Wireframe doesn't lerp — it snaps when the next keyframe is reached
+  // (handled via applyKeyframe's clamp branches above).
+  if (a.material && b.material) {
+    const lerpMat = {};
+    if (a.material.color    != null && b.material.color    != null) lerpMat.color    = lerpHex(a.material.color, b.material.color, alpha);
+    if (a.material.emissive != null && b.material.emissive != null) lerpMat.emissive = lerpHex(a.material.emissive, b.material.emissive, alpha);
+    if (a.material.emissiveIntensity != null && b.material.emissiveIntensity != null) lerpMat.emissiveIntensity = lerp(a.material.emissiveIntensity, b.material.emissiveIntensity, alpha);
+    if (a.material.metalness != null && b.material.metalness != null) lerpMat.metalness = lerp(a.material.metalness, b.material.metalness, alpha);
+    if (a.material.roughness != null && b.material.roughness != null) lerpMat.roughness = lerp(a.material.roughness, b.material.roughness, alpha);
+    // Wireframe takes the FROM value during the segment; the snap to b's
+    // value happens at the clamp branch when t >= b.t.
+    if (a.material.wireframe != null) lerpMat.wireframe = a.material.wireframe;
+    setMaterial(obj, lerpMat);
+  }
+  if (a.light && b.light && obj.isLight) {
+    if (a.light.intensity != null && b.light.intensity != null) obj.intensity = lerp(a.light.intensity, b.light.intensity, alpha);
+    if (a.light.color     != null && b.light.color     != null) obj.color.set(lerpHex(a.light.color, b.light.color, alpha));
+  }
 }
 
 function applyKeyframe(obj, kf) {
@@ -257,6 +299,45 @@ function applyKeyframe(obj, kf) {
   if (kf.rotation) obj.rotation.set(...kf.rotation);
   if (kf.scale)    obj.scale.set(...kf.scale);
   if (kf.opacity != null) setOpacity(obj, kf.opacity);
+  if (kf.material) setMaterial(obj, kf.material);
+  if (kf.light && obj.isLight) {
+    if (kf.light.intensity != null) obj.intensity = kf.light.intensity;
+    if (kf.light.color     != null) obj.color.set(kf.light.color);
+  }
+}
+
+// Walks the subtree so material updates land on every mesh inside a
+// loaded GLB. Uses Three.js's Color.set(hex-string) which handles #rgb
+// and #rrggbb identically.
+function setMaterial(obj, m) {
+  obj.traverse?.(child => {
+    const mats = child.material ? (Array.isArray(child.material) ? child.material : [child.material]) : null;
+    if (!mats) return;
+    for (const mat of mats) {
+      if (m.color    != null && mat.color)    mat.color.set(m.color);
+      if (m.emissive != null && mat.emissive) mat.emissive.set(m.emissive);
+      if (m.emissiveIntensity != null && 'emissiveIntensity' in mat) mat.emissiveIntensity = m.emissiveIntensity;
+      if (m.metalness != null && 'metalness' in mat) mat.metalness = m.metalness;
+      if (m.roughness != null && 'roughness' in mat) mat.roughness = m.roughness;
+      if (m.wireframe != null && 'wireframe' in mat) mat.wireframe = m.wireframe;
+    }
+  });
+}
+
+// RGB lerp in 0..1 space, returned as a hex string. Used both for material
+// color and light color interpolation; keeping it stringly-typed lets the
+// caller pass the result straight to Three.Color.set().
+function lerpHex(aHex, bHex, alpha) {
+  const a = parseHex(aHex), b = parseHex(bHex);
+  const r = Math.round(lerp(a[0], b[0], alpha));
+  const g = Math.round(lerp(a[1], b[1], alpha));
+  const bl = Math.round(lerp(a[2], b[2], alpha));
+  return '#' + [r, g, bl].map(n => n.toString(16).padStart(2, '0')).join('');
+}
+function parseHex(hex) {
+  let h = hex.replace('#', '');
+  if (h.length === 3) h = h.split('').map(c => c + c).join('');
+  return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)];
 }
 
 // Walks the subtree so opacity applies to all materials inside a loaded
@@ -271,4 +352,42 @@ function setOpacity(obj, op) {
 
 function lerp(a, b, t) {
   return a + (b - a) * t;
+}
+
+// Camera keyframes drive the renderer camera each frame. Same bracketing
+// + easing pattern as object tracks; lookAt is applied last so position
+// and lookAt changes in the same keyframe land in the correct order
+// (Three.js's lookAt re-derives matrices from current position).
+function applyCameraAt(cam, keyframes, t) {
+  if (keyframes.length === 0) return;
+  if (t <= keyframes[0].t) return applyCameraKeyframe(cam, keyframes[0]);
+  if (t >= keyframes[keyframes.length - 1].t) return applyCameraKeyframe(cam, keyframes[keyframes.length - 1]);
+  let i = 0;
+  while (i < keyframes.length - 1 && keyframes[i + 1].t < t) i++;
+  const a = keyframes[i], b = keyframes[i + 1];
+  const span = b.t - a.t;
+  const alpha = resolveEasing(a.easing)((t - a.t) / Math.max(1, span));
+  if (a.position && b.position) {
+    cam.position.set(
+      lerp(a.position[0], b.position[0], alpha),
+      lerp(a.position[1], b.position[1], alpha),
+      lerp(a.position[2], b.position[2], alpha),
+    );
+  }
+  if (a.fov != null && b.fov != null) {
+    cam.fov = lerp(a.fov, b.fov, alpha);
+    cam.updateProjectionMatrix();
+  }
+  if (a.lookAt && b.lookAt) {
+    cam.lookAt(
+      lerp(a.lookAt[0], b.lookAt[0], alpha),
+      lerp(a.lookAt[1], b.lookAt[1], alpha),
+      lerp(a.lookAt[2], b.lookAt[2], alpha),
+    );
+  }
+}
+function applyCameraKeyframe(cam, kf) {
+  if (kf.position) cam.position.set(...kf.position);
+  if (kf.fov != null) { cam.fov = kf.fov; cam.updateProjectionMatrix(); }
+  if (kf.lookAt) cam.lookAt(...kf.lookAt);
 }

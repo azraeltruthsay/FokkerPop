@@ -33,9 +33,16 @@ import { EASING_NAMES } from '../../shared/easing.js';
 //   objects: [
 //     {
 //       id:    string,                    // unique within scene
-//       type:  'model' | 'image-plane',   // Phase 4+: text/sticker-emitter/light/audio-emitter/group
-//       asset: string,                    // filename in assets/{models,images}; resolved by type at load
+//       type:  'model' | 'image-plane' | 'light',  // Phase 5+: text/sticker-emitter/audio-emitter/group
+//       asset?: string,                   // filename in assets/{models,images} for model/image-plane
+//                                          // (required for those types). Not used by 'light'.
 //       name?: string,                    // display label in editor; defaults to asset basename
+//       light?: {                         // required for type='light'
+//         kind: 'ambient' | 'directional' | 'point',
+//         intensity?: number,             // default 1
+//         color?:     string,             // hex, default '#ffffff'
+//         distance?:  number              // point only, default 0 = infinite
+//       },
 //       transform: {                      // initial pose; tracks override per-frame
 //         position: [x, y, z],
 //         rotation: [x, y, z],            // euler radians, XYZ order
@@ -43,6 +50,11 @@ import { EASING_NAMES } from '../../shared/easing.js';
 //       }
 //     }
 //   ],
+//   cameraTrack?: {                       // animates the scene camera over time;
+//     keyframes: [                        // when present, overrides initial camera{}
+//       { t, position?, lookAt?, fov?, easing? }
+//     ]
+//   },
 //   audio?: [                              // optional list of scene sounds
 //     {
 //       id:       string,
@@ -65,6 +77,18 @@ import { EASING_NAMES } from '../../shared/easing.js';
 //           rotation?: [x, y, z],
 //           scale?:    [x, y, z],
 //           opacity?:  number,            // 0..1
+//           material?: {                  // model + image-plane channels
+//             color?:             string, // hex, multiplied with texture
+//             emissive?:          string, // hex, additive glow
+//             emissiveIntensity?: number, // 0..2
+//             metalness?:         number, // 0..1
+//             roughness?:         number, // 0..1
+//             wireframe?:         boolean // snaps (no lerp)
+//           },
+//           light?: {                     // type='light' channels
+//             intensity?: number,         // 0..N
+//             color?:     string          // hex
+//           },
 //           easing?:   string             // see shared/easing.js;
 //                                          // missing = 'linear'. Determines
 //                                          // the curve from THIS keyframe
@@ -77,10 +101,23 @@ import { EASING_NAMES } from '../../shared/easing.js';
 // }
 
 const VALID_MOUNT_MODES   = new Set(['fullscreen', 'widget']);
-const VALID_OBJECT_TYPES  = new Set(['model', 'image-plane']);
+const VALID_OBJECT_TYPES  = new Set(['model', 'image-plane', 'light']);
+const VALID_LIGHT_KINDS   = new Set(['ambient', 'directional', 'point']);
 const VALID_CAMERA_TYPES  = new Set(['perspective']);
 const VALID_EASING_NAMES  = new Set(EASING_NAMES);
 const VALID_AUDIO_POLICIES = new Set(['mix', 'duck-below', 'solo', 'cancel-below']);
+
+// Accepts #rgb and #rrggbb. Used in keyframe channel validation so a
+// typo'd color (missing #, hex letter beyond f, wrong length) gets
+// rejected with a clear human message rather than rendering silently
+// black at runtime.
+const HEX_COLOR_RE = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
+function isHexColor(s) {
+  return typeof s === 'string' && HEX_COLOR_RE.test(s);
+}
+function isNumInRange(n, lo, hi) {
+  return typeof n === 'number' && Number.isFinite(n) && n >= lo && n <= hi;
+}
 
 function isVec3(v) {
   return Array.isArray(v) && v.length === 3 && v.every(n => typeof n === 'number' && Number.isFinite(n));
@@ -127,7 +164,27 @@ export function validateScene(scene) {
     if (objectIds.has(obj.id))                 return { ok: false, error: `scene "${scene.id}": duplicate object id "${obj.id}"` };
     objectIds.add(obj.id);
     if (!VALID_OBJECT_TYPES.has(obj.type))     return { ok: false, error: `scene "${scene.id}" object "${obj.id}": type must be one of ${[...VALID_OBJECT_TYPES].join('|')}` };
-    if (!isNonEmptyString(obj.asset))          return { ok: false, error: `scene "${scene.id}" object "${obj.id}": asset is required` };
+    // Asset is required for visual objects (model, image-plane). Lights
+    // don't reference an asset; they specify their light{} block instead.
+    if (obj.type === 'light') {
+      if (!obj.light || typeof obj.light !== 'object') {
+        return { ok: false, error: `scene "${scene.id}" object "${obj.id}": light block is required for type='light'` };
+      }
+      if (!VALID_LIGHT_KINDS.has(obj.light.kind)) {
+        return { ok: false, error: `scene "${scene.id}" object "${obj.id}": light.kind must be one of ${[...VALID_LIGHT_KINDS].join('|')}` };
+      }
+      if (obj.light.intensity != null && !(typeof obj.light.intensity === 'number' && obj.light.intensity >= 0)) {
+        return { ok: false, error: `scene "${scene.id}" object "${obj.id}": light.intensity must be a non-negative number` };
+      }
+      if (obj.light.color != null && !isHexColor(obj.light.color)) {
+        return { ok: false, error: `scene "${scene.id}" object "${obj.id}": light.color must be hex (#rgb or #rrggbb)` };
+      }
+      if (obj.light.distance != null && !(typeof obj.light.distance === 'number' && obj.light.distance >= 0)) {
+        return { ok: false, error: `scene "${scene.id}" object "${obj.id}": light.distance must be a non-negative number` };
+      }
+    } else {
+      if (!isNonEmptyString(obj.asset))        return { ok: false, error: `scene "${scene.id}" object "${obj.id}": asset is required` };
+    }
     if (obj.transform) {
       const t = obj.transform;
       if (t.position && !isVec3(t.position))   return { ok: false, error: `scene "${scene.id}" object "${obj.id}": transform.position must be [x,y,z]` };
@@ -181,6 +238,53 @@ export function validateScene(scene) {
       }
       if (kf.easing != null && !VALID_EASING_NAMES.has(kf.easing)) {
         return { ok: false, error: `scene "${scene.id}" track "${tr.objectId}" t=${kf.t}: easing must be one of ${[...VALID_EASING_NAMES].join('|')}` };
+      }
+      if (kf.material != null) {
+        const m = kf.material;
+        if (typeof m !== 'object') return { ok: false, error: `scene "${scene.id}" track "${tr.objectId}" t=${kf.t}: material must be an object` };
+        if (m.color    != null && !isHexColor(m.color))    return { ok: false, error: `scene "${scene.id}" track "${tr.objectId}" t=${kf.t}: material.color must be hex` };
+        if (m.emissive != null && !isHexColor(m.emissive)) return { ok: false, error: `scene "${scene.id}" track "${tr.objectId}" t=${kf.t}: material.emissive must be hex` };
+        if (m.emissiveIntensity != null && !isNumInRange(m.emissiveIntensity, 0, 5)) {
+          return { ok: false, error: `scene "${scene.id}" track "${tr.objectId}" t=${kf.t}: material.emissiveIntensity must be 0..5` };
+        }
+        if (m.metalness != null && !isNumInRange(m.metalness, 0, 1)) return { ok: false, error: `scene "${scene.id}" track "${tr.objectId}" t=${kf.t}: material.metalness must be 0..1` };
+        if (m.roughness != null && !isNumInRange(m.roughness, 0, 1)) return { ok: false, error: `scene "${scene.id}" track "${tr.objectId}" t=${kf.t}: material.roughness must be 0..1` };
+        if (m.wireframe != null && typeof m.wireframe !== 'boolean') {
+          return { ok: false, error: `scene "${scene.id}" track "${tr.objectId}" t=${kf.t}: material.wireframe must be boolean` };
+        }
+      }
+      if (kf.light != null) {
+        const l = kf.light;
+        if (typeof l !== 'object') return { ok: false, error: `scene "${scene.id}" track "${tr.objectId}" t=${kf.t}: light must be an object` };
+        if (l.intensity != null && !(typeof l.intensity === 'number' && l.intensity >= 0)) {
+          return { ok: false, error: `scene "${scene.id}" track "${tr.objectId}" t=${kf.t}: light.intensity must be a non-negative number` };
+        }
+        if (l.color != null && !isHexColor(l.color)) {
+          return { ok: false, error: `scene "${scene.id}" track "${tr.objectId}" t=${kf.t}: light.color must be hex` };
+        }
+      }
+    }
+  }
+
+  // Camera track (optional) — animates the scene camera. When present and
+  // non-empty, the player drives the camera from its keyframes; otherwise
+  // the camera stays at the initial scene.camera{} pose.
+  if (scene.cameraTrack != null) {
+    if (typeof scene.cameraTrack !== 'object') return { ok: false, error: `scene "${scene.id}": cameraTrack must be an object` };
+    if (!Array.isArray(scene.cameraTrack.keyframes)) {
+      return { ok: false, error: `scene "${scene.id}": cameraTrack.keyframes must be an array` };
+    }
+    for (const kf of scene.cameraTrack.keyframes) {
+      if (!(typeof kf.t === 'number' && Number.isFinite(kf.t) && kf.t >= 0)) {
+        return { ok: false, error: `scene "${scene.id}": cameraTrack keyframe needs non-negative numeric t` };
+      }
+      if (kf.position && !isVec3(kf.position)) return { ok: false, error: `scene "${scene.id}" cameraTrack t=${kf.t}: position must be [x,y,z]` };
+      if (kf.lookAt   && !isVec3(kf.lookAt))   return { ok: false, error: `scene "${scene.id}" cameraTrack t=${kf.t}: lookAt must be [x,y,z]` };
+      if (kf.fov != null && !isNumInRange(kf.fov, 1, 179)) {
+        return { ok: false, error: `scene "${scene.id}" cameraTrack t=${kf.t}: fov must be 1..179 degrees` };
+      }
+      if (kf.easing != null && !VALID_EASING_NAMES.has(kf.easing)) {
+        return { ok: false, error: `scene "${scene.id}" cameraTrack t=${kf.t}: easing must be one of ${[...VALID_EASING_NAMES].join('|')}` };
       }
     }
   }
