@@ -886,21 +886,24 @@ window.renderWidgetList = function() {
       }
       if (w.type === 'twitch-live') {
         const fields = [
-          { v: 'viewers',     t: 'Viewers (live)' },
-          { v: 'uptime',      t: 'Uptime (live)'  },
-          { v: 'title',       t: 'Stream Title (live)' },
-          { v: 'game',        t: 'Category / Game (live)' },
-          { v: 'followers',   t: 'Total Followers' },
-          { v: 'subscribers', t: 'Total Subscribers' },
-          { v: 'subPoints',   t: 'Sub Points' },
+          { v: 'viewers',        t: 'Viewers (live)' },
+          { v: 'uptime',         t: 'Uptime (live)'  },
+          { v: 'title',          t: 'Stream Title (live)' },
+          { v: 'game',           t: 'Category / Game (live)' },
+          { v: 'followers',      t: 'Total Followers' },
+          { v: 'subscribers',    t: 'Total Subscribers' },
+          { v: 'subPoints',      t: 'Sub Points' },
+          { v: 'activeChatters', t: 'Active Chatters (5 min)' },
+          { v: 'messageRate',    t: 'Messages / Min' },
+          { v: 'topChatter',     t: 'Top Chatter (this session)' },
         ];
         return `
-          <select class="input-field" onchange="updateWidgetField('${w.id}','field',this.value); renderWidgetList();" style="max-width:200px;" title="Which Twitch field to display">
+          <select class="input-field" onchange="updateWidgetField('${w.id}','field',this.value); renderWidgetList();" style="max-width:220px;" title="Which Twitch field to display">
             ${fields.map(f => `<option value="${f.v}" ${f.v === (c.field || 'viewers') ? 'selected' : ''}>${f.t}</option>`).join('')}
           </select>
           <input class="input-field" value="${esc(c.label ?? '')}" placeholder="Label (blank = default)" oninput="updateWidgetField('${w.id}','label',this.value)" style="max-width:200px;">
           <input class="input-field" type="number" min="10" max="200" value="${c.fontSize ?? 36}" oninput="updateWidgetField('${w.id}','fontSize',parseInt(this.value)||36)" style="max-width:90px;" title="Value font size (px)">
-          <span style="font-size:.7rem; color:var(--text-dim); flex-basis:100%;">"(live)" fields come from a 60 s stream-stats poll and only have values while you're streaming. <strong>Totals</strong> (followers / subscribers / sub points) come from a 120 s channel-totals poll and show whether you're live or not. Red dot = stream is currently live.</span>`;
+          <span style="font-size:.7rem; color:var(--text-dim); flex-basis:100%;">"(live)" fields come from a 60 s stream-stats poll, only valued while streaming. <strong>Totals</strong> (followers / subscribers / sub points) come from a 120 s channel-totals poll. <strong>Chat dynamics</strong> (active chatters, msg rate, top chatter) update every 5 s from in-memory chat aggregation — no Helix calls, resets on Session Reset. Red dot brightness on the chat fields tracks chat heat.</span>`;
       }
       return '';
     })();

@@ -12,6 +12,7 @@ import flowEngine, { TEST_PAYLOADS } from './pipeline/flow-engine.js';
 import { validateScene }             from './pipeline/scenes.js';
 import obs                   from './obs.js';
 import * as helix            from './twitch/helix.js';
+import chatDynamics           from './chat-dynamics.js';
 import settings, { ROOT, loadedFrom, saveSettings } from './settings-loader.js';
 
 import log                        from './logger.js';
@@ -438,6 +439,9 @@ bus.on('*', async (event) => {
     }
     flowEngine.processEvent(event, broadcastEffect);
     if (event.type === 'chat') {
+      if (!event.isTest && event.payload?.user) {
+        chatDynamics.recordChat(event.payload.user);
+      }
       fireCommand(event.payload.message, event);
       fireChatRoll(event.payload.message, event);
     }
@@ -1570,6 +1574,7 @@ wss.on('connection', (ws, req) => {
         send(ws, { type: 'state', path: 'overlay.widgets',           value: widgets });
         send(ws, { type: 'state', path: 'twitch.live',               value: state.get('twitch.live')   ?? null });
         send(ws, { type: 'state', path: 'twitch.totals',             value: state.get('twitch.totals') ?? null });
+        send(ws, { type: 'state', path: 'twitch.chat',               value: state.get('twitch.chat')   ?? chatDynamics.compute() });
       }
       return;
     }
@@ -1837,10 +1842,12 @@ wss.on('connection', (ws, req) => {
         break;
       case '_dashboard.session-reset':
         state.resetSession();
+        chatDynamics.reset();
         broadcastState('session',     state.get('session'));
         broadcastState('leaderboard', state.get('leaderboard'));
         broadcastState('crowd.energy', 0);
         broadcastState('goals', state.get('goals'));
+        broadcastState('twitch.chat', chatDynamics.compute());
         break;
       case '_dashboard.update-apply':
         try {
@@ -2008,6 +2015,18 @@ twitchEventSub.on('status', (status) => {
   if (status === 'connected') startStreamPoller();
   if (status === 'connected') startChannelTotalsPoller();
 });
+
+// Chat-dynamics broadcaster (issue #4 cluster G). Computes + emits
+// state.twitch.chat every 5 s — fast enough that a "chat heat" widget feels
+// live, slow enough that the WS bus isn't flooded. Always runs regardless
+// of Twitch-connection state so dashboard previews work in offline dev too.
+const CHAT_DYNAMICS_INTERVAL_MS = 5_000;
+setInterval(() => {
+  const snap = chatDynamics.compute();
+  state.set('twitch.chat', snap);
+  broadcast(dashboards, { type: 'state', path: 'twitch.chat', value: snap });
+  broadcast(overlays,   { type: 'state', path: 'twitch.chat', value: snap });
+}, CHAT_DYNAMICS_INTERVAL_MS);
 
 obs.on('status', (status, reason) => {
   broadcast(dashboards, { type: 'state', path: 'obs.status',    value: status });

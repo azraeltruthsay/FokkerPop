@@ -2102,6 +2102,12 @@ function handleState(path, value) {
       refreshCounterWidgets();
       refreshProgressBarWidgets();
       break;
+    case 'twitch.chat':
+      state.twitch.chat = value || null;
+      refreshTwitchLiveWidgets();
+      refreshCounterWidgets();
+      refreshProgressBarWidgets();
+      break;
   }
 }
 
@@ -2109,7 +2115,7 @@ function handleState(path, value) {
 state.widgets   = [];
 state.positions = {};
 state.recents   = { follow: null, sub: null, cheer: null, raid: null };
-state.twitch    = { live: null, totals: null };
+state.twitch    = { live: null, totals: null, chat: null };
 
 let widgetModule = null;
 async function ensureWidgetModule() {
@@ -2360,13 +2366,18 @@ function formatUptime(sec) {
 // Field names that come from twitch.totals (channel-level, displays
 // regardless of live/offline state); everything else reads from twitch.live.
 const TOTALS_FIELDS = new Set(['followers', 'subscribers', 'subPoints']);
+// Chat-dynamics fields — derived from chat-event rate over rolling windows;
+// always displayed regardless of stream live state, like totals.
+const CHAT_FIELDS = new Set(['activeChatters', 'messageRate', 'topChatter']);
 const TWITCH_LIVE_LABELS = {
   viewers: 'VIEWERS', uptime: 'UPTIME', title: 'STREAM', game: 'CATEGORY',
   followers: 'FOLLOWERS', subscribers: 'SUBSCRIBERS', subPoints: 'SUB POINTS',
+  activeChatters: 'ACTIVE CHATTERS', messageRate: 'MSGS / MIN', topChatter: 'TOP CHATTER',
 };
 function refreshTwitchLiveWidgets() {
   const live   = state.twitch?.live;
   const totals = state.twitch?.totals;
+  const chat   = state.twitch?.chat;
   for (const w of state.widgets) {
     if (w.type !== 'twitch-live') continue;
     const el  = document.getElementById('cw-val-' + w.id);
@@ -2375,15 +2386,35 @@ function refreshTwitchLiveWidgets() {
     if (!el) continue;
     const field    = w.config?.field || 'viewers';
     const isTotals = TOTALS_FIELDS.has(field);
+    const isChat   = CHAT_FIELDS.has(field);
     const isLive   = !!live?.isLive;
-    // Totals are channel-level facts — keep the dot quiet for them rather
-    // than implying the count went offline when the stream ended.
-    if (dot) dot.classList.toggle('live', isTotals ? true : isLive);
+    if (dot) {
+      // Live-stream fields → dot reflects actual live state.
+      // Totals → always "live" because they're channel-level facts.
+      // Chat → dot pulses by chat heat (0..1 → off/dim/bright) for "chat is hot" feel.
+      if (isChat) {
+        const heat = Number(chat?.heat) || 0;
+        dot.classList.toggle('live', heat > 0.15);
+        dot.style.opacity = String(0.4 + heat * 0.6);
+      } else {
+        dot.style.opacity = '';
+        dot.classList.toggle('live', isTotals ? true : isLive);
+      }
+    }
     if (lbl) lbl.textContent = w.config?.label || TWITCH_LIVE_LABELS[field] || 'STREAM';
 
     if (isTotals) {
       const v = Number(totals?.[field]);
       el.textContent = Number.isFinite(v) ? v.toLocaleString() : '—';
+      continue;
+    }
+    if (isChat) {
+      if (field === 'topChatter') {
+        el.textContent = chat?.topChatter || '—';
+      } else {
+        const v = Number(chat?.[field]);
+        el.textContent = Number.isFinite(v) ? v.toLocaleString() : '—';
+      }
       continue;
     }
     if (!isLive) {
