@@ -133,6 +133,19 @@ export class FlowEngine {
               src: data.file,
               durationMs: Number(data.durationMs) || 5000,
             }, event.isTest);
+          } else if (node.action === 'showTwitchCard') {
+            // Server enriches with avatar + display name via Helix before
+            // broadcasting (see broadcastEffect → enrichTwitchCard); flow
+            // just hands off the username and subtitle. Empty user → no-op
+            // (otherwise we'd ship "—" cards on template-resolution misses).
+            const user = String(data.user || '').trim();
+            if (user) {
+              broadcastEffect('twitch-card-show', {
+                user,
+                subtitle:   data.subtitle ?? '',
+                durationMs: Number(data.durationMs) || 5000,
+              }, event.isTest);
+            }
           } else if (node.action === 'playScene') {
             // Look up the scene by id and ship the whole JSON to overlays.
             // Sending the full scene (rather than just the id) means the

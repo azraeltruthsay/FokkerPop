@@ -196,6 +196,30 @@ body.layout-mode #widget-combo {
   min-width: 160px;
   min-height: 60px;
 }
+/* Twitch card keeps its flex layout in layout-mode so the avatar + text
+   stack the same way it will at runtime — block would collapse them.
+   Filler content (silhouette + sample text) only renders in layout-mode
+   so the card has a visible footprint to drag; live overlay shows nothing
+   until an effect fires. */
+body.layout-mode #twitch-card {
+  opacity: 1 !important;
+  pointer-events: auto !important;
+}
+body.layout-mode #twitch-card .tc-avatar {
+  visibility: visible !important;
+  background: linear-gradient(135deg, rgba(145,71,255,0.4), rgba(45,16,75,0.4));
+}
+body.layout-mode #twitch-card .tc-name-text:empty::before {
+  content: "DisplayName";
+  opacity: 0.55;
+}
+body.layout-mode #twitch-card .tc-subtitle:empty {
+  display: block;
+}
+body.layout-mode #twitch-card .tc-subtitle:empty::before {
+  content: "subtitle goes here";
+  opacity: 0.5;
+}
 body.layout-mode .draggable[data-placeholder]::before {
   content: attr(data-placeholder);
   position: absolute;
@@ -738,6 +762,70 @@ body:not(.layout-mode) .custom-widget[data-type="hot-button"]:hover {
   opacity: 0;
   transition: opacity 0.3s;
 }
+/* Twitch user card — PolyPop-style "this person did the thing" panel.
+   Fades in on twitch-card-show effect, holds for the requested duration,
+   fades out. Position is draggable like other persistent overlay elements
+   (Layout mode → drag); default lands top-center to mirror PolyPop. */
+#twitch-card {
+  position: absolute;
+  top: 60px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 18px 12px 12px;
+  background: linear-gradient(135deg, rgba(20,12,40,0.92) 0%, rgba(40,16,60,0.92) 100%);
+  border: 1px solid rgba(145,71,255,0.55);
+  border-radius: 14px;
+  box-shadow: 0 0 40px rgba(145,71,255,0.35), 0 8px 24px rgba(0,0,0,0.55);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.35s ease, transform 0.35s cubic-bezier(0.34,1.2,0.64,1);
+  min-width: 280px;
+  z-index: 30;
+}
+#twitch-card.visible {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+#twitch-card .tc-avatar {
+  width: 64px; height: 64px;
+  border-radius: 50%;
+  border: 2px solid #9147FF;
+  background: rgba(255,255,255,0.05);
+  object-fit: cover;
+  flex-shrink: 0;
+}
+#twitch-card .tc-avatar[src=""] { visibility: hidden; }
+#twitch-card .tc-body { display: flex; flex-direction: column; gap: 2px; }
+#twitch-card .tc-name {
+  font-size: 1.25rem;
+  font-weight: 900;
+  color: #fff;
+  text-shadow: 0 2px 8px rgba(0,0,0,0.7);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+#twitch-card .tc-badge {
+  font-size: 0.55rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: rgba(145,71,255,0.3);
+  color: #d3b8ff;
+  text-transform: uppercase;
+}
+#twitch-card .tc-badge:empty { display: none; }
+#twitch-card .tc-subtitle {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: rgba(255,255,255,0.78);
+  text-shadow: 0 1px 4px rgba(0,0,0,0.6);
+}
+#twitch-card .tc-subtitle:empty { display: none; }
 #widget-combo.visible { opacity: 1; }
 .combo-multiplier {
   font-size: 4.5rem;
@@ -966,6 +1054,13 @@ body:not(.layout-mode) .custom-widget[data-type="hot-button"]:hover {
 <div id="ws-dot"></div>
 <div id="dice-container"></div>
 <div id="kaprekar-container"></div>
+<div id="twitch-card" class="draggable" data-placeholder="Twitch Card">
+  <img class="tc-avatar" alt="">
+  <div class="tc-body">
+    <div class="tc-name"><span class="tc-name-text"></span><span class="tc-badge"></span></div>
+    <div class="tc-subtitle"></div>
+  </div>
+</div>
 
 <div id="character-wrap" class="draggable" data-placeholder="Mascot">
   <img id="character-sprite" src="/characters/lilfokkermascot/idle.gif" onerror="
@@ -1913,6 +2008,7 @@ function dispatchEffect(effect, p) {
     case 'confetti':        spawnConfetti();                     break;
     case 'sticker-rain':    spawnStickerRain(p.duration ?? 7000, p.pool); break;
     case 'image-show':      enqueueImageShow(p.src, p.durationMs ?? 5000); break;
+    case 'twitch-card-show': showTwitchCard(p);                  break;
     case 'scene-play':      playScenePayload(p.scene);           break;
     case 'crowd-explosion': spawnCrowdExplosion();               break;
     case 'alert-banner':    alertQueue.push(p);                  break;
@@ -2313,6 +2409,46 @@ function refreshProgressBarWidgets() {
     fill.style.width = pct + '%';
     text.textContent = `${cur.toLocaleString()} / ${target.toLocaleString()} (${pct.toFixed(0)}%)`;
   }
+}
+
+// ── Twitch user card ──
+// Server enriches the payload with display_name + profile_image_url before
+// firing this effect (see server/index.js → enrichTwitchCard), so the
+// overlay just renders what it's given. Queue is intentionally simple —
+// if a second card fires while the first is showing, it replaces the
+// first immediately rather than queueing; matches the PolyPop UX of
+// "card means here's who did the latest thing."
+let _twitchCardHideTimer = null;
+let _twitchCardFadeTimer = null;
+function showTwitchCard(p) {
+  const el = document.getElementById('twitch-card');
+  if (!el) return;
+  const avatar = el.querySelector('.tc-avatar');
+  const nameEl = el.querySelector('.tc-name-text');
+  const badge  = el.querySelector('.tc-badge');
+  const sub    = el.querySelector('.tc-subtitle');
+
+  avatar.src = p.avatarUrl || '';
+  nameEl.textContent = p.displayName || p.user || '—';
+  badge.textContent  = ({ partner: 'PARTNER', affiliate: 'AFFILIATE' }[p.broadcasterType] || '');
+  sub.textContent    = p.subtitle || '';
+
+  clearTimeout(_twitchCardHideTimer);
+  clearTimeout(_twitchCardFadeTimer);
+  void el.offsetWidth;
+  el.classList.add('visible');
+
+  const dur = Math.max(500, Number(p.durationMs) || 5000);
+  _twitchCardHideTimer = setTimeout(() => {
+    el.classList.remove('visible');
+    _twitchCardFadeTimer = setTimeout(() => {
+      // Clear after fade-out so empty placeholders don't linger in DOM.
+      avatar.src = '';
+      nameEl.textContent = '';
+      badge.textContent  = '';
+      sub.textContent    = '';
+    }, 400);
+  }, dur);
 }
 
 function readMetric(path) {

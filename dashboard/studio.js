@@ -673,6 +673,7 @@ function onContextMenu(e) {
         <div class="ctx-item" onclick="changeNodeAction('spawnEffect')">🎇 Effect</div>
         <div class="ctx-item" onclick="changeNodeAction('showBanner')">📢 Banner</div>
         <div class="ctx-item" onclick="changeNodeAction('showImage')">🖼️ Show Image</div>
+        <div class="ctx-item" onclick="changeNodeAction('showTwitchCard')">🟣 Twitch Card</div>
         <div class="ctx-item" onclick="changeNodeAction('playSound')">🔊 Sound</div>
         <div class="ctx-item" onclick="changeNodeAction('fireEvent')">🚀 Fire Event</div>
         <div class="ctx-item" onclick="changeNodeAction('rollDice')">🎲 Roll Dice</div>
@@ -705,6 +706,7 @@ function onContextMenu(e) {
       <div class="ctx-item" onclick="addNode('action', 'spawnEffect', ${x}, ${y})">🎇 Effect</div>
       <div class="ctx-item" onclick="addNode('action', 'showBanner', ${x}, ${y})">📢 Banner</div>
       <div class="ctx-item" onclick="addNode('action', 'showImage', ${x}, ${y})">🖼️ Show Image</div>
+      <div class="ctx-item" onclick="addNode('action', 'showTwitchCard', ${x}, ${y})">🟣 Twitch Card</div>
       <div class="ctx-item" onclick="addNode('action', 'playScene', ${x}, ${y})">🎬 Play Scene</div>
       <div class="ctx-item" onclick="addNode('action', 'playSound', ${x}, ${y})">🔊 Sound</div>
       <div class="ctx-item" onclick="addNode('action', 'fireEvent', ${x}, ${y})">🚀 Fire Event</div>
@@ -1116,6 +1118,13 @@ function renderProps() {
       </div>`;
     html += exprField('Duration (ms)', 'durationMs', n.data.durationMs ?? 5000);
     html += `<div style="font-size:0.6rem; color:var(--text-dim); margin-top:-8px; margin-bottom:8px;">Drops <code>assets/images/&lt;file&gt;</code> into the first <strong>Image</strong> widget on the overlay (add one from the Layout tab if you don't have one yet). Multiple in flight queue in order.</div>`;
+  }
+
+  if (n.action === 'showTwitchCard') {
+    html += exprField('Twitch Username', 'user', n.data.user || '{{ payload.user }}');
+    html += exprField('Subtitle (optional)', 'subtitle', n.data.subtitle || '');
+    html += exprField('Duration (ms)', 'durationMs', n.data.durationMs ?? 5000);
+    html += `<div style="font-size:0.6rem; color:var(--text-dim); margin-top:-8px; margin-bottom:8px;">Pops a user card (avatar + display name + Partner/Affiliate badge) on the overlay. Avatar fetched from Twitch via Helix and cached for 1 h. Default username <code>{{ payload.user }}</code> pulls the user who triggered the flow — e.g. the redeemer, chatter, or cheerer. Drop this in for PolyPop-style "this person did the thing" callouts.</div>`;
   }
 
   if (n.action === 'playSound') {

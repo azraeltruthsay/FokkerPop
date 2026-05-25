@@ -256,7 +256,58 @@ function broadcastEffect(effect, payload = {}, isTest = false) {
     log.debug(`Sound "${payload.sound}" not found on disk — substituting ${FALLBACK_SOUND}.`);
     payload = { ...payload, sound: availableSounds.has(FALLBACK_SOUND) ? FALLBACK_SOUND : undefined };
   }
+  // Twitch-card effect: fetch the user's avatar + display name from Helix
+  // before broadcasting, so the overlay receives a fully-resolved card and
+  // doesn't have to make its own Twitch API call. Done as a non-blocking
+  // side-channel so callers don't have to await; if Helix is unreachable or
+  // the user isn't found we still broadcast a fallback card.
+  if (effect === 'twitch-card-show' && payload?.user) {
+    enrichTwitchCard(payload).then(enriched => {
+      broadcast(overlays, { type: 'effect', effect, payload: enriched, isTest });
+    });
+    return;
+  }
   broadcast(overlays, { type: 'effect', effect, payload, isTest });
+}
+
+// User-card enrichment cache. Helix /users responses are small but adding up
+// over a long stream — and an avatar doesn't change minute-to-minute. 1-hour
+// TTL is conservative; if Fokker renames mid-stream the card just stays at
+// the old display name until the entry expires.
+const userCardCache = new Map(); // login (lowercased) → { user, fetchedAt }
+const USER_CARD_TTL_MS = 60 * 60 * 1000;
+
+async function enrichTwitchCard(payload) {
+  const login = String(payload.user || '').trim().toLowerCase();
+  if (!login) return payload;
+  const fallback = {
+    ...payload,
+    displayName: payload.displayName || payload.user,
+    avatarUrl:   payload.avatarUrl   || '',
+    broadcasterType: payload.broadcasterType || '',
+  };
+  try {
+    const now    = Date.now();
+    const cached = userCardCache.get(login);
+    let user = (cached && (now - cached.fetchedAt) < USER_CARD_TTL_MS) ? cached.user : null;
+    if (!user) {
+      const { accessToken } = settings.twitch ?? {};
+      if (!accessToken) return fallback; // not authed → just show the username we were given
+      user = await helix.getUser(login, accessToken);
+      userCardCache.set(login, { user, fetchedAt: now });
+    }
+    if (!user) return fallback;
+    return {
+      ...payload,
+      displayName:     user.display_name || payload.user,
+      avatarUrl:       user.profile_image_url || '',
+      broadcasterType: user.broadcaster_type || '',
+      userId:          user.id || '',
+    };
+  } catch (err) {
+    log.debug('twitch-card lookup failed:', err.message);
+    return fallback;
+  }
 }
 function broadcastState(path, value) {
   const msg = { type: 'state', path, value };
