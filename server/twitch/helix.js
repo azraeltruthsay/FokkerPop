@@ -37,6 +37,27 @@ export async function getStreamInfo(broadcasterId, accessToken) {
   return data.data?.[0] ?? null;
 }
 
+// Total follower count. Returns the response's `total` field — we don't
+// need the actual follower list, so first=1 keeps the payload minimal.
+// Scope: moderator:read:followers (the broadcaster reading their own channel
+// counts as being a moderator of it). Already requested in the OAuth flow.
+export async function getFollowerTotal(broadcasterId, accessToken) {
+  const data = await helixGet(`/channels/followers?broadcaster_id=${encodeURIComponent(broadcasterId)}&first=1`, accessToken);
+  return Number.isFinite(data.total) ? data.total : 0;
+}
+
+// Total subscriber count + sub points. `points` weighs tier-2/3/gift subs
+// (per Twitch's "X subs unlocks emote tier" math) so a Goals widget bound
+// to sub points reflects what Twitch actually displays for sub goals.
+// Scope: channel:read:subscriptions.
+export async function getSubscriberTotal(broadcasterId, accessToken) {
+  const data = await helixGet(`/subscriptions?broadcaster_id=${encodeURIComponent(broadcasterId)}&first=1`, accessToken);
+  return {
+    total:  Number.isFinite(data.total) ? data.total : 0,
+    points: Number.isFinite(data.points) ? data.points : 0,
+  };
+}
+
 // List the broadcaster's Channel Point custom rewards. Used by the Studio
 // "Refresh from Twitch" button on the Redeem trigger's reward dropdown so
 // new rewards created in the Twitch dashboard show up without manual

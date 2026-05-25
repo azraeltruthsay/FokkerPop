@@ -899,6 +899,7 @@ const EXPR_REF = `
       <div><span style="color:var(--accent2)">payload.user</span> · .bits · .count · .viewers</div>
       <div><span style="color:var(--accent2)">payload.userIsMod</span> · .userIsVip · .userIsSub · .userMonthsSubbed (chat only)</div>
       <div><span style="color:var(--accent2)">twitch.live</span>.viewers · .title · .game · .uptimeSec · .isLive</div>
+      <div><span style="color:var(--accent2)">twitch.totals</span>.followers · .subscribers · .subPoints</div>
       <div><span style="color:var(--accent2)">roll</span> — result of the last 🎲 Dice Roll</div>
       <div><span style="color:var(--accent2)">kaprekar</span>.iterations · .start</div>
       <div><span style="color:var(--accent2)">chatters</span> — recent chatter list</div>

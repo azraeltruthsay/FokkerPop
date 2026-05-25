@@ -1568,7 +1568,8 @@ wss.on('connection', (ws, req) => {
         send(ws, { type: 'state', path: 'overlay.elementVisibility', value: state.get('overlay.elementVisibility') ?? {} });
         send(ws, { type: 'state', path: 'overlay.layoutMode',        value: layoutMode });
         send(ws, { type: 'state', path: 'overlay.widgets',           value: widgets });
-        send(ws, { type: 'state', path: 'twitch.live',               value: state.get('twitch.live') ?? null });
+        send(ws, { type: 'state', path: 'twitch.live',               value: state.get('twitch.live')   ?? null });
+        send(ws, { type: 'state', path: 'twitch.totals',             value: state.get('twitch.totals') ?? null });
       }
       return;
     }
@@ -1965,8 +1966,47 @@ function startStreamPoller() {
   // Kick once immediately so the first sample lands well before the first interval.
   pollStreamStats();
 }
+
+// Channel totals poller (issue #4 cluster B). Total followers + total
+// subscribers + sub points. Totals change on minutes-to-hours scale —
+// follower drift is steady, sub bombs are bursty but rare — so a 120 s
+// poll is fine. Surfaces as state.twitch.totals so templates can read
+// {{ twitch.totals.followers }}, {{ twitch.totals.subscribers }},
+// {{ twitch.totals.subPoints }}, and the Twitch Live widget can pick
+// those fields the same way it picks viewers/uptime/etc.
+const TOTALS_POLL_INTERVAL_MS = 120_000;
+let totalsPollTimer = null;
+async function pollChannelTotals() {
+  try {
+    const { userId, accessToken } = settings.twitch ?? {};
+    if (!userId || !accessToken) return;
+    if (twitchEventSub.status !== 'connected') return;
+    const [followers, subs] = await Promise.all([
+      helix.getFollowerTotal(userId, accessToken).catch(err => { log.debug('Follower total poll failed:', err.message); return null; }),
+      helix.getSubscriberTotal(userId, accessToken).catch(err => { log.debug('Subscriber total poll failed:', err.message); return null; }),
+    ]);
+    const prev = state.get('twitch.totals') ?? {};
+    const totals = {
+      followers:   followers ?? prev.followers   ?? 0,
+      subscribers: subs?.total ?? prev.subscribers ?? 0,
+      subPoints:   subs?.points ?? prev.subPoints ?? 0,
+      fetchedAt:   Date.now(),
+    };
+    state.set('twitch.totals', totals);
+    broadcast(dashboards, { type: 'state', path: 'twitch.totals', value: totals });
+    broadcast(overlays,   { type: 'state', path: 'twitch.totals', value: totals });
+  } catch (err) {
+    log.debug('Channel totals poll failed:', err.message);
+  }
+}
+function startChannelTotalsPoller() {
+  if (totalsPollTimer) return;
+  totalsPollTimer = setInterval(pollChannelTotals, TOTALS_POLL_INTERVAL_MS);
+  pollChannelTotals();
+}
 twitchEventSub.on('status', (status) => {
   if (status === 'connected') startStreamPoller();
+  if (status === 'connected') startChannelTotalsPoller();
 });
 
 obs.on('status', (status, reason) => {

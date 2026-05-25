@@ -886,18 +886,21 @@ window.renderWidgetList = function() {
       }
       if (w.type === 'twitch-live') {
         const fields = [
-          { v: 'viewers', t: 'Viewers' },
-          { v: 'uptime',  t: 'Uptime'  },
-          { v: 'title',   t: 'Stream Title' },
-          { v: 'game',    t: 'Category / Game' },
+          { v: 'viewers',     t: 'Viewers (live)' },
+          { v: 'uptime',      t: 'Uptime (live)'  },
+          { v: 'title',       t: 'Stream Title (live)' },
+          { v: 'game',        t: 'Category / Game (live)' },
+          { v: 'followers',   t: 'Total Followers' },
+          { v: 'subscribers', t: 'Total Subscribers' },
+          { v: 'subPoints',   t: 'Sub Points' },
         ];
         return `
-          <select class="input-field" onchange="updateWidgetField('${w.id}','field',this.value); renderWidgetList();" style="max-width:160px;" title="Which live-stream field to display">
+          <select class="input-field" onchange="updateWidgetField('${w.id}','field',this.value); renderWidgetList();" style="max-width:200px;" title="Which Twitch field to display">
             ${fields.map(f => `<option value="${f.v}" ${f.v === (c.field || 'viewers') ? 'selected' : ''}>${f.t}</option>`).join('')}
           </select>
           <input class="input-field" value="${esc(c.label ?? '')}" placeholder="Label (blank = default)" oninput="updateWidgetField('${w.id}','label',this.value)" style="max-width:200px;">
           <input class="input-field" type="number" min="10" max="200" value="${c.fontSize ?? 36}" oninput="updateWidgetField('${w.id}','fontSize',parseInt(this.value)||36)" style="max-width:90px;" title="Value font size (px)">
-          <span style="font-size:.7rem; color:var(--text-dim); flex-basis:100%;">Pulls from <code>state.twitch.live</code> (60 s Helix poll). Red dot = currently live; gray = offline. Uptime ticks every second locally between polls.</span>`;
+          <span style="font-size:.7rem; color:var(--text-dim); flex-basis:100%;">"(live)" fields come from a 60 s stream-stats poll and only have values while you're streaming. <strong>Totals</strong> (followers / subscribers / sub points) come from a 120 s channel-totals poll and show whether you're live or not. Red dot = stream is currently live.</span>`;
       }
       return '';
     })();
