@@ -607,6 +607,7 @@ window.addWidget = function (type) {
   if (type === 'dice-tray')   base.config = { visible: true, autoHide: true, dice: [{ sides: 6, count: 2 }], triggerEvent: 'dice-tray-roll', eventType: 'dice-tray-roll', theme: 'gold', pips: true, width: 420, height: 280, dieSize: 0.45, trayWidth: 2.5, trayDepth: 1.6 };
   if (type === 'model-3d')    base.config = { visible: true, modelUrl: '', rotationSpeed: 0.005, scale: 1, reactiveScale: '', width: 300, height: 300 };
   if (type === 'image')       base.config = { visible: true, width: 320, height: 240, fadeInMs: 250, fadeOutMs: 400 };
+  if (type === 'twitch-live') base.config = { visible: true, field: 'viewers', label: '', fontSize: 36, color: '#ff3b3b' };
   widgets.push(base);
   saveWidgets().then(renderWidgetList);
   // Auto-enable Drag Mode so the new widget's resize/delete handles are
@@ -740,6 +741,7 @@ window.renderWidgetList = function() {
       'physics-pit': 'Physics Pit (2D)', 'physics-pit-3d': 'Physics Pit (3D)',
       dice: 'Dice', 'dice-tray': 'Dice Tray', 'model-3d': '3D Model',
       'hot-button-3d': 'Hot Button 3D', image: 'Image Display',
+      'twitch-live': 'Twitch Live Stats',
     }[w.type] || w.type;
     const body = (() => {
       if (w.type === 'counter') return `
@@ -881,6 +883,21 @@ window.renderWidgetList = function() {
           <span style="font-size:.7rem; color:var(--text-dim);">Placeholder for images shown by Studio's <strong>Show Image</strong> action. Drag the corners in Layout mode to size the box. Images are letterboxed inside.</span>
           <input class="input-field" type="number" min="0" max="3000" value="${c.fadeInMs ?? 250}" oninput="updateWidgetField('${w.id}','fadeInMs',parseInt(this.value)||0)" style="max-width:120px;" title="Fade-in duration (ms)">
           <input class="input-field" type="number" min="0" max="3000" value="${c.fadeOutMs ?? 400}" oninput="updateWidgetField('${w.id}','fadeOutMs',parseInt(this.value)||0)" style="max-width:120px;" title="Fade-out duration (ms)">`;
+      }
+      if (w.type === 'twitch-live') {
+        const fields = [
+          { v: 'viewers', t: 'Viewers' },
+          { v: 'uptime',  t: 'Uptime'  },
+          { v: 'title',   t: 'Stream Title' },
+          { v: 'game',    t: 'Category / Game' },
+        ];
+        return `
+          <select class="input-field" onchange="updateWidgetField('${w.id}','field',this.value); renderWidgetList();" style="max-width:160px;" title="Which live-stream field to display">
+            ${fields.map(f => `<option value="${f.v}" ${f.v === (c.field || 'viewers') ? 'selected' : ''}>${f.t}</option>`).join('')}
+          </select>
+          <input class="input-field" value="${esc(c.label ?? '')}" placeholder="Label (blank = default)" oninput="updateWidgetField('${w.id}','label',this.value)" style="max-width:200px;">
+          <input class="input-field" type="number" min="10" max="200" value="${c.fontSize ?? 36}" oninput="updateWidgetField('${w.id}','fontSize',parseInt(this.value)||36)" style="max-width:90px;" title="Value font size (px)">
+          <span style="font-size:.7rem; color:var(--text-dim); flex-basis:100%;">Pulls from <code>state.twitch.live</code> (60 s Helix poll). Red dot = currently live; gray = offline. Uptime ticks every second locally between polls.</span>`;
       }
       return '';
     })();

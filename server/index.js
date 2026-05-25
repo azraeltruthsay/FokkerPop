@@ -1517,6 +1517,7 @@ wss.on('connection', (ws, req) => {
         send(ws, { type: 'state', path: 'overlay.elementVisibility', value: state.get('overlay.elementVisibility') ?? {} });
         send(ws, { type: 'state', path: 'overlay.layoutMode',        value: layoutMode });
         send(ws, { type: 'state', path: 'overlay.widgets',           value: widgets });
+        send(ws, { type: 'state', path: 'twitch.live',               value: state.get('twitch.live') ?? null });
       }
       return;
     }

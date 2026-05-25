@@ -420,6 +420,28 @@ body:not(.layout-mode) .custom-widget[data-type="hot-button"]:hover {
 .custom-widget[data-type="event-badge"].fire {
   animation: badge-fire 0.8s ease-out;
 }
+.custom-widget[data-type="twitch-live"] .cw-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  justify-content: center;
+  width: 100%;
+}
+.custom-widget[data-type="twitch-live"] .cw-live-dot {
+  width: 9px; height: 9px; border-radius: 50%;
+  background: #555;
+  display: inline-block;
+  box-shadow: 0 0 0 0 rgba(255,55,55,0);
+}
+.custom-widget[data-type="twitch-live"] .cw-live-dot.live {
+  background: #ff3b3b;
+  animation: live-pulse 1.8s ease-out infinite;
+}
+@keyframes live-pulse {
+  0%   { box-shadow: 0 0 0 0 rgba(255,55,55,0.75); }
+  70%  { box-shadow: 0 0 0 8px rgba(255,55,55,0); }
+  100% { box-shadow: 0 0 0 0 rgba(255,55,55,0); }
+}
 @keyframes badge-fire {
   0%   { transform: scale(1);    filter: brightness(1);   }
   30%  { transform: scale(1.35); filter: brightness(1.6); }
@@ -1972,6 +1994,12 @@ function handleState(path, value) {
       renderCustomWidgets();
       applyPositions(state.positions);
       break;
+    case 'twitch.live':
+      state.twitch.live = value || null;
+      refreshTwitchLiveWidgets();
+      refreshCounterWidgets();
+      refreshProgressBarWidgets();
+      break;
   }
 }
 
@@ -1979,6 +2007,7 @@ function handleState(path, value) {
 state.widgets   = [];
 state.positions = {};
 state.recents   = { follow: null, sub: null, cheer: null, raid: null };
+state.twitch    = { live: null };
 
 let widgetModule = null;
 async function ensureWidgetModule() {
@@ -2135,6 +2164,16 @@ function renderCustomWidgets() {
       img.alt = '';
       frame.appendChild(img);
       el.appendChild(frame);
+    } else if (w.type === 'twitch-live') {
+      const label = document.createElement('div');
+      label.className = 'cw-label';
+      label.innerHTML = `<span class="cw-live-dot" id="cw-live-dot-${w.id}"></span><span id="cw-live-lbl-${w.id}">${escHtml(cfg.label || 'VIEWERS')}</span>`;
+      const val = document.createElement('div');
+      val.className = 'cw-value';
+      val.style.fontSize = (cfg.fontSize || 36) + 'px';
+      val.id = 'cw-val-' + w.id;
+      val.textContent = '—';
+      el.append(label, val);
     }
 
     // Per-widget visibility toggle (default true). Hidden widgets stay hidden
@@ -2161,6 +2200,7 @@ function renderCustomWidgets() {
   }
   refreshCounterWidgets();
   refreshRecentWidgets();
+  refreshTwitchLiveWidgets();
 }
 
 function refreshCounterWidgets() {
@@ -2206,6 +2246,61 @@ function refreshLeaderboardWidgets() {
   }
 }
 
+function formatUptime(sec) {
+  sec = Math.max(0, Math.floor(Number(sec) || 0));
+  const h = Math.floor(sec / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  const s = sec % 60;
+  if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+  return `${m}:${String(s).padStart(2, '0')}`;
+}
+
+function refreshTwitchLiveWidgets() {
+  const live = state.twitch?.live;
+  for (const w of state.widgets) {
+    if (w.type !== 'twitch-live') continue;
+    const el  = document.getElementById('cw-val-' + w.id);
+    const dot = document.getElementById('cw-live-dot-' + w.id);
+    const lbl = document.getElementById('cw-live-lbl-' + w.id);
+    if (!el) continue;
+    const field = w.config?.field || 'viewers';
+    const isLive = !!live?.isLive;
+    if (dot) dot.classList.toggle('live', isLive);
+    if (lbl) lbl.textContent = w.config?.label || ({ viewers: 'VIEWERS', uptime: 'UPTIME', title: 'STREAM', game: 'CATEGORY' }[field] || 'STREAM');
+
+    if (!isLive) {
+      el.textContent = field === 'viewers' ? '0' : 'OFFLINE';
+      continue;
+    }
+    if (field === 'viewers') {
+      const v = Number(live.viewers) || 0;
+      el.textContent = v.toLocaleString();
+    } else if (field === 'uptime') {
+      el.textContent = formatUptime(live.uptimeSec);
+    } else if (field === 'title') {
+      el.textContent = live.title || '—';
+    } else if (field === 'game') {
+      el.textContent = live.game || '—';
+    } else {
+      el.textContent = '—';
+    }
+  }
+}
+
+// Tick uptime widgets once a second so the clock advances between 60s
+// server polls. Only walks widgets actually using the uptime field.
+setInterval(() => {
+  const live = state.twitch?.live;
+  if (!live?.isLive || !live.startedAt) return;
+  const sec = Math.floor((Date.now() - live.startedAt) / 1000);
+  live.uptimeSec = sec;
+  for (const w of state.widgets) {
+    if (w.type !== 'twitch-live' || w.config?.field !== 'uptime') continue;
+    const el = document.getElementById('cw-val-' + w.id);
+    if (el) el.textContent = formatUptime(sec);
+  }
+}, 1000);
+
 function refreshProgressBarWidgets() {
   for (const w of state.widgets) {
     if (w.type !== 'progress-bar') continue;
@@ -2223,7 +2318,7 @@ function refreshProgressBarWidgets() {
 function readMetric(path) {
   if (!path) return 0;
   const parts = path.split('.');
-  let obj = { session: state.session, crowd: { energy: state.crowdEnergy }, leaderboard: state.leaderboard ?? {}, goals: state.goals };
+  let obj = { session: state.session, crowd: { energy: state.crowdEnergy }, leaderboard: state.leaderboard ?? {}, goals: state.goals, twitch: state.twitch ?? {} };
   for (const k of parts) obj = obj?.[k];
   return obj ?? 0;
 }
