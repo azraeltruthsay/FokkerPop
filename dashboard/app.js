@@ -912,6 +912,17 @@ window.renderWidgetList = function() {
           { v: 'adSnoozes',          t: 'Ad Snoozes Left' },
           { v: 'recentFollowers24h', t: 'New Followers · 24h' },
           { v: 'latestFollower',     t: 'Latest Follower' },
+          { v: 'predictionTitle',    t: 'Active Prediction (title)' },
+          { v: 'predictionLeading',  t: 'Prediction Leading Outcome' },
+          { v: 'predictionWinner',   t: 'Prediction Winner' },
+          { v: 'pollTitle',          t: 'Active Poll (title)' },
+          { v: 'pollLeading',        t: 'Poll Leading Choice' },
+          { v: 'pollWinner',         t: 'Poll Winner' },
+          { v: 'hypeLevel',          t: 'Hype Train Level' },
+          { v: 'hypeProgress',       t: 'Hype Train Progress' },
+          { v: 'charityName',        t: 'Charity Campaign Name' },
+          { v: 'charityProgress',    t: 'Charity Progress' },
+          { v: 'charityLastDonor',   t: 'Charity · Latest Donor' },
         ];
         return `
           <select class="input-field" onchange="updateWidgetField('${w.id}','field',this.value); renderWidgetList();" style="max-width:220px;" title="Which Twitch field to display">
@@ -1915,6 +1926,9 @@ window.saveCredentialsAndAuth = function () {
       'moderator:read:followers',
       'channel:read:hype_train',
       'channel:read:ads',
+      'channel:read:predictions',
+      'channel:read:polls',
+      'channel:read:charity',
       'user:read:chat',
       'user:write:chat',
     ].join('+');

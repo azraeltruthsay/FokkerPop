@@ -2130,6 +2130,22 @@ function handleState(path, value) {
       refreshCounterWidgets();
       refreshProgressBarWidgets();
       break;
+    case 'twitch.prediction':
+      state.twitch.prediction = value || null;
+      refreshTwitchLiveWidgets();
+      break;
+    case 'twitch.poll':
+      state.twitch.poll = value || null;
+      refreshTwitchLiveWidgets();
+      break;
+    case 'twitch.hypeTrain':
+      state.twitch.hypeTrain = value || null;
+      refreshTwitchLiveWidgets();
+      break;
+    case 'twitch.charity':
+      state.twitch.charity = value || null;
+      refreshTwitchLiveWidgets();
+      break;
   }
 }
 
@@ -2137,7 +2153,7 @@ function handleState(path, value) {
 state.widgets   = [];
 state.positions = {};
 state.recents   = { follow: null, sub: null, cheer: null, raid: null };
-state.twitch    = { live: null, totals: null, chat: null, schedule: null, ads: null, recentFollowers: null };
+state.twitch    = { live: null, totals: null, chat: null, schedule: null, ads: null, recentFollowers: null, prediction: null, poll: null, hypeTrain: null, charity: null };
 
 let widgetModule = null;
 async function ensureWidgetModule() {
@@ -2416,6 +2432,12 @@ const CHAT_FIELDS = new Set(['activeChatters', 'messageRate', 'topChatter']);
 const SCHEDULE_FIELDS = new Set(['nextStream', 'nextStreamTitle']);
 const ADS_FIELDS      = new Set(['nextAd', 'adSnoozes']);
 const FOLLOWERS_FIELDS = new Set(['recentFollowers24h', 'latestFollower']);
+// Cluster E — EventSub-driven aggregated state; only valued while an
+// active prediction/poll/hype-train/charity is running.
+const PREDICTION_FIELDS = new Set(['predictionTitle', 'predictionLeading', 'predictionWinner']);
+const POLL_FIELDS       = new Set(['pollTitle', 'pollLeading', 'pollWinner']);
+const HYPE_FIELDS       = new Set(['hypeLevel', 'hypeProgress']);
+const CHARITY_FIELDS    = new Set(['charityName', 'charityProgress', 'charityLastDonor']);
 const TWITCH_LIVE_LABELS = {
   viewers: 'VIEWERS', uptime: 'UPTIME', title: 'STREAM', game: 'CATEGORY',
   followers: 'FOLLOWERS', subscribers: 'SUBSCRIBERS', subPoints: 'SUB POINTS',
@@ -2423,6 +2445,10 @@ const TWITCH_LIVE_LABELS = {
   nextStream: 'NEXT STREAM', nextStreamTitle: 'NEXT STREAM',
   nextAd: 'NEXT AD', adSnoozes: 'AD SNOOZES',
   recentFollowers24h: 'NEW FOLLOWERS · 24H', latestFollower: 'LATEST FOLLOWER',
+  predictionTitle: 'PREDICTION', predictionLeading: 'PREDICTION · LEADING', predictionWinner: 'PREDICTION · WINNER',
+  pollTitle: 'POLL', pollLeading: 'POLL · LEADING', pollWinner: 'POLL · WINNER',
+  hypeLevel: 'HYPE TRAIN', hypeProgress: 'HYPE PROGRESS',
+  charityName: 'CHARITY', charityProgress: 'CHARITY · PROGRESS', charityLastDonor: 'CHARITY · LATEST DONOR',
 };
 
 function formatCountdownTo(ts) {
@@ -2439,25 +2465,33 @@ function formatCountdownTo(ts) {
   return `${m}:${String(s).padStart(2, '0')}`;
 }
 function refreshTwitchLiveWidgets() {
-  const live     = state.twitch?.live;
-  const totals   = state.twitch?.totals;
-  const chat     = state.twitch?.chat;
-  const schedule = state.twitch?.schedule;
-  const ads      = state.twitch?.ads;
-  const followers = state.twitch?.recentFollowers;
+  const live       = state.twitch?.live;
+  const totals     = state.twitch?.totals;
+  const chat       = state.twitch?.chat;
+  const schedule   = state.twitch?.schedule;
+  const ads        = state.twitch?.ads;
+  const followers  = state.twitch?.recentFollowers;
+  const prediction = state.twitch?.prediction;
+  const poll       = state.twitch?.poll;
+  const hype       = state.twitch?.hypeTrain;
+  const charity    = state.twitch?.charity;
   for (const w of state.widgets) {
     if (w.type !== 'twitch-live') continue;
     const el  = document.getElementById('cw-val-' + w.id);
     const dot = document.getElementById('cw-live-dot-' + w.id);
     const lbl = document.getElementById('cw-live-lbl-' + w.id);
     if (!el) continue;
-    const field      = w.config?.field || 'viewers';
-    const isTotals   = TOTALS_FIELDS.has(field);
-    const isChat     = CHAT_FIELDS.has(field);
-    const isSchedule = SCHEDULE_FIELDS.has(field);
-    const isAds      = ADS_FIELDS.has(field);
-    const isFollowers = FOLLOWERS_FIELDS.has(field);
-    const isLive     = !!live?.isLive;
+    const field        = w.config?.field || 'viewers';
+    const isTotals     = TOTALS_FIELDS.has(field);
+    const isChat       = CHAT_FIELDS.has(field);
+    const isSchedule   = SCHEDULE_FIELDS.has(field);
+    const isAds        = ADS_FIELDS.has(field);
+    const isFollowers  = FOLLOWERS_FIELDS.has(field);
+    const isPrediction = PREDICTION_FIELDS.has(field);
+    const isPoll       = POLL_FIELDS.has(field);
+    const isHype       = HYPE_FIELDS.has(field);
+    const isCharity    = CHARITY_FIELDS.has(field);
+    const isLive       = !!live?.isLive;
     if (dot) {
       if (isChat) {
         const heat = Number(chat?.heat) || 0;
@@ -2517,6 +2551,62 @@ function refreshTwitchLiveWidgets() {
       } else {
         const v = Number(followers?.count24h);
         el.textContent = Number.isFinite(v) ? v.toLocaleString() : '—';
+      }
+      continue;
+    }
+    if (isPrediction) {
+      if (!prediction?.title) { el.textContent = 'no prediction'; continue; }
+      if (field === 'predictionTitle') {
+        el.textContent = prediction.title;
+      } else if (field === 'predictionWinner') {
+        el.textContent = prediction.winningOutcome || (prediction.status === 'canceled' ? 'canceled' : 'pending');
+      } else /* predictionLeading */ {
+        const outcomes = Array.isArray(prediction.outcomes) ? prediction.outcomes : [];
+        if (!outcomes.length) { el.textContent = '—'; continue; }
+        const top = outcomes.reduce((a, b) => (b.channelPoints > a.channelPoints ? b : a));
+        el.textContent = `${top.title} (${(Number(top.channelPoints) || 0).toLocaleString()} pts)`;
+      }
+      continue;
+    }
+    if (isPoll) {
+      if (!poll?.title) { el.textContent = 'no poll'; continue; }
+      if (field === 'pollTitle') {
+        el.textContent = poll.title;
+      } else if (field === 'pollWinner') {
+        el.textContent = poll.winningChoice || (poll.status === 'terminated' ? 'terminated' : 'pending');
+      } else /* pollLeading */ {
+        const choices = Array.isArray(poll.choices) ? poll.choices : [];
+        if (!choices.length) { el.textContent = '—'; continue; }
+        const top = choices.reduce((a, b) => (b.totalVotes > a.totalVotes ? b : a));
+        el.textContent = `${top.title} (${(Number(top.totalVotes) || 0).toLocaleString()} votes)`;
+      }
+      continue;
+    }
+    if (isHype) {
+      if (!hype || !hype.level) { el.textContent = 'no hype train'; continue; }
+      if (field === 'hypeLevel') {
+        el.textContent = hype.active ? `LVL ${hype.level}` : `last LVL ${hype.level}`;
+      } else /* hypeProgress */ {
+        const p = Number(hype.progress) || 0;
+        const g = Number(hype.goal)     || 0;
+        el.textContent = g > 0 ? `${p.toLocaleString()} / ${g.toLocaleString()}` : `${p.toLocaleString()}`;
+      }
+      continue;
+    }
+    if (isCharity) {
+      if (!charity?.campaignName) { el.textContent = 'no campaign'; continue; }
+      if (field === 'charityName') {
+        el.textContent = charity.campaignName;
+      } else if (field === 'charityLastDonor') {
+        el.textContent = charity.lastDonor || '—';
+      } else /* charityProgress */ {
+        const cur = Number(charity.current?.value) || 0;
+        const tgt = Number(charity.target?.value)  || 0;
+        const cur2 = cur.toFixed(2);
+        const tgt2 = tgt.toFixed(2);
+        const pct  = tgt > 0 ? Math.round((cur / tgt) * 100) : 0;
+        const curCode = charity.current?.currency || charity.target?.currency || 'USD';
+        el.textContent = tgt > 0 ? `${curCode} ${cur2} / ${tgt2} (${pct}%)` : `${curCode} ${cur2}`;
       }
       continue;
     }

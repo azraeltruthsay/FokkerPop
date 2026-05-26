@@ -35,6 +35,16 @@ const CATALOG = [
     fokkerNote: 'Time until next ad break, snooze count. Affiliate/Partner only.' },
   { key: 'recent-followers',label: 'Recent followers',    requiresScopes: ['moderator:read:followers'],    pollHint: '60 s when connected',
     fokkerNote: 'List of users who followed in the last 24 h.' },
+  // Cluster E — EventSub-driven (no polling). lastFetchAt = last event received,
+  // not a poll timestamp; pollHint says "live via EventSub" to make that clear.
+  { key: 'hype-train',      label: 'Hype train',          requiresScopes: ['channel:read:hype_train'],     pollHint: 'live via EventSub',
+    fokkerNote: 'Start / progress / end events while a hype train is active. Powers flow triggers on hype level reached.' },
+  { key: 'prediction',      label: 'Predictions',         requiresScopes: ['channel:read:predictions'],    pollHint: 'live via EventSub',
+    fokkerNote: 'Channel-points predictions — flow trigger on prediction end with winning outcome.' },
+  { key: 'poll',            label: 'Polls',               requiresScopes: ['channel:read:polls'],          pollHint: 'live via EventSub',
+    fokkerNote: 'Channel polls — flow trigger on poll end with winning choice.' },
+  { key: 'charity',         label: 'Charity',             requiresScopes: ['channel:read:charity'],        pollHint: 'live via EventSub',
+    fokkerNote: 'Charity campaign progress + per-donation events for "Username donated $X" callouts.' },
 ];
 
 const status = new Map();

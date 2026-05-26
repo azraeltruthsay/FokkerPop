@@ -341,9 +341,20 @@ export const TEST_PAYLOADS = {
   'raid':                { user: 'TestUser', viewers: 10 },
   'redeem':              { user: 'TestUser', rewardTitle: 'Test Redeem', rewardId: 'test-id', input: '' },
   'chat':                { user: 'TestUser', message: 'hello world', color: '#FFFFFF', badges: [], userIsMod: false, userIsVip: false, userIsSub: false, userMonthsSubbed: 0 },
-  'hype-train.start':    { level: 1, total: 100 },
-  'hype-train.progress': { level: 1, total: 100, progress: 50, goal: 100 },
-  'hype-train.end':      { level: 2, total: 250 },
+  'hype-train.start':    { level: 1, total: 100, goal: 1000, expiresAt: '2026-01-01T00:00:00Z' },
+  'hype-train.progress': { level: 1, total: 100, progress: 50, goal: 100, expiresAt: '2026-01-01T00:00:00Z' },
+  'hype-train.end':      { level: 2, total: 250, cooldownEndsAt: '2026-01-01T00:00:00Z' },
+  // Cluster E test payloads — shaped to match what real Twitch events deliver
+  // post-normalize so Test This Trigger renders banner text accurately.
+  'prediction.start':    { id: 'test', title: 'Will the next boss die?', outcomes: [{ id: 'a', title: 'Yes', color: 'BLUE',   channelPoints: 0, users: 0 }, { id: 'b', title: 'No',  color: 'PINK', channelPoints: 0, users: 0 }], locksAt: '2026-01-01T00:00:00Z' },
+  'prediction.lock':     { id: 'test', title: 'Will the next boss die?', outcomes: [{ id: 'a', title: 'Yes', color: 'BLUE',   channelPoints: 4200, users: 12 }, { id: 'b', title: 'No', color: 'PINK', channelPoints: 1800, users: 7 }], lockedAt: '2026-01-01T00:00:00Z' },
+  'prediction.end':      { id: 'test', title: 'Will the next boss die?', outcomes: [{ id: 'a', title: 'Yes', color: 'BLUE',   channelPoints: 4200, users: 12 }, { id: 'b', title: 'No', color: 'PINK', channelPoints: 1800, users: 7 }], winningOutcomeId: 'a', winningOutcome: 'Yes', status: 'resolved', endedAt: '2026-01-01T00:00:00Z' },
+  'poll.start':          { id: 'test', title: 'Next game?', choices: [{ id: 'a', title: 'Elden Ring', votes: 0, channelPointsVotes: 0, bitsVotes: 0, totalVotes: 0 }, { id: 'b', title: 'Helldivers', votes: 0, channelPointsVotes: 0, bitsVotes: 0, totalVotes: 0 }], endsAt: '2026-01-01T00:00:00Z' },
+  'poll.end':            { id: 'test', title: 'Next game?', choices: [{ id: 'a', title: 'Elden Ring', votes: 18, channelPointsVotes: 5, bitsVotes: 2, totalVotes: 25 }, { id: 'b', title: 'Helldivers', votes: 9, channelPointsVotes: 0, bitsVotes: 0, totalVotes: 9 }], winningChoice: 'Elden Ring', winningChoiceId: 'a', status: 'completed', endedAt: '2026-01-01T00:00:00Z' },
+  'charity.start':       { id: 'test', campaignName: 'Test Charity', website: 'https://example.org', target: { value: 1000, currency: 'USD' }, current: { value: 0, currency: 'USD' }, startedAt: '2026-01-01T00:00:00Z' },
+  'charity.progress':    { id: 'test', campaignName: 'Test Charity', current: { value: 250, currency: 'USD' }, target: { value: 1000, currency: 'USD' } },
+  'charity.donate':      { id: 'test', user: 'GenerousViewer', userId: '0', amount: { value: 10, currency: 'USD' }, campaignName: 'Test Charity' },
+  'charity.stop':        { id: 'test', campaignName: 'Test Charity', stoppedAt: '2026-01-01T00:00:00Z', finalAmount: { value: 1234, currency: 'USD' } },
   'dice-tray-roll':      { user: 'TestUser', dice: [{ sides: 20, result: 12 }], rollId: 'test', sum: 12, total: { 20: 12 } },
   'scene-end':           { sceneId: 'test-scene', sceneName: 'Test Scene' },
 };

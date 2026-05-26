@@ -904,6 +904,10 @@ const EXPR_REF = `
       <div><span style="color:var(--accent2)">twitch.schedule</span>.next.startAt · .next.title · .next.category</div>
       <div><span style="color:var(--accent2)">twitch.ads</span>.nextAdAt · .lastAdAt · .durationSec · .snoozeCount</div>
       <div><span style="color:var(--accent2)">twitch.recentFollowers</span>.count24h · .latest · .list (array)</div>
+      <div><span style="color:var(--accent2)">twitch.prediction</span>.title · .active · .status · .outcomes · .winningOutcome</div>
+      <div><span style="color:var(--accent2)">twitch.poll</span>.title · .active · .choices · .winningChoice</div>
+      <div><span style="color:var(--accent2)">twitch.hypeTrain</span>.active · .level · .total · .goal · .progress</div>
+      <div><span style="color:var(--accent2)">twitch.charity</span>.campaignName · .current · .target · .lastDonor · .lastDonationAmount</div>
       <div><span style="color:var(--accent2)">roll</span> — result of the last 🎲 Dice Roll</div>
       <div><span style="color:var(--accent2)">kaprekar</span>.iterations · .start</div>
       <div><span style="color:var(--accent2)">chatters</span> — recent chatter list</div>
@@ -992,7 +996,14 @@ function renderProps() {
   html += `<div class="prop-field"><label>Label</label><input class="input-field" value="${esc(n.label || '')}" oninput="activeNode.label=this.value;renderCanvas()"></div>`;
 
   if (n.type === 'trigger') {
-    const triggerOptions = ['sub', 'sub.gifted', 'follow', 'cheer', 'raid', 'redeem', 'chat', 'hype-train.start', 'hype-train.progress', 'hype-train.end', 'dice.rolled', 'dice-tray.rolled', 'dice-tray-roll'];
+    const triggerOptions = [
+      'sub', 'sub.gifted', 'follow', 'cheer', 'raid', 'redeem', 'chat',
+      'hype-train.start', 'hype-train.progress', 'hype-train.end',
+      'prediction.start', 'prediction.lock', 'prediction.end',
+      'poll.start', 'poll.end',
+      'charity.start', 'charity.progress', 'charity.donate', 'charity.stop',
+      'scene-end', 'dice.rolled', 'dice-tray.rolled', 'dice-tray-roll',
+    ];
     html += `<div class="prop-field">
       <label>Event Type</label>
       <select class="input-field" oninput="activeFlow.trigger=this.value; window.queueStudioSave(); renderProps()">

@@ -43,6 +43,13 @@ export function makeCtx(event = {}) {
     leaderboardAllTime:  lbAll,
     chatters:            snap.chatters    ?? [],
     twitch:              snap.twitch      ?? {},
+    // Cluster E convenience shorthand for templates that don't want to
+    // dot-walk through twitch.X every time — `{{ prediction.winningOutcome }}`
+    // instead of `{{ twitch.prediction.winningOutcome }}`.
+    prediction:          snap.twitch?.prediction ?? {},
+    poll:                snap.twitch?.poll       ?? {},
+    hypeTrain:           snap.twitch?.hypeTrain  ?? {},
+    charity:             snap.twitch?.charity    ?? {},
     Math,
     pick:   (arr) => Array.isArray(arr) && arr.length ? arr[Math.floor(Math.random() * arr.length)] : '',
     clamp:  (v, min, max) => Math.min(Math.max(v, min), max),

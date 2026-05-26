@@ -420,6 +420,71 @@ bus.on('*', (event) => {
   }
 });
 
+// Cluster E — aggregate prediction / poll / hype-train / charity events
+// into state.twitch.* so widgets and templates can read the *current* state
+// of an active prediction/poll/etc. without subscribing to the event stream.
+// Skips test events so the Studio "Test This Trigger" doesn't pollute live
+// state with synthetic predictions/polls.
+bus.on('*', (event) => {
+  if (!event?.type || event.isTest) return;
+  const p = event.payload || {};
+  if (event.type.startsWith('prediction.')) {
+    const prev = state.get('twitch.prediction') ?? {};
+    let next = { ...prev, ...p };
+    if (event.type === 'prediction.start')    next = { ...p, status: 'active',   active: true };
+    if (event.type === 'prediction.progress') next = { ...next, status: 'active',   active: true };
+    if (event.type === 'prediction.lock')     next = { ...next, status: 'locked',   active: true };
+    if (event.type === 'prediction.end') {
+      next = { ...next, ...p, status: p.status || 'resolved', active: false };
+    }
+    state.set('twitch.prediction', next);
+    broadcastState('twitch.prediction', next);
+    integrationStatus.reportOk('prediction', { summary: next.title ? `"${next.title}" — ${next.status}${next.winningOutcome ? ` (won: ${next.winningOutcome})` : ''}` : 'idle' });
+  } else if (event.type.startsWith('poll.')) {
+    const prev = state.get('twitch.poll') ?? {};
+    let next = { ...prev, ...p };
+    if (event.type === 'poll.start')    next = { ...p, status: 'active',  active: true };
+    if (event.type === 'poll.progress') next = { ...next, status: 'active', active: true };
+    if (event.type === 'poll.end') {
+      next = { ...next, ...p, status: p.status || 'completed', active: false };
+    }
+    state.set('twitch.poll', next);
+    broadcastState('twitch.poll', next);
+    integrationStatus.reportOk('poll', { summary: next.title ? `"${next.title}" — ${next.status}${next.winningChoice ? ` (won: ${next.winningChoice})` : ''}` : 'idle' });
+  } else if (event.type.startsWith('hype-train.')) {
+    const prev = state.get('twitch.hypeTrain') ?? {};
+    let next = { ...prev, ...p };
+    if (event.type === 'hype-train.start' || event.type === 'hype-train.progress') {
+      next = { ...next, ...p, active: true };
+    }
+    if (event.type === 'hype-train.end') {
+      next = { ...next, ...p, active: false };
+    }
+    state.set('twitch.hypeTrain', next);
+    broadcastState('twitch.hypeTrain', next);
+    integrationStatus.reportOk('hype-train', { summary: next.active ? `active · lvl ${next.level}` : `last lvl ${next.level || 0}` });
+  } else if (event.type.startsWith('charity.')) {
+    const prev = state.get('twitch.charity') ?? {};
+    let next = { ...prev, ...p };
+    if (event.type === 'charity.start') {
+      next = { ...p, active: true };
+    } else if (event.type === 'charity.stop') {
+      next = { ...next, ...p, active: false };
+    } else if (event.type === 'charity.donate') {
+      // donate doesn't carry full campaign state — only update lastDonor + lastDonationAmount, leave rest intact.
+      next = { ...prev, lastDonor: p.user, lastDonationAmount: p.amount };
+    } else if (event.type === 'charity.progress') {
+      next = { ...next, ...p, active: true };
+    }
+    state.set('twitch.charity', next);
+    broadcastState('twitch.charity', next);
+    const pct = next.current?.value && next.target?.value
+      ? Math.round((next.current.value / next.target.value) * 100)
+      : 0;
+    integrationStatus.reportOk('charity', { summary: next.campaignName ? `${next.campaignName} · ${pct}%` : 'idle' });
+  }
+});
+
 // ── Event → state + effects ───────────────────────────────────────────────────
 bus.on('*', async (event) => {
   if (isShuttingDown) return;
@@ -1623,6 +1688,10 @@ wss.on('connection', (ws, req) => {
         send(ws, { type: 'state', path: 'twitch.recentFollowers',    value: state.get('twitch.recentFollowers') ?? null });
         send(ws, { type: 'state', path: 'leaderboardWeek',           value: leaderboards.weekly() });
         send(ws, { type: 'state', path: 'leaderboardAllTime',        value: leaderboards.allTime() });
+        send(ws, { type: 'state', path: 'twitch.prediction',         value: state.get('twitch.prediction') ?? null });
+        send(ws, { type: 'state', path: 'twitch.poll',               value: state.get('twitch.poll') ?? null });
+        send(ws, { type: 'state', path: 'twitch.hypeTrain',          value: state.get('twitch.hypeTrain') ?? null });
+        send(ws, { type: 'state', path: 'twitch.charity',            value: state.get('twitch.charity') ?? null });
       }
       return;
     }
