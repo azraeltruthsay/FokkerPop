@@ -910,7 +910,10 @@ const EXPR_REF = `
       <div><span style="color:var(--accent2)">pick(chatters)</span> — random chatter</div>
       <div><span style="color:var(--accent2)">session</span>.subCount · .bitsTotal</div>
       <div><span style="color:var(--accent2)">crowd</span>.energy</div>
-      <div><span style="color:var(--accent2)">leaderboard</span>.bits · .gifts</div>
+      <div><span style="color:var(--accent2)">leaderboard</span>.bits · .subs · .gifts (this stream)</div>
+      <div><span style="color:var(--accent2)">leaderboardWeek</span>.bits · .subs · .gifts (rolling 7 days)</div>
+      <div><span style="color:var(--accent2)">leaderboardAllTime</span>.bits · .subs · .gifts (lifetime)</div>
+      <div><span style="color:var(--accent2)">topSupporter('bits','week')</span> — username of top in scope ('session'|'week'|'all-time')</div>
       <div><span style="color:var(--accent2)">plural(n, 'sub')</span> → "3 subs"</div>
       <div><span style="color:var(--accent2)">Payload:</span> {"img":"url", "emoji":"⭐", "count":10}</div>
       <div>Full JS — ternary, Math, etc.</div>

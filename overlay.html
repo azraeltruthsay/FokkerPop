@@ -2075,6 +2075,14 @@ function handleState(path, value) {
       refreshCounterWidgets();
       refreshLeaderboardWidgets();
       break;
+    case 'leaderboardWeek':
+      state.leaderboardWeek = value;
+      refreshLeaderboardWidgets();
+      break;
+    case 'leaderboardAllTime':
+      state.leaderboardAllTime = value;
+      refreshLeaderboardWidgets();
+      break;
     case 'chatters':
       state.chatters = value;
       refreshRecentWidgets();
@@ -2365,8 +2373,14 @@ function refreshLeaderboardWidgets() {
     if (w.type !== 'leaderboard-top') continue;
     const host = document.getElementById('cw-lb-' + w.id);
     if (!host) continue;
-    const cat = w.config?.category || 'bits';
-    const data = state.leaderboard?.[cat] ?? {};
+    const cat   = w.config?.category || 'bits';
+    const scope = w.config?.scope    || 'session';
+    // Cluster C: pick the right state slice based on scope. Falls back to
+    // current-stream if the longer windows haven't loaded yet.
+    const src   = scope === 'week'     ? state.leaderboardWeek
+                : scope === 'all-time' ? state.leaderboardAllTime
+                : state.leaderboard;
+    const data  = src?.[cat] ?? {};
     const n = Math.max(1, Math.min(10, w.config?.topN || 3));
     const top = Object.entries(data).sort((a, b) => b[1] - a[1]).slice(0, n);
     if (!top.length) {

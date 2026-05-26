@@ -932,10 +932,17 @@ html, body {
         </div>
       </div>
 
-      <div style="margin-top:10px;">
-        <button class="btn btn-ghost btn-sm" onclick="if (confirm('Reset session stats? This zeroes subs/bits/follows/raids and the leaderboard. Layout, goals, widgets, and credentials are preserved.')) dashSend({type:'_dashboard.session-reset'})" style="color:var(--red)">
+      <div style="margin-top:10px; display:flex; flex-wrap:wrap; gap:8px; align-items:center;">
+        <button class="btn btn-ghost btn-sm" onclick="if (confirm('Reset session stats? This zeroes subs/bits/follows/raids and the current-stream leaderboard. Layout, goals, widgets, credentials, and the weekly + all-time leaderboards are preserved.')) dashSend({type:'_dashboard.session-reset'})" style="color:var(--red)">
           Reset Session Stats
         </button>
+        <button class="btn btn-ghost btn-sm" onclick="if (confirm('Reset the weekly leaderboard? This clears the rolling-7-day totals for bits, subs, and gifts. The current-stream and all-time leaderboards are preserved.')) dashSend({type:'_dashboard.leaderboard-reset-weekly'})" style="color:var(--orange)">
+          Reset Weekly Leaderboard
+        </button>
+        <button class="btn btn-ghost btn-sm" onclick="if (confirm('Reset the ALL-TIME leaderboard? This wipes every lifetime supporter total. Cannot be undone.')) dashSend({type:'_dashboard.leaderboard-reset-all-time'})" style="color:var(--red)">
+          Reset All-Time Leaderboard
+        </button>
+        <span style="font-size:.7rem; color:var(--text-dim); flex-basis:100%;">Reset Session zeroes the current stream's leaderboard widgets. Weekly + All-Time are separate (cluster C) — only wipe them if you want a fresh history.</span>
       </div>
     </div>
 

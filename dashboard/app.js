@@ -594,7 +594,7 @@ window.addWidget = function (type) {
   if (type === 'hot-button-3d')  base.config = { visible: true, emoji: '🎆', effect: 'firework-salvo', payload: { count: 3 }, color: 0xFFD700, width: 200, height: 200 };
   if (type === 'event-badge') base.config = { visible: true, label: '💜 SUB', eventType: 'sub', fontSize: 22, color: '#9147FF' };
   if (type === 'progress-bar') base.config = { visible: true, label: 'SUB GOAL', metric: 'session.subCount', target: 50, color: '#9147FF', fontSize: 16, barWidth: 240, barHeight: 14 };
-  if (type === 'leaderboard-top') base.config = { visible: true, label: 'TOP BITS', category: 'bits', topN: 3, fontSize: 16, color: '#FFFFFF' };
+  if (type === 'leaderboard-top') base.config = { visible: true, label: 'TOP BITS', category: 'bits', scope: 'session', topN: 3, fontSize: 16, color: '#FFFFFF' };
   if (type === 'physics-pit') base.config = {
     visible: true, autoHide: true, size: 18, gravity: 1, width: 320, height: 220, maxAlive: 60,
     spawns: [
@@ -784,6 +784,9 @@ window.renderWidgetList = function() {
         <input class="input-field" value="${esc(c.label ?? '')}" placeholder="Label" oninput="updateWidgetField('${w.id}','label',this.value)" style="max-width:180px;">
         <select class="input-field" onchange="updateWidgetField('${w.id}','category',this.value)" title="Leaderboard category">
           ${['bits','subs','gifts'].map(e => `<option value="${e}" ${e === c.category ? 'selected' : ''}>${e}</option>`).join('')}
+        </select>
+        <select class="input-field" onchange="updateWidgetField('${w.id}','scope',this.value)" title="Time window — Session resets on Reset Session; Week is rolling 7d; All-Time is lifetime">
+          ${[['session','This Stream'],['week','This Week'],['all-time','All-Time']].map(([v, t]) => `<option value="${v}" ${v === (c.scope || 'session') ? 'selected' : ''}>${t}</option>`).join('')}
         </select>
         <input class="input-field" type="number" min="1" max="10" value="${c.topN ?? 3}" oninput="updateWidgetField('${w.id}','topN',parseInt(this.value)||1)" style="max-width:80px;" title="Top N">`;
       if (w.type === 'physics-pit' || w.type === 'physics-pit-3d') {

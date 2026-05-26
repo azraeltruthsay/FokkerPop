@@ -11,6 +11,9 @@ commands.json
 flows.json
 widgets.json
 widgets.json.bak
+leaderboards.json
+leaderboards.json.bak
+leaderboards.json.tmp
 .env
 *.log
 logs/

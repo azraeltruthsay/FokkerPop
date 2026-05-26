@@ -15,6 +15,7 @@ import * as helix            from './twitch/helix.js';
 import { HelixError }         from './twitch/helix.js';
 import integrationStatus      from './twitch/integration-status.js';
 import chatDynamics           from './chat-dynamics.js';
+import leaderboards           from './leaderboards.js';
 import settings, { ROOT, loadedFrom, saveSettings } from './settings-loader.js';
 
 import log                        from './logger.js';
@@ -529,7 +530,28 @@ function incrementLeaderboard(category, user, amount) {
   lb[user] = (lb[user] ?? 0) + amount;
   state.set(`leaderboard.${category}`, lb);
   broadcastState('leaderboard', state.get('leaderboard'));
+  // Feed the persistent week/all-time stores (cluster C). Separate from the
+  // session-scoped state.leaderboard above so a Session Reset doesn't touch
+  // either of these longer windows.
+  leaderboards.recordSupport(category, user, amount);
 }
+
+// Broadcast weekly + all-time on every leaderboards change. Debounced
+// implicitly by recordSupport's 1 s flush window paired with the emitter
+// firing on each recordSupport call — fine for our event rate.
+function broadcastPersistentLeaderboards() {
+  const week    = leaderboards.weekly();
+  const allTime = leaderboards.allTime();
+  state.set('leaderboardWeek',    week);
+  state.set('leaderboardAllTime', allTime);
+  broadcastState('leaderboardWeek',    week);
+  broadcastState('leaderboardAllTime', allTime);
+}
+leaderboards.on('change', broadcastPersistentLeaderboards);
+// Prime state at boot so a freshly-connecting dashboard sees the persistent
+// values in its state-snapshot, not 'undefined' until the next change.
+state.set('leaderboardWeek',    leaderboards.weekly());
+state.set('leaderboardAllTime', leaderboards.allTime());
 
 function checkGoals() {
   const goals = state.get('goals') ?? [];
@@ -1599,6 +1621,8 @@ wss.on('connection', (ws, req) => {
         send(ws, { type: 'state', path: 'twitch.schedule',           value: state.get('twitch.schedule') ?? null });
         send(ws, { type: 'state', path: 'twitch.ads',                value: state.get('twitch.ads') ?? null });
         send(ws, { type: 'state', path: 'twitch.recentFollowers',    value: state.get('twitch.recentFollowers') ?? null });
+        send(ws, { type: 'state', path: 'leaderboardWeek',           value: leaderboards.weekly() });
+        send(ws, { type: 'state', path: 'leaderboardAllTime',        value: leaderboards.allTime() });
       }
       return;
     }
@@ -1872,6 +1896,16 @@ wss.on('connection', (ws, req) => {
         broadcastState('crowd.energy', 0);
         broadcastState('goals', state.get('goals'));
         broadcastState('twitch.chat', chatDynamics.compute());
+        // Note: deliberately does NOT touch leaderboardWeek / leaderboardAllTime.
+        // Those have their own reset endpoints below so a quick session
+        // reset between streams doesn't blow away the longer windows.
+        break;
+      case '_dashboard.leaderboard-reset-weekly':
+        leaderboards.resetWeekly();
+        // emitter -> broadcastPersistentLeaderboards fires the state-broadcasts
+        break;
+      case '_dashboard.leaderboard-reset-all-time':
+        leaderboards.resetAllTime();
         break;
       case '_dashboard.update-apply':
         try {

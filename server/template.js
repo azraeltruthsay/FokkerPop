@@ -29,19 +29,37 @@ import state from './state.js';
 
 export function makeCtx(event = {}) {
   const snap = state.snapshot();
+  const lb       = snap.leaderboard        ?? {};
+  const lbWeek   = snap.leaderboardWeek    ?? {};
+  const lbAll    = snap.leaderboardAllTime ?? {};
   return {
-    payload:     event?.payload ?? {},
+    payload:             event?.payload ?? {},
     event,
-    state:       snap,
-    session:     snap.session     ?? {},
-    crowd:       snap.crowd       ?? {},
-    leaderboard: snap.leaderboard ?? {},
-    chatters:    snap.chatters    ?? [],
-    twitch:      snap.twitch      ?? {},
+    state:               snap,
+    session:             snap.session     ?? {},
+    crowd:               snap.crowd       ?? {},
+    leaderboard:         lb,
+    leaderboardWeek:     lbWeek,
+    leaderboardAllTime:  lbAll,
+    chatters:            snap.chatters    ?? [],
+    twitch:              snap.twitch      ?? {},
     Math,
     pick:   (arr) => Array.isArray(arr) && arr.length ? arr[Math.floor(Math.random() * arr.length)] : '',
     clamp:  (v, min, max) => Math.min(Math.max(v, min), max),
     plural: (n, word) => `${n} ${word}${n !== 1 ? 's' : ''}`,
+    // Cluster C convenience: topSupporter('bits', 'week') → 'BiggestSpender'
+    // scope is one of 'session' (default) | 'week' | 'all-time'. Returns the
+    // username with the highest tally; empty string if no data.
+    topSupporter: (category = 'bits', scope = 'session') => {
+      const src = scope === 'week' ? lbWeek : scope === 'all-time' ? lbAll : lb;
+      const cat = src?.[category] ?? {};
+      let topUser = '';
+      let topVal  = 0;
+      for (const [user, val] of Object.entries(cat)) {
+        if (val > topVal) { topUser = user; topVal = val; }
+      }
+      return topUser;
+    },
   };
 }
 
