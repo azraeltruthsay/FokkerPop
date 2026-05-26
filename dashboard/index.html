@@ -589,6 +589,14 @@ html, body {
   30% { transform: scale(1.05); }
   100% { box-shadow: 0 0 0 15px rgba(145,71,255,0); border-color: var(--border); transform: scale(1); }
 }
+/* Persistent error state — set by markNodeError when a flow node throws.
+   Stays visible until the same node fires successfully again (highlightNode
+   removes the class). Hover for the error message. */
+.studio-node.node-error {
+  border-color: #FF6B6B;
+  box-shadow: 0 0 0 2px rgba(255,107,107,0.4), 0 0 20px rgba(255,107,107,0.25);
+  background: linear-gradient(135deg, rgba(255,107,107,0.08), rgba(0,0,0,0));
+}
 .studio-node__label { font-weight: 800; color: var(--text-dim); text-transform: uppercase; margin-bottom: 4px; font-size: 0.6rem; letter-spacing: 0.05em; }
 .studio-node__content { color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
@@ -1530,7 +1538,7 @@ html, body {
         <button class="btn btn-ghost btn-sm" id="scenes-add-fork" title="Add a fork clip at the scrubber time — fires a flow/event/effect/scene without pausing the scene">🔀 Add Fork</button>
         <button class="btn btn-ghost btn-sm" id="scenes-add-branch" title="Add a branch clip at the scrubber time — pauses the scene to wait for an event and routes based on its payload">🌿 Add Branch</button>
         <button class="btn btn-ghost btn-sm" id="scenes-test-btn" title="Plays the active scene in this viewport from t=0">▶ Test</button>
-        <span id="scenes-save-status" style="font-size:.65rem; color:var(--accent); font-weight:800; opacity:0; transition:opacity 0.3s;">✅ SAVED</span>
+        <span id="scenes-save-status" style="font-size:.65rem; font-weight:800; padding:3px 8px; border-radius:4px; opacity:0; transition:opacity 0.3s;"></span>
       </div>
 
       <!-- Main grid: timeline pinned top, then assets | viewport | scenes -->
@@ -1714,6 +1722,22 @@ html, body {
               Watch the <strong>Live</strong> tab to confirm Twitch events are flowing.
             </p>
           </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+          <div class="card-title" style="margin:0;">Twitch Integration Health</div>
+          <div style="display:flex; gap:6px;">
+            <button class="btn btn-ghost btn-sm" onclick="copyTwitchHealth(this)" title="Copy current health snapshot to clipboard (for support)">📋 Copy</button>
+            <button class="btn btn-ghost btn-sm" id="twitch-reconnect-btn" onclick="reconnectTwitch()" style="display:none;" title="Reconnect to Twitch to grant any newly-added scopes">🔄 Reconnect Twitch</button>
+          </div>
+        </div>
+        <p style="font-size:.78rem; color:var(--text-dim); margin:0 0 12px;">
+          Live status of every Twitch-derived feature. Each row shows what's working, what's stale, and what needs a reconnect. Click a row to see the last error.
+        </p>
+        <div id="twitch-health-list" style="display:flex; flex-direction:column; gap:6px;">
+          <div style="font-size:.78rem; color:var(--text-dim); padding:6px;">Waiting for first poll…</div>
         </div>
       </div>
 

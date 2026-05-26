@@ -189,7 +189,18 @@ export async function playScene(sceneJson) {
         });
         if (morphMeshes.length) group.userData.morphMeshes = morphMeshes;
       }, undefined, (err) => {
+        const errMsg = err?.message || String(err);
         console.warn(`[scene-player] failed to load model ${obj.asset}:`, err);
+        // Tell the dashboard so the Event Log surfaces this — silent asset
+        // failures were the #1 "why isn't my scene working" complaint.
+        sendWS({
+          type: '_overlay.event',
+          event: {
+            type:    'scene-error',
+            source:  'scene-player',
+            payload: { sceneId: sceneJson.id, sceneName: sceneJson.name, objectId: obj.id, asset: obj.asset, error: errMsg },
+          },
+        });
         // Magenta wireframe placeholder so the scene shape is still visible
         // and the streamer can see something went wrong without the scene
         // silently missing the object.

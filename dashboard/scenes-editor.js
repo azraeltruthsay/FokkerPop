@@ -1644,10 +1644,12 @@ function fmtMs(ms) {
 // ── Save ─────────────────────────────────────────────────────────────
 function queueSave() {
   clearTimeout(ed.saveDebounce);
+  setSaveStatus('pending');
   ed.saveDebounce = setTimeout(saveNow, 800);
 }
 
 async function saveNow() {
+  setSaveStatus('saving');
   try {
     const res = await fetch('/api/scenes', {
       method: 'POST',
@@ -1659,19 +1661,56 @@ async function saveNow() {
       // Surface the validator's human message in the existing error banner.
       window.errorReporter?.report?.('scenes', `Save failed: ${msg}`);
       console.warn('Save failed:', msg);
+      setSaveStatus('error', msg);
       return;
     }
-    flashSaveStatus();
+    setSaveStatus('saved');
   } catch (err) {
     console.warn('Save error:', err);
+    setSaveStatus('error', err.message || String(err));
+  }
+}
+
+// Save-status badge states:
+//   'pending' — user just edited; save will fire after debounce. Subtle.
+//   'saving'  — POST in flight.
+//   'saved'   — last POST succeeded. Fades after 1.5 s.
+//   'error'   — last POST failed. Persists with tooltip until next attempt.
+function setSaveStatus(stateName, detail = '') {
+  const el = document.getElementById('scenes-save-status');
+  if (!el) return;
+  clearTimeout(setSaveStatus._hide);
+  if (stateName === 'pending') {
+    el.textContent     = '✏️ EDITING';
+    el.style.color     = 'var(--text-dim)';
+    el.style.background = 'rgba(255,255,255,0.06)';
+    el.style.opacity   = '1';
+    el.title           = 'You\'ve got unsaved changes — save will fire in ~1s.';
+  } else if (stateName === 'saving') {
+    el.textContent     = '💾 SAVING…';
+    el.style.color     = 'var(--accent2)';
+    el.style.background = 'rgba(145,71,255,0.15)';
+    el.style.opacity   = '1';
+    el.title           = '';
+  } else if (stateName === 'saved') {
+    el.textContent     = '✅ SAVED';
+    el.style.color     = 'var(--accent)';
+    el.style.background = 'rgba(107,203,119,0.15)';
+    el.style.opacity   = '1';
+    el.title           = '';
+    setSaveStatus._hide = setTimeout(() => { el.style.opacity = '0'; }, 1500);
+  } else if (stateName === 'error') {
+    el.textContent     = '⚠️ SAVE FAILED';
+    el.style.color     = 'var(--red)';
+    el.style.background = 'rgba(255,107,107,0.15)';
+    el.style.opacity   = '1';
+    el.title           = `Save failed: ${detail || 'unknown error'}. Your edits are still in memory — try editing again to retry.`;
   }
 }
 
 function flashSaveStatus() {
-  const el = document.getElementById('scenes-save-status');
-  if (!el) return;
-  el.style.opacity = '1';
-  setTimeout(() => { el.style.opacity = '0'; }, 1200);
+  // Kept as a backwards-compat alias for any external callers; new code uses setSaveStatus.
+  setSaveStatus('saved');
 }
 
 // ── Scene audio ──────────────────────────────────────────────────────

@@ -284,7 +284,21 @@ export class FlowEngine {
           break;
       }
     } catch (err) {
-      log.error(`    Node ${node.id} failed:`, err.message);
+      log.error(`    Node ${node.id} (${node.label || node.action || node.type}) failed:`, err.message);
+      // Surface to Studio so the failing node can be highlighted in red and
+      // the props pane can show the error. Routed through the bus so any
+      // dashboard listener picks it up — currently studio.js handles the
+      // highlight, but other consumers (Event Log, future error panel) can
+      // tap the same signal.
+      bus.publish({
+        source:  'flow-engine',
+        type:    'flow.node-error',
+        flowId:  node._flowId || '',
+        nodeId:  node.id,
+        nodeLabel: node.label || node.action || node.type,
+        error:   err.message || String(err),
+        isTest:  !!event.isTest,
+      });
       return;
     }
 

@@ -2108,6 +2108,20 @@ function handleState(path, value) {
       refreshCounterWidgets();
       refreshProgressBarWidgets();
       break;
+    case 'twitch.schedule':
+      state.twitch.schedule = value || null;
+      refreshTwitchLiveWidgets();
+      break;
+    case 'twitch.ads':
+      state.twitch.ads = value || null;
+      refreshTwitchLiveWidgets();
+      break;
+    case 'twitch.recentFollowers':
+      state.twitch.recentFollowers = value || null;
+      refreshTwitchLiveWidgets();
+      refreshCounterWidgets();
+      refreshProgressBarWidgets();
+      break;
   }
 }
 
@@ -2115,7 +2129,7 @@ function handleState(path, value) {
 state.widgets   = [];
 state.positions = {};
 state.recents   = { follow: null, sub: null, cheer: null, raid: null };
-state.twitch    = { live: null, totals: null, chat: null };
+state.twitch    = { live: null, totals: null, chat: null, schedule: null, ads: null, recentFollowers: null };
 
 let widgetModule = null;
 async function ensureWidgetModule() {
@@ -2317,8 +2331,22 @@ function refreshCounterWidgets() {
     const el = document.getElementById('cw-val-' + w.id);
     if (!el) continue;
     const metric = w.config?.metric || '';
+    if (!metric) {
+      el.textContent = '—';
+      el.title = 'No metric path configured — open the Layout tab and set the Metric field';
+      continue;
+    }
     const v = readMetric(metric);
-    el.textContent = (v ?? 0).toLocaleString ? v.toLocaleString() : String(v ?? 0);
+    if (v === undefined || v === null) {
+      el.textContent = '—';
+      el.title = `No data at ${metric} yet`;
+    } else if (typeof v === 'number') {
+      el.textContent = v.toLocaleString();
+      el.title = '';
+    } else {
+      el.textContent = String(v);
+      el.title = '';
+    }
   }
 }
 
@@ -2369,36 +2397,69 @@ const TOTALS_FIELDS = new Set(['followers', 'subscribers', 'subPoints']);
 // Chat-dynamics fields — derived from chat-event rate over rolling windows;
 // always displayed regardless of stream live state, like totals.
 const CHAT_FIELDS = new Set(['activeChatters', 'messageRate', 'topChatter']);
+// Schedule + ads + recent-follower fields. nextStream / nextAd are countdowns
+// that tick locally every second between server polls; the rest are static.
+const SCHEDULE_FIELDS = new Set(['nextStream', 'nextStreamTitle']);
+const ADS_FIELDS      = new Set(['nextAd', 'adSnoozes']);
+const FOLLOWERS_FIELDS = new Set(['recentFollowers24h', 'latestFollower']);
 const TWITCH_LIVE_LABELS = {
   viewers: 'VIEWERS', uptime: 'UPTIME', title: 'STREAM', game: 'CATEGORY',
   followers: 'FOLLOWERS', subscribers: 'SUBSCRIBERS', subPoints: 'SUB POINTS',
   activeChatters: 'ACTIVE CHATTERS', messageRate: 'MSGS / MIN', topChatter: 'TOP CHATTER',
+  nextStream: 'NEXT STREAM', nextStreamTitle: 'NEXT STREAM',
+  nextAd: 'NEXT AD', adSnoozes: 'AD SNOOZES',
+  recentFollowers24h: 'NEW FOLLOWERS · 24H', latestFollower: 'LATEST FOLLOWER',
 };
+
+function formatCountdownTo(ts) {
+  if (!ts || !Number.isFinite(ts)) return '—';
+  const diff = ts - Date.now();
+  if (diff <= 0) return 'now';
+  const sec = Math.floor(diff / 1000);
+  const d = Math.floor(sec / 86400);
+  const h = Math.floor((sec % 86400) / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  const s = sec % 60;
+  if (d > 0) return `${d}d ${h}h`;
+  if (h > 0) return `${h}h ${String(m).padStart(2, '0')}m`;
+  return `${m}:${String(s).padStart(2, '0')}`;
+}
 function refreshTwitchLiveWidgets() {
-  const live   = state.twitch?.live;
-  const totals = state.twitch?.totals;
-  const chat   = state.twitch?.chat;
+  const live     = state.twitch?.live;
+  const totals   = state.twitch?.totals;
+  const chat     = state.twitch?.chat;
+  const schedule = state.twitch?.schedule;
+  const ads      = state.twitch?.ads;
+  const followers = state.twitch?.recentFollowers;
   for (const w of state.widgets) {
     if (w.type !== 'twitch-live') continue;
     const el  = document.getElementById('cw-val-' + w.id);
     const dot = document.getElementById('cw-live-dot-' + w.id);
     const lbl = document.getElementById('cw-live-lbl-' + w.id);
     if (!el) continue;
-    const field    = w.config?.field || 'viewers';
-    const isTotals = TOTALS_FIELDS.has(field);
-    const isChat   = CHAT_FIELDS.has(field);
-    const isLive   = !!live?.isLive;
+    const field      = w.config?.field || 'viewers';
+    const isTotals   = TOTALS_FIELDS.has(field);
+    const isChat     = CHAT_FIELDS.has(field);
+    const isSchedule = SCHEDULE_FIELDS.has(field);
+    const isAds      = ADS_FIELDS.has(field);
+    const isFollowers = FOLLOWERS_FIELDS.has(field);
+    const isLive     = !!live?.isLive;
     if (dot) {
-      // Live-stream fields → dot reflects actual live state.
-      // Totals → always "live" because they're channel-level facts.
-      // Chat → dot pulses by chat heat (0..1 → off/dim/bright) for "chat is hot" feel.
       if (isChat) {
         const heat = Number(chat?.heat) || 0;
         dot.classList.toggle('live', heat > 0.15);
         dot.style.opacity = String(0.4 + heat * 0.6);
+      } else if (isTotals || isSchedule || isFollowers) {
+        // Channel-level facts always show "active" — they're not gated by live state.
+        dot.style.opacity = '';
+        dot.classList.toggle('live', true);
+      } else if (isAds) {
+        // Ad widget only meaningful while live.
+        dot.style.opacity = '';
+        dot.classList.toggle('live', isLive);
       } else {
         dot.style.opacity = '';
-        dot.classList.toggle('live', isTotals ? true : isLive);
+        dot.classList.toggle('live', isLive);
       }
     }
     if (lbl) lbl.textContent = w.config?.label || TWITCH_LIVE_LABELS[field] || 'STREAM';
@@ -2413,6 +2474,34 @@ function refreshTwitchLiveWidgets() {
         el.textContent = chat?.topChatter || '—';
       } else {
         const v = Number(chat?.[field]);
+        el.textContent = Number.isFinite(v) ? v.toLocaleString() : '—';
+      }
+      continue;
+    }
+    if (isSchedule) {
+      const next = schedule?.next;
+      if (!next) { el.textContent = 'no schedule'; continue; }
+      if (field === 'nextStreamTitle') {
+        el.textContent = next.title || next.category || '(no title)';
+      } else {
+        el.textContent = formatCountdownTo(next.startAt);
+      }
+      continue;
+    }
+    if (isAds) {
+      if (field === 'adSnoozes') {
+        el.textContent = String(Number(ads?.snoozeCount) || 0);
+      } else {
+        if (!ads || !ads.nextAdAt) { el.textContent = isLive ? 'none scheduled' : 'offline'; continue; }
+        el.textContent = formatCountdownTo(ads.nextAdAt);
+      }
+      continue;
+    }
+    if (isFollowers) {
+      if (field === 'latestFollower') {
+        el.textContent = followers?.latest || '—';
+      } else {
+        const v = Number(followers?.count24h);
         el.textContent = Number.isFinite(v) ? v.toLocaleString() : '—';
       }
       continue;
@@ -2436,17 +2525,33 @@ function refreshTwitchLiveWidgets() {
   }
 }
 
-// Tick uptime widgets once a second so the clock advances between 60s
-// server polls. Only walks widgets actually using the uptime field.
+// Tick widgets whose value is a countdown (uptime, nextStream, nextAd)
+// every second so they advance between the server-side polls. Skips the
+// expensive full refreshTwitchLiveWidgets() — only updates the .cw-val
+// inner text on widgets that care.
+const TICKING_FIELDS = new Set(['uptime', 'nextStream', 'nextAd']);
 setInterval(() => {
-  const live = state.twitch?.live;
-  if (!live?.isLive || !live.startedAt) return;
-  const sec = Math.floor((Date.now() - live.startedAt) / 1000);
-  live.uptimeSec = sec;
+  const live     = state.twitch?.live;
+  const schedule = state.twitch?.schedule;
+  const ads      = state.twitch?.ads;
+  // Keep live.uptimeSec local-tickable so the formatter stays simple.
+  if (live?.isLive && live.startedAt) {
+    live.uptimeSec = Math.floor((Date.now() - live.startedAt) / 1000);
+  }
   for (const w of state.widgets) {
-    if (w.type !== 'twitch-live' || w.config?.field !== 'uptime') continue;
+    if (w.type !== 'twitch-live') continue;
+    const field = w.config?.field || 'viewers';
+    if (!TICKING_FIELDS.has(field)) continue;
     const el = document.getElementById('cw-val-' + w.id);
-    if (el) el.textContent = formatUptime(sec);
+    if (!el) continue;
+    if (field === 'uptime') {
+      if (live?.isLive) el.textContent = formatUptime(live.uptimeSec);
+    } else if (field === 'nextStream') {
+      el.textContent = schedule?.next ? formatCountdownTo(schedule.next.startAt) : 'no schedule';
+    } else if (field === 'nextAd') {
+      if (!live?.isLive) { el.textContent = 'offline'; continue; }
+      el.textContent = ads?.nextAdAt ? formatCountdownTo(ads.nextAdAt) : 'none scheduled';
+    }
   }
 }, 1000);
 
@@ -2456,11 +2561,25 @@ function refreshProgressBarWidgets() {
     const fill = document.getElementById('cw-bar-' + w.id);
     const text = document.getElementById('cw-val-' + w.id);
     if (!fill || !text) continue;
-    const cur    = Number(readMetric(w.config?.metric || '')) || 0;
+    const metricPath = w.config?.metric || '';
+    if (!metricPath) {
+      fill.style.width = '0%';
+      text.textContent = 'no metric configured';
+      text.title = 'Open Layout → this widget → set the Metric field';
+      continue;
+    }
+    const raw    = readMetric(metricPath);
+    const cur    = Number(raw) || 0;
     const target = Number(w.config?.target) || 100;
     const pct    = Math.min(100, Math.max(0, (cur / target) * 100));
     fill.style.width = pct + '%';
-    text.textContent = `${cur.toLocaleString()} / ${target.toLocaleString()} (${pct.toFixed(0)}%)`;
+    if (raw === undefined || raw === null) {
+      text.textContent = `— / ${target.toLocaleString()}`;
+      text.title = `No data at ${metricPath} yet`;
+    } else {
+      text.textContent = `${cur.toLocaleString()} / ${target.toLocaleString()} (${pct.toFixed(0)}%)`;
+      text.title = '';
+    }
   }
 }
 
@@ -2504,12 +2623,15 @@ function showTwitchCard(p) {
   }, dur);
 }
 
+// Returns undefined when the path doesn't resolve, so callers can distinguish
+// "no data" from "value is 0". Numeric callers should || 0 themselves if they
+// want zero-fallback behavior (e.g. progress-bar math).
 function readMetric(path) {
-  if (!path) return 0;
+  if (!path) return undefined;
   const parts = path.split('.');
-  let obj = { session: state.session, crowd: { energy: state.crowdEnergy }, leaderboard: state.leaderboard ?? {}, goals: state.goals, twitch: state.twitch ?? {} };
+  let obj = { session: state.session, crowd: { energy: state.crowdEnergy }, leaderboard: state.leaderboard ?? {}, goals: state.goals, twitch: state.twitch ?? {}, recentFollowers: state.twitch?.recentFollowers };
   for (const k of parts) obj = obj?.[k];
-  return obj ?? 0;
+  return obj;
 }
 
 function applyPositions(positions) {

@@ -901,6 +901,9 @@ const EXPR_REF = `
       <div><span style="color:var(--accent2)">twitch.live</span>.viewers · .title · .game · .uptimeSec · .isLive</div>
       <div><span style="color:var(--accent2)">twitch.totals</span>.followers · .subscribers · .subPoints</div>
       <div><span style="color:var(--accent2)">twitch.chat</span>.activeChatters · .messageRate · .topChatter · .heat (0..1)</div>
+      <div><span style="color:var(--accent2)">twitch.schedule</span>.next.startAt · .next.title · .next.category</div>
+      <div><span style="color:var(--accent2)">twitch.ads</span>.nextAdAt · .lastAdAt · .durationSec · .snoozeCount</div>
+      <div><span style="color:var(--accent2)">twitch.recentFollowers</span>.count24h · .latest · .list (array)</div>
       <div><span style="color:var(--accent2)">roll</span> — result of the last 🎲 Dice Roll</div>
       <div><span style="color:var(--accent2)">kaprekar</span>.iterations · .start</div>
       <div><span style="color:var(--accent2)">chatters</span> — recent chatter list</div>
@@ -1225,6 +1228,36 @@ window.highlightNode = function(nodeId) {
   el.classList.remove('fired');
   void el.offsetWidth; // trigger reflow
   el.classList.add('fired');
+};
+
+// Visual flag on a node that just threw an error during flow execution.
+// Pulses red, persists until the next successful fire on the same node so
+// Fokker can spot which node failed without watching the Event Log live.
+window.markNodeError = function(nodeId, errorMessage) {
+  const el = document.getElementById(`node-${nodeId}`);
+  if (!el) return;
+  el.classList.add('node-error');
+  el.title = `❌ ${errorMessage || 'Flow node failed'}`;
+  // Drop a small floating badge so the error is visible even when not hovered.
+  let badge = el.querySelector('.node-error-badge');
+  if (!badge) {
+    badge = document.createElement('div');
+    badge.className = 'node-error-badge';
+    badge.style.cssText = 'position:absolute; top:-8px; right:-8px; background:#FF6B6B; color:#fff; font-size:.6rem; font-weight:900; padding:2px 5px; border-radius:8px; pointer-events:none; box-shadow:0 0 8px rgba(255,107,107,0.6); z-index:5;';
+    badge.textContent = '!';
+    el.style.position = 'relative';
+    el.appendChild(badge);
+  }
+};
+// Pair with highlightNode so a recovery clears the error badge automatically.
+const _origHighlight = window.highlightNode;
+window.highlightNode = function(nodeId) {
+  _origHighlight(nodeId);
+  const el = document.getElementById(`node-${nodeId}`);
+  if (!el) return;
+  el.classList.remove('node-error');
+  const badge = el.querySelector('.node-error-badge');
+  if (badge) badge.remove();
 };
 
 // ─── Utilities ─────────────────────────────────────────────────────────────

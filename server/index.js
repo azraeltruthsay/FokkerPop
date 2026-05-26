@@ -12,6 +12,8 @@ import flowEngine, { TEST_PAYLOADS } from './pipeline/flow-engine.js';
 import { validateScene }             from './pipeline/scenes.js';
 import obs                   from './obs.js';
 import * as helix            from './twitch/helix.js';
+import { HelixError }         from './twitch/helix.js';
+import integrationStatus      from './twitch/integration-status.js';
 import chatDynamics           from './chat-dynamics.js';
 import settings, { ROOT, loadedFrom, saveSettings } from './settings-loader.js';
 
@@ -457,6 +459,17 @@ bus.on('*', async (event) => {
   // Visual flow tracking for Studio
   if (event.type === 'flow.node-fired') {
     broadcast(dashboards, { type: 'flow.node-fired', nodeId: event.nodeId });
+  }
+  // Flow errors → highlight the failing node in Studio + surface message
+  if (event.type === 'flow.node-error') {
+    broadcast(dashboards, {
+      type:      'flow.node-error',
+      flowId:    event.flowId,
+      nodeId:    event.nodeId,
+      nodeLabel: event.nodeLabel,
+      error:     event.error,
+      isTest:    !!event.isTest,
+    });
   }
 
   // Redeem mapping — supports expressions, effects arrays, and chaining
@@ -1446,6 +1459,11 @@ async function handleOAuthCallback(params, res) {
     if (token.access_token) {
       settings.twitch.accessToken  = token.access_token;
       settings.twitch.refreshToken = token.refresh_token ?? '';
+      // Persist the actual scopes Twitch granted (vs. what we asked for).
+      // Used by the Integration Health panel to flag features that need a
+      // reconnect because their scope was declined or hasn't been requested
+      // in an older install. Twitch returns scope as an array of strings.
+      settings.twitch.scopes = Array.isArray(token.scope) ? token.scope : [];
       // Resolve the broadcaster's user id from the new token. EventSub's
       // isConfigured check requires it, and without this lookup a fresh
       // install (or one where settings.twitch.userId was missing for any
@@ -1561,6 +1579,9 @@ wss.on('connection', (ws, req) => {
         send(ws, { type: 'state', path: 'obs.lastError', value: obs.lastError });
         send(ws, { type: 'state', path: 'obs.streaming', value: obs.streaming });
         send(ws, { type: 'state', path: 'update.available', value: getAvailableUpdate() });
+        // Always push the live health snapshot — pollers may not have run yet
+        // when a dashboard reconnects after a short disconnect.
+        send(ws, { type: 'state', path: 'twitch.health', value: integrationStatus.snapshot() });
       } else {
         // Overlay: send current state
         send(ws, { type: 'state', path: 'crowd.energy', value: state.get('crowd.energy') });
@@ -1575,6 +1596,9 @@ wss.on('connection', (ws, req) => {
         send(ws, { type: 'state', path: 'twitch.live',               value: state.get('twitch.live')   ?? null });
         send(ws, { type: 'state', path: 'twitch.totals',             value: state.get('twitch.totals') ?? null });
         send(ws, { type: 'state', path: 'twitch.chat',               value: state.get('twitch.chat')   ?? chatDynamics.compute() });
+        send(ws, { type: 'state', path: 'twitch.schedule',           value: state.get('twitch.schedule') ?? null });
+        send(ws, { type: 'state', path: 'twitch.ads',                value: state.get('twitch.ads') ?? null });
+        send(ws, { type: 'state', path: 'twitch.recentFollowers',    value: state.get('twitch.recentFollowers') ?? null });
       }
       return;
     }
@@ -1923,22 +1947,58 @@ twitchEventSub.on('status', (status) => {
   broadcast(dashboards, { type: 'state', path: 'twitch.status', value: status });
 });
 
-// Live stream stats poller (issue #4 cluster A). Twitch EventSub doesn't
-// surface viewer count, current category, or stream title — those need a
-// 60s Helix poll. Surfaces as state.twitch.live so Studio templates can
-// reference {{ twitch.live.viewers }}, {{ twitch.live.title }}, etc., and
-// dashboards/widgets can react to live/offline transitions.
-//
-// 60s cadence is conservative: viewer counts move on minutes, not seconds,
-// and Helix is rate-limited globally per app. Skips while Twitch is not
-// connected so offline dev sessions don't spam errors.
+// ── Twitch pollers (issue #4) ─────────────────────────────────────────────────
+// Each poller is wrapped in runPoll(), which handles the categorized-error
+// branching: 'unconfigured' is silent (Twitch isn't connected yet — that's
+// fine), 'scope' / 'auth' marks the feature missing-scope so the dashboard
+// Health panel can prompt for reconnect, everything else logs once and shows
+// 'unavailable' until recovery. Pollers themselves just describe what they
+// fetch — the rate limiting + status reporting lives one layer up.
+
+// Broadcast state.twitch.health whenever any feature's status changes, so the
+// dashboard Health panel re-renders in real time.
+integrationStatus.onChange(snap => {
+  state.set('twitch.health', snap);
+  broadcast(dashboards, { type: 'state', path: 'twitch.health', value: snap });
+});
+
+function hasScope(scope) {
+  const granted = settings.twitch?.scopes ?? [];
+  return Array.isArray(granted) && granted.includes(scope);
+}
+function hasAllScopes(scopes) {
+  return scopes.every(hasScope);
+}
+
+async function runPoll(featureKey, requiresScopes, fn) {
+  // Gate on connection — pollers don't even attempt while disconnected.
+  // EventSub status governs this; the registry just shows 'unconfigured'.
+  const { userId, accessToken } = settings.twitch ?? {};
+  if (!userId || !accessToken || twitchEventSub.status !== 'connected') {
+    integrationStatus.reportError(featureKey, new HelixError('unconfigured', 0, 'Twitch is not connected'));
+    return;
+  }
+  // Pre-flight scope check: surface scope problems immediately instead of
+  // waiting for the first 401. Lets the Health panel prompt for reconnect
+  // before any wasted Helix calls.
+  if (requiresScopes.length && !hasAllScopes(requiresScopes)) {
+    const missing = requiresScopes.filter(s => !hasScope(s));
+    integrationStatus.reportError(featureKey, new HelixError('scope', 0, `Missing scopes: ${missing.join(', ')}`));
+    return;
+  }
+  try {
+    const summary = await fn(userId, accessToken);
+    integrationStatus.reportOk(featureKey, { summary: summary || '' });
+  } catch (err) {
+    integrationStatus.reportError(featureKey, err);
+  }
+}
+
+// Cluster A — live stream stats. 60 s cadence (viewer counts move on minutes).
 const STREAM_POLL_INTERVAL_MS = 60_000;
 let streamPollTimer = null;
 async function pollStreamStats() {
-  try {
-    const { userId, accessToken } = settings.twitch ?? {};
-    if (!userId || !accessToken) return;
-    if (twitchEventSub.status !== 'connected') return;
+  await runPoll('live', [], async (userId, accessToken) => {
     const stream = await helix.getStreamInfo(userId, accessToken);
     const prev   = state.get('twitch.live') ?? {};
     let live;
@@ -1963,69 +2023,145 @@ async function pollStreamStats() {
     if (prev.isLive !== live.isLive) {
       log.info(`Twitch stream ${live.isLive ? 'WENT LIVE' : 'went offline'}${live.isLive ? ` (${live.game || 'no category'}, ${live.viewers} viewer${live.viewers === 1 ? '' : 's'})` : ''}`);
     }
-  } catch (err) {
-    log.debug('Stream stats poll failed:', err.message);
-  }
-}
-function startStreamPoller() {
-  if (streamPollTimer) return;
-  streamPollTimer = setInterval(pollStreamStats, STREAM_POLL_INTERVAL_MS);
-  // Kick once immediately so the first sample lands well before the first interval.
-  pollStreamStats();
+    return live.isLive ? `live · ${live.viewers.toLocaleString()} viewer${live.viewers === 1 ? '' : 's'}` : 'offline';
+  });
 }
 
-// Channel totals poller (issue #4 cluster B). Total followers + total
-// subscribers + sub points. Totals change on minutes-to-hours scale —
-// follower drift is steady, sub bombs are bursty but rare — so a 120 s
-// poll is fine. Surfaces as state.twitch.totals so templates can read
-// {{ twitch.totals.followers }}, {{ twitch.totals.subscribers }},
-// {{ twitch.totals.subPoints }}, and the Twitch Live widget can pick
-// those fields the same way it picks viewers/uptime/etc.
+// Cluster B — channel totals. 120 s cadence (totals move on hours).
 const TOTALS_POLL_INTERVAL_MS = 120_000;
 let totalsPollTimer = null;
 async function pollChannelTotals() {
-  try {
-    const { userId, accessToken } = settings.twitch ?? {};
-    if (!userId || !accessToken) return;
-    if (twitchEventSub.status !== 'connected') return;
+  await runPoll('totals', ['moderator:read:followers','channel:read:subscriptions'], async (userId, accessToken) => {
     const [followers, subs] = await Promise.all([
-      helix.getFollowerTotal(userId, accessToken).catch(err => { log.debug('Follower total poll failed:', err.message); return null; }),
-      helix.getSubscriberTotal(userId, accessToken).catch(err => { log.debug('Subscriber total poll failed:', err.message); return null; }),
+      helix.getFollowerTotal(userId, accessToken),
+      helix.getSubscriberTotal(userId, accessToken),
     ]);
-    const prev = state.get('twitch.totals') ?? {};
     const totals = {
-      followers:   followers ?? prev.followers   ?? 0,
-      subscribers: subs?.total ?? prev.subscribers ?? 0,
-      subPoints:   subs?.points ?? prev.subPoints ?? 0,
+      followers:   followers,
+      subscribers: subs.total,
+      subPoints:   subs.points,
       fetchedAt:   Date.now(),
     };
     state.set('twitch.totals', totals);
     broadcast(dashboards, { type: 'state', path: 'twitch.totals', value: totals });
     broadcast(overlays,   { type: 'state', path: 'twitch.totals', value: totals });
-  } catch (err) {
-    log.debug('Channel totals poll failed:', err.message);
-  }
+    return `${followers.toLocaleString()} followers · ${subs.total.toLocaleString()} subs`;
+  });
+}
+
+// Cluster F.1 — stream schedule. 1 h cadence (schedules change rarely).
+const SCHEDULE_POLL_INTERVAL_MS = 60 * 60_000;
+let schedulePollTimer = null;
+async function pollSchedule() {
+  await runPoll('schedule', [], async (userId, accessToken) => {
+    const next = await helix.getNextScheduleSegment(userId, accessToken);
+    const schedule = { next: next || null, fetchedAt: Date.now() };
+    state.set('twitch.schedule', schedule);
+    broadcast(dashboards, { type: 'state', path: 'twitch.schedule', value: schedule });
+    broadcast(overlays,   { type: 'state', path: 'twitch.schedule', value: schedule });
+    if (!next) return 'no upcoming segments';
+    return `next: ${new Date(next.startAt).toLocaleString()} — ${next.title || next.category || '(no title)'}`;
+  });
+}
+
+// Cluster F.2 — ad break schedule. 60 s when live, paused when offline.
+// channel:read:ads scope required (added v0.4.15). Returns 400 for non-
+// Affiliate/Partner channels, which we surface as 'unavailable' rather
+// than an error.
+const ADS_POLL_INTERVAL_MS = 60_000;
+let adsPollTimer = null;
+async function pollAds() {
+  await runPoll('ads', ['channel:read:ads'], async (userId, accessToken) => {
+    const ads = await helix.getAdSchedule(userId, accessToken);
+    const payload = ads
+      ? { ...ads, fetchedAt: Date.now() }
+      : { nextAdAt: 0, lastAdAt: 0, durationSec: 0, snoozeCount: 0, snoozeRefreshAt: 0, prerollFreeSec: 0, fetchedAt: Date.now() };
+    state.set('twitch.ads', payload);
+    broadcast(dashboards, { type: 'state', path: 'twitch.ads', value: payload });
+    broadcast(overlays,   { type: 'state', path: 'twitch.ads', value: payload });
+    if (!ads || !ads.nextAdAt) return 'no ad scheduled';
+    const inSec = Math.max(0, Math.floor((ads.nextAdAt - Date.now()) / 1000));
+    return `next ad in ${Math.floor(inSec / 60)}:${String(inSec % 60).padStart(2,'0')}`;
+  });
+}
+
+// Cluster F.3 — recent followers (last 24 h). 60 s cadence keeps a "new
+// follower" list feeling fresh after raids without burning Helix budget.
+const FOLLOWERS_POLL_INTERVAL_MS = 60_000;
+let followersPollTimer = null;
+async function pollRecentFollowers() {
+  await runPoll('recent-followers', ['moderator:read:followers'], async (userId, accessToken) => {
+    const { total, list } = await helix.getRecentFollowers(userId, accessToken, 100);
+    const cutoff   = Date.now() - 24 * 60 * 60_000;
+    const last24   = list.filter(f => f.followedAt >= cutoff);
+    const recent   = {
+      list:      list.slice(0, 25),
+      count24h:  last24.length,
+      total,
+      latest:    list[0]?.user || '',
+      fetchedAt: Date.now(),
+    };
+    state.set('twitch.recentFollowers', recent);
+    broadcast(dashboards, { type: 'state', path: 'twitch.recentFollowers', value: recent });
+    broadcast(overlays,   { type: 'state', path: 'twitch.recentFollowers', value: recent });
+    return `${last24.length} in last 24 h${recent.latest ? ` · latest: ${recent.latest}` : ''}`;
+  });
+}
+
+function startStreamPoller() {
+  if (streamPollTimer) return;
+  streamPollTimer = setInterval(pollStreamStats, STREAM_POLL_INTERVAL_MS);
+  pollStreamStats();
 }
 function startChannelTotalsPoller() {
   if (totalsPollTimer) return;
   totalsPollTimer = setInterval(pollChannelTotals, TOTALS_POLL_INTERVAL_MS);
   pollChannelTotals();
 }
+function startSchedulePoller() {
+  if (schedulePollTimer) return;
+  schedulePollTimer = setInterval(pollSchedule, SCHEDULE_POLL_INTERVAL_MS);
+  pollSchedule();
+}
+function startAdsPoller() {
+  if (adsPollTimer) return;
+  adsPollTimer = setInterval(pollAds, ADS_POLL_INTERVAL_MS);
+  pollAds();
+}
+function startFollowersPoller() {
+  if (followersPollTimer) return;
+  followersPollTimer = setInterval(pollRecentFollowers, FOLLOWERS_POLL_INTERVAL_MS);
+  pollRecentFollowers();
+}
+
 twitchEventSub.on('status', (status) => {
-  if (status === 'connected') startStreamPoller();
-  if (status === 'connected') startChannelTotalsPoller();
+  if (status !== 'connected') return;
+  // Re-evaluate scopes against the catalog so the Health panel reflects the
+  // current OAuth grant before any poller has run. Picks up the case where
+  // a granted scope was revoked between sessions.
+  for (const feat of integrationStatus.catalog) {
+    if (feat.requiresScopes.length === 0) continue;
+    integrationStatus.markScopeStatus(feat.key, hasAllScopes(feat.requiresScopes));
+  }
+  startStreamPoller();
+  startChannelTotalsPoller();
+  startSchedulePoller();
+  startAdsPoller();
+  startFollowersPoller();
 });
 
-// Chat-dynamics broadcaster (issue #4 cluster G). Computes + emits
-// state.twitch.chat every 5 s — fast enough that a "chat heat" widget feels
-// live, slow enough that the WS bus isn't flooded. Always runs regardless
-// of Twitch-connection state so dashboard previews work in offline dev too.
+// Chat-dynamics broadcaster (cluster G). Reports ok every tick so the
+// Health panel knows the aggregator is alive. Always runs regardless of
+// Twitch connection so the offline dashboard preview ticks too.
 const CHAT_DYNAMICS_INTERVAL_MS = 5_000;
 setInterval(() => {
   const snap = chatDynamics.compute();
   state.set('twitch.chat', snap);
   broadcast(dashboards, { type: 'state', path: 'twitch.chat', value: snap });
   broadcast(overlays,   { type: 'state', path: 'twitch.chat', value: snap });
+  integrationStatus.reportOk('chat-dynamics', {
+    summary: `${snap.activeChatters} active · ${snap.messageRate} msg/min${snap.topChatter ? ` · top: ${snap.topChatter}` : ''}`,
+  });
 }, CHAT_DYNAMICS_INTERVAL_MS);
 
 obs.on('status', (status, reason) => {

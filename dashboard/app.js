@@ -355,6 +355,12 @@ function handleMessage(msg) {
       if (window.highlightNode) window.highlightNode(msg.nodeId);
       break;
 
+    case 'flow.node-error':
+      if (window.markNodeError) window.markNodeError(msg.nodeId, msg.error);
+      // Also append to event log so the error has a permanent record, not just a node badge.
+      appendLog({ type: 'flow-error', source: 'flow-engine', isTest: msg.isTest, payload: { node: msg.nodeLabel, error: msg.error } });
+      break;
+
     case '_system.shutdown':
       // Server is going away on purpose. Stop the auto-reconnect loop and
       // show a persistent overlay explaining how to bring it back, instead
@@ -448,6 +454,7 @@ function applyStateUpdate(path, value) {
   if (path === 'leaderboard')    renderLeaderboard(value);
   if (path === 'session')        renderSession(value);
   if (path === 'twitch.status')  setTwitchBadge(value);
+  if (path === 'twitch.health')  renderTwitchHealth(value);
   if (path === 'obs.status')     setObsBadge(value);
   if (path === 'obs.lastError')  setObsLastError(value);
   if (path === 'version') {
@@ -896,6 +903,12 @@ window.renderWidgetList = function() {
           { v: 'activeChatters', t: 'Active Chatters (5 min)' },
           { v: 'messageRate',    t: 'Messages / Min' },
           { v: 'topChatter',     t: 'Top Chatter (this session)' },
+          { v: 'nextStream',         t: 'Next Stream (countdown)' },
+          { v: 'nextStreamTitle',    t: 'Next Stream (title)' },
+          { v: 'nextAd',             t: 'Next Ad Break' },
+          { v: 'adSnoozes',          t: 'Ad Snoozes Left' },
+          { v: 'recentFollowers24h', t: 'New Followers · 24h' },
+          { v: 'latestFollower',     t: 'Latest Follower' },
         ];
         return `
           <select class="input-field" onchange="updateWidgetField('${w.id}','field',this.value); renderWidgetList();" style="max-width:220px;" title="Which Twitch field to display">
@@ -1090,8 +1103,113 @@ function refreshAll() {
   renderCrowd(appState.crowd?.energy ?? 0);
   renderGoals(appState.goals ?? []);
   renderLeaderboard(appState.leaderboard ?? {});
+  renderTwitchHealth(appState.twitch?.health);
   if (appState.version) setVersion(appState.version);
 }
+
+// ═══════════════════════════════════════════════ Twitch Integration Health
+//
+// Renders the Setup-tab panel that surfaces every Twitch poller's state.
+// Each row is a feature (from server/twitch/integration-status.js → catalog)
+// with a status dot, summary, last-fetched relative time, and the latest
+// error message if any. When any feature is missing-scope, the Reconnect
+// Twitch button surfaces above the list so Fokker can pick up new scopes
+// without hunting for the connect flow.
+const HEALTH_STATE_COLORS = {
+  'ok':            '#6BCB77',
+  'missing-scope': '#FF9A3C',
+  'unavailable':   '#FF6B6B',
+  'unconfigured':  '#7a7a85',
+  'stale':         '#FFD93D',
+};
+const HEALTH_STATE_LABELS = {
+  'ok':            'OK',
+  'missing-scope': 'NEEDS RECONNECT',
+  'unavailable':   'UNAVAILABLE',
+  'unconfigured':  'NOT CONNECTED',
+  'stale':         'STALE',
+};
+function relTimeFromNow(ms) {
+  if (!ms) return '—';
+  const sec = Math.max(0, Math.floor((Date.now() - ms) / 1000));
+  if (sec < 5)     return 'just now';
+  if (sec < 60)    return `${sec}s ago`;
+  if (sec < 3600)  return `${Math.floor(sec / 60)}m ago`;
+  if (sec < 86400) return `${Math.floor(sec / 3600)}h ago`;
+  return `${Math.floor(sec / 86400)}d ago`;
+}
+function renderTwitchHealth(snap) {
+  const host = document.getElementById('twitch-health-list');
+  if (!host) return;
+  if (!Array.isArray(snap) || snap.length === 0) {
+    host.innerHTML = `<div style="font-size:.78rem; color:var(--text-dim); padding:6px;">Waiting for first poll…</div>`;
+    return;
+  }
+  const anyMissingScope = snap.some(r => r.state === 'missing-scope');
+  const reconnectBtn = document.getElementById('twitch-reconnect-btn');
+  if (reconnectBtn) reconnectBtn.style.display = anyMissingScope ? '' : 'none';
+
+  host.innerHTML = snap.map(row => {
+    const color = HEALTH_STATE_COLORS[row.state] || '#7a7a85';
+    const label = HEALTH_STATE_LABELS[row.state] || row.state.toUpperCase();
+    const errLine = row.lastError
+      ? `<div style="font-size:.7rem; color:var(--red); margin-top:2px;"><strong>${esc(row.lastError.kind)}${row.lastError.status ? ` (${row.lastError.status})` : ''}:</strong> ${esc(row.lastError.message)}</div>`
+      : '';
+    const summary = row.summary ? esc(row.summary) : '—';
+    const note = row.fokkerNote
+      ? `<div style="font-size:.66rem; color:var(--text-dim); margin-top:2px; line-height:1.4;">${esc(row.fokkerNote)}</div>`
+      : '';
+    const scopesLine = row.requiresScopes.length
+      ? `<div style="font-size:.62rem; color:var(--text-dim); margin-top:3px;">scopes: ${row.requiresScopes.map(s => `<code>${esc(s)}</code>`).join(' · ')} · poll: ${esc(row.pollHint || '—')}</div>`
+      : `<div style="font-size:.62rem; color:var(--text-dim); margin-top:3px;">poll: ${esc(row.pollHint || '—')}</div>`;
+    return `
+      <div class="twitch-health-row" style="display:grid; grid-template-columns: 12px 1fr auto; gap:10px; padding:8px 12px; background:rgba(255,255,255,0.03); border-radius:8px; border-left:3px solid ${color};">
+        <div style="width:10px; height:10px; border-radius:50%; background:${color}; align-self:center; box-shadow:0 0 0 1px rgba(255,255,255,0.1);"></div>
+        <div>
+          <div style="display:flex; align-items:center; gap:8px;">
+            <strong style="font-size:.82rem;">${esc(row.label)}</strong>
+            <span style="font-size:.6rem; font-weight:800; letter-spacing:.08em; padding:1px 6px; border-radius:3px; background:${color}22; color:${color};">${label}</span>
+          </div>
+          <div style="font-size:.74rem; color:var(--text); margin-top:3px;">${summary}</div>
+          ${errLine}
+          ${note}
+          ${scopesLine}
+        </div>
+        <div style="font-size:.7rem; color:var(--text-dim); align-self:center; white-space:nowrap;">${esc(relTimeFromNow(row.lastFetchAt))}</div>
+      </div>`;
+  }).join('');
+}
+window.copyTwitchHealth = function(btn) {
+  const snap = appState.twitch?.health ?? [];
+  const text = JSON.stringify({
+    version:  appState.version,
+    scopes:   appState.settings?.twitch?.scopes ?? null,
+    health:   snap,
+    capturedAt: new Date().toISOString(),
+  }, null, 2);
+  navigator.clipboard.writeText(text).then(() => {
+    if (btn) {
+      const orig = btn.textContent;
+      btn.textContent = '✓ Copied';
+      setTimeout(() => { btn.textContent = orig; }, 1500);
+    }
+  });
+};
+window.reconnectTwitch = function() {
+  // Same flow as the Setup-tab Save & Connect — guides Fokker through the
+  // Twitch authorize step, picking up any newly-added scopes.
+  document.querySelector('[data-page="setup"]')?.click();
+  setTimeout(() => {
+    document.getElementById('save-twitch-creds')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, 200);
+};
+
+// Re-tick the Health panel's "Xm ago" timestamps every 10s so they don't
+// look frozen when no state-changes are arriving. Cheap — just rerenders
+// the existing snapshot in appState.
+setInterval(() => {
+  if (appState.twitch?.health) renderTwitchHealth(appState.twitch.health);
+}, 10_000);
 
 // ═══════════════════════════════════════════════ Renderers
 
@@ -1793,6 +1911,7 @@ window.saveCredentialsAndAuth = function () {
       'channel:read:redemptions',
       'moderator:read:followers',
       'channel:read:hype_train',
+      'channel:read:ads',
       'user:read:chat',
       'user:write:chat',
     ].join('+');

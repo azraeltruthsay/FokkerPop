@@ -2,15 +2,59 @@ import settings from '../settings-loader.js';
 
 const BASE = 'https://api.twitch.tv/helix';
 
+// Categorized error so pollers can branch on cause without parsing strings.
+// kind values:
+//   'unconfigured' — clientId or accessToken missing locally (not a Twitch error)
+//   'scope'        — 401 with "missing scope" body (user needs to reconnect)
+//   'auth'         — 401 not specifically about scope (token expired / revoked)
+//   'rate-limit'   — 429
+//   'not-monetized'— 400 from the ads endpoint when channel isn't an Affiliate/Partner
+//   'data'         — 4xx with a well-formed error response from Twitch
+//   'network'      — fetch threw before we got a response (DNS / timeout / etc.)
+export class HelixError extends Error {
+  constructor(kind, status, message, { path, scope } = {}) {
+    super(message);
+    this.kind   = kind;
+    this.status = status;
+    this.path   = path || '';
+    this.scope  = scope || '';
+  }
+}
+
+function categorize(path, res, body) {
+  const status = res.status;
+  const msg    = body?.message || res.statusText || `HTTP ${status}`;
+  if (status === 401) {
+    const scopeMatch = /scope/i.test(msg) || /missing/i.test(msg);
+    return new HelixError(scopeMatch ? 'scope' : 'auth', status, msg, { path });
+  }
+  if (status === 429) return new HelixError('rate-limit', status, msg, { path });
+  if (status === 400 && /not.*affiliate|not.*partner|not.*monetized/i.test(msg)) {
+    return new HelixError('not-monetized', status, msg, { path });
+  }
+  return new HelixError('data', status, msg, { path });
+}
+
 async function helixGet(path, accessToken) {
   const { clientId } = settings.twitch ?? {};
-  const res = await fetch(`${BASE}${path}`, {
-    headers: {
-      'Authorization': `Bearer ${accessToken}`,
-      'Client-Id':     clientId,
-    },
-  });
-  if (!res.ok) throw new Error(`Helix ${path} → ${res.status}`);
+  if (!clientId || !accessToken) {
+    throw new HelixError('unconfigured', 0, 'Twitch is not connected — clientId or accessToken missing', { path });
+  }
+  let res;
+  try {
+    res = await fetch(`${BASE}${path}`, {
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'Client-Id':     clientId,
+      },
+    });
+  } catch (err) {
+    throw new HelixError('network', 0, err.message || 'fetch failed', { path });
+  }
+  if (!res.ok) {
+    const body = await res.json().catch(() => null);
+    throw categorize(path, res, body);
+  }
   return res.json();
 }
 
@@ -56,6 +100,57 @@ export async function getSubscriberTotal(broadcasterId, accessToken) {
     total:  Number.isFinite(data.total) ? data.total : 0,
     points: Number.isFinite(data.points) ? data.points : 0,
   };
+}
+
+// Broadcaster's scheduled-stream segments. Returns the next non-canceled
+// upcoming segment, or null if nothing is scheduled in the next ~week.
+// No special scope required — schedule data is public.
+export async function getNextScheduleSegment(broadcasterId, accessToken) {
+  const data = await helixGet(`/schedule?broadcaster_id=${encodeURIComponent(broadcasterId)}&first=10`, accessToken);
+  const segs = data.data?.segments ?? [];
+  const now  = Date.now();
+  for (const s of segs) {
+    const startMs = s.start_time ? Date.parse(s.start_time) : NaN;
+    if (!Number.isFinite(startMs) || startMs <= now) continue;
+    if (s.canceled_until) continue; // canceled segment — skip to next
+    return {
+      startAt:  startMs,
+      endAt:    s.end_time ? Date.parse(s.end_time) : 0,
+      title:    s.title || '',
+      category: s.category?.name || '',
+    };
+  }
+  return null;
+}
+
+// Next channel-ad-break info. Requires channel:read:ads scope (added to the
+// OAuth scope list in v0.4.15 — existing connects will 401 here until they
+// reconnect, and that's fine: caller catches and shows '—'). Affiliates/
+// Partners only; Twitch returns 400 for non-monetized channels.
+export async function getAdSchedule(broadcasterId, accessToken) {
+  const data = await helixGet(`/channels/ads?broadcaster_id=${encodeURIComponent(broadcasterId)}`, accessToken);
+  const row  = data.data?.[0];
+  if (!row) return null;
+  return {
+    nextAdAt:        row.next_ad_at        ? Number(row.next_ad_at)        * 1000 : 0,
+    lastAdAt:        row.last_ad_at        ? Number(row.last_ad_at)        * 1000 : 0,
+    durationSec:     Number(row.duration)     || 0,
+    snoozeCount:     Number(row.snooze_count) || 0,
+    snoozeRefreshAt: row.snooze_refresh_at ? Number(row.snooze_refresh_at) * 1000 : 0,
+    prerollFreeSec:  Number(row.preroll_free_time) || 0,
+  };
+}
+
+// Recent followers list (up to 100). Used for "last 24 h follower" counts
+// and a most-recent-follower display. Same scope as getFollowerTotal.
+export async function getRecentFollowers(broadcasterId, accessToken, first = 100) {
+  const data = await helixGet(`/channels/followers?broadcaster_id=${encodeURIComponent(broadcasterId)}&first=${Math.min(100, Math.max(1, first))}`, accessToken);
+  const list = (data.data ?? []).map(r => ({
+    user:        r.user_name || r.user_login || '',
+    userId:      r.user_id || '',
+    followedAt:  r.followed_at ? Date.parse(r.followed_at) : 0,
+  }));
+  return { total: Number.isFinite(data.total) ? data.total : 0, list };
 }
 
 // List the broadcaster's Channel Point custom rewards. Used by the Studio
