@@ -145,6 +145,12 @@ html, body {
 
 .page { display: none; padding: 28px 32px 40px; }
 .page.active { display: block; }
+/* The Scenes page is a full-height flex column (toolbar + a flex:1 grid).
+   The generic `.page.active { display:block }` above turned that off, so the
+   inner grid only took its intrinsic height — leaving a dead band below the
+   columns that also resized when the inspector appeared on selection (issue
+   #10). Restoring flex lets the grid's 1fr row fill the viewport. */
+#page-scenes.active { display: flex; }
 /* Chat page needs a flex column so the input bar sticks to the bottom
    and the feed scrolls inside the remaining space. */
 #page-chat.active { display: flex; flex-direction: column; padding: 0; height: 100%; }

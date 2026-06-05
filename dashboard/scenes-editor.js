@@ -137,6 +137,8 @@ function setupViewport() {
       queueSave();
     }
   });
+  // Keep the inspector's numeric Transform fields live while the gizmo drags.
+  transform.addEventListener('objectChange', syncTransformFields);
 
   const raycaster = new THREE.Raycaster();
   ed.three = { scene, camera, renderer, orbit, transform, raycaster };
@@ -641,6 +643,7 @@ function renderModelInspectorHtml(obj, displayName, sub) {
     <div style="font-size:.65rem; color:var(--text-dim); text-transform:uppercase; letter-spacing:.05em;">Selected Object</div>
     <input type="text" id="scene-obj-name" class="input-field" value="${esc(displayName)}" placeholder="Name" style="margin:0; padding:4px 6px; font-size:.78rem;">
     <div style="font-size:.6rem; color:var(--text-dim);">${sub}</div>
+    ${renderTransformSectionHtml(obj)}
     <div style="display:flex; align-items:center; gap:6px;">
       <span style="font-size:.65rem; color:var(--text-dim); min-width:48px;">Opacity</span>
       <input type="range" id="scene-obj-opacity" min="0" max="1" step="0.01" value="${current.opacity}" style="flex:1;">
@@ -684,6 +687,105 @@ function renderModelInspectorHtml(obj, displayName, sub) {
     ${renderShakeSectionHtml(obj)}
     <button class="btn btn-ghost btn-sm" id="scene-obj-delete" style="color:var(--red);">🗑️ Delete Object</button>
   `;
+}
+
+// Transform section — numeric Position / Rotation / Scale editor for the
+// selected object (issue #10). Lives alongside the gizmo: editing a field
+// moves the live Three object and writes the same position/rotation/scale
+// keyframe at scrubber time that a gizmo drag would. Shared by the model and
+// light inspectors so any selectable object can be placed by typing exact
+// values. Rotation is shown in degrees (radians are how the data is stored,
+// but nobody authors poses in radians).
+function renderTransformSectionHtml(obj) {
+  const t = resolveCurrentTransform(obj.id);
+  const deg = r => r * 180 / Math.PI;
+  const row = (label, prefix, vals, step) => `
+    <div style="display:flex; gap:4px; align-items:center;">
+      <span style="font-size:.6rem; color:var(--text-dim); min-width:54px;">${label}</span>
+      ${['x', 'y', 'z'].map((ax, i) => `
+        <span style="font-size:.55rem; color:var(--text-dim);">${ax.toUpperCase()}</span>
+        <input type="number" id="scene-${prefix}-${ax}" step="${step}" value="${fmtNum(vals[i])}" style="flex:1; min-width:0; margin:0; padding:2px 4px; font-size:.65rem;">
+      `).join('')}
+    </div>`;
+  return `
+    <details open>
+      <summary style="font-size:.65rem; color:var(--text-dim); cursor:pointer; padding:2px 0;">▾ Transform</summary>
+      <div style="display:flex; flex-direction:column; gap:4px; margin-top:6px; padding-left:4px;">
+        ${row('Position', 'pos', t.position, 0.1)}
+        ${row('Rotation°', 'rot', t.rotation.map(deg), 1)}
+        ${row('Scale', 'scl', t.scale, 0.1)}
+        <div style="font-size:.55rem; color:var(--text-dim); opacity:.7;">Writes a keyframe at the scrubber time. Rotation in degrees.</div>
+      </div>
+    </details>`;
+}
+
+function bindTransformSection(obj) {
+  const num = (id, dflt) => {
+    const v = parseFloat(document.getElementById(id)?.value);
+    return Number.isFinite(v) ? v : dflt;
+  };
+  const commit = () => {
+    const three = ed.objectsByGuid.get(obj.id);
+    if (!three) return;
+    three.position.set(num('scene-pos-x', 0), num('scene-pos-y', 0), num('scene-pos-z', 0));
+    three.rotation.set(
+      num('scene-rot-x', 0) * Math.PI / 180,
+      num('scene-rot-y', 0) * Math.PI / 180,
+      num('scene-rot-z', 0) * Math.PI / 180,
+    );
+    three.scale.set(num('scene-scl-x', 1), num('scene-scl-y', 1), num('scene-scl-z', 1));
+    // Reuse the exact keyframe the gizmo writes — one source of truth at t.
+    writeKeyframeForSelected();
+    queueSave();
+  };
+  ['pos', 'rot', 'scl'].forEach(p => ['x', 'y', 'z'].forEach(ax => {
+    document.getElementById(`scene-${p}-${ax}`)?.addEventListener('change', commit);
+  }));
+}
+
+// Pushes the live Three object's transform back into the numeric fields so
+// dragging the gizmo (or seeking the scrubber) keeps them current. Skips the
+// field the user is actively typing in so we never clobber mid-edit.
+function syncTransformFields() {
+  if (!ed.selectedObjectId) return;
+  const three = ed.objectsByGuid.get(ed.selectedObjectId);
+  if (!three) return;
+  const set = (id, v) => {
+    const el = document.getElementById(id);
+    if (el && document.activeElement !== el) el.value = fmtNum(v);
+  };
+  const deg = r => r * 180 / Math.PI;
+  set('scene-pos-x', three.position.x); set('scene-pos-y', three.position.y); set('scene-pos-z', three.position.z);
+  set('scene-rot-x', deg(three.rotation.x)); set('scene-rot-y', deg(three.rotation.y)); set('scene-rot-z', deg(three.rotation.z));
+  set('scene-scl-x', three.scale.x); set('scene-scl-y', three.scale.y); set('scene-scl-z', three.scale.z);
+}
+
+// Resolve the transform shown in the inspector. The live Three object is the
+// source of truth for "what's on screen now" (the animate loop and gizmo keep
+// it current); fall back to the scene object's stored base transform if the
+// Three object hasn't been built yet.
+function resolveCurrentTransform(objectId) {
+  const three = ed.objectsByGuid.get(objectId);
+  if (three) {
+    return {
+      position: [three.position.x, three.position.y, three.position.z],
+      rotation: [three.rotation.x, three.rotation.y, three.rotation.z],
+      scale:    [three.scale.x,    three.scale.y,    three.scale.z],
+    };
+  }
+  const obj = activeScene()?.objects.find(o => o.id === objectId);
+  const t = obj?.transform || {};
+  return {
+    position: t.position || [0, 0, 0],
+    rotation: t.rotation || [0, 0, 0],
+    scale:    t.scale    || [1, 1, 1],
+  };
+}
+
+// Round to 3 decimals and squash -0 so fields read clean (e.g. "0" not "-0").
+function fmtNum(n) {
+  const v = Math.round(n * 1000) / 1000;
+  return Object.is(v, -0) ? 0 : v;
 }
 
 function renderMorphSectionHtml(obj) {
@@ -827,6 +929,8 @@ function bindModelInspector(obj) {
   });
   document.getElementById('scene-mat-wire').addEventListener('change',     (e) => onMaterialEdit({ wireframe: e.target.checked }));
 
+  bindTransformSection(obj);
+
   // Morph target sliders — one slider per shape-key name discovered on the
   // loaded GLB. Writes a morphTargets keyframe at scrubber time on every
   // input event so the slider doubles as a keyframe-author tool.
@@ -906,6 +1010,7 @@ function renderLightInspectorHtml(obj, displayName, sub) {
     <div style="font-size:.65rem; color:var(--text-dim); text-transform:uppercase; letter-spacing:.05em;">Selected Light</div>
     <input type="text" id="scene-obj-name" class="input-field" value="${esc(displayName)}" placeholder="Name" style="margin:0; padding:4px 6px; font-size:.78rem;">
     <div style="font-size:.6rem; color:var(--text-dim);">${sub}</div>
+    ${renderTransformSectionHtml(obj)}
     <div style="display:flex; align-items:center; gap:6px;">
       <span style="font-size:.6rem; color:var(--text-dim); min-width:54px;">Intensity</span>
       <input type="range" id="scene-light-intensity" min="0" max="5" step="0.05" value="${current.intensity}" style="flex:1;">
@@ -957,6 +1062,7 @@ function bindLightInspector(obj) {
       queueSave();
     });
   }
+  bindTransformSection(obj);
   document.getElementById('scene-obj-delete').addEventListener('click', () => deleteSelectedObject(obj));
 }
 
@@ -1425,6 +1531,7 @@ function bindTimelineEvents() {
     applyTracksAtTime(ed.currentTime);
     applyPathAndShake(ed.currentTime);
     applyCameraAtTime(ed.currentTime);
+    syncTransformFields();
     renderTimelineHead();
     renderTimeDisplay();
   });
