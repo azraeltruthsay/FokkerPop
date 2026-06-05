@@ -613,6 +613,7 @@ window.addWidget = function (type) {
   if (type === 'dice')        base.config = { visible: true, autoHide: true, sides: 20, triggerEvent: 'redeem', theme: 'gold', pips: false, width: 220, height: 220 };
   if (type === 'dice-tray')   base.config = { visible: true, autoHide: true, dice: [{ sides: 6, count: 2 }], triggerEvent: 'dice-tray-roll', eventType: 'dice-tray-roll', theme: 'gold', pips: true, width: 420, height: 280, dieSize: 0.45, trayWidth: 2.5, trayDepth: 1.6 };
   if (type === 'model-3d')    base.config = { visible: true, modelUrl: '', rotationSpeed: 0.005, scale: 1, reactiveScale: '', width: 300, height: 300 };
+  if (type === 'scene')       base.config = { visible: true, sceneId: '', autoplay: true, loop: true, width: 480, height: 270 };
   if (type === 'image')       base.config = { visible: true, width: 320, height: 240, fadeInMs: 250, fadeOutMs: 400 };
   if (type === 'twitch-live') base.config = { visible: true, field: 'viewers', label: '', fontSize: 36, color: '#ff3b3b' };
   widgets.push(base);
@@ -633,6 +634,15 @@ window.deleteWidget = function (id) {
   if (!confirm('Delete this widget?')) return;
   widgets = widgets.filter(w => w.id !== id);
   saveWidgets().then(renderWidgetList);
+};
+
+// Reload the scene index that feeds the Scene widget's dropdown. The cache is
+// seeded on boot and by the Scenes editor after saves, but a 🔄 button lets
+// the user pull freshly-created scenes without reloading the dashboard.
+window.refreshScenesCache = function () {
+  fetch('/api/scenes').then(r => r.json())
+    .then(s => { window.scenesCache = Array.isArray(s) ? s : []; renderWidgetList(); })
+    .catch(() => {});
 };
 
 // Dice-tray spec editor. Accepts human-readable dice notation like
@@ -748,7 +758,7 @@ window.renderWidgetList = function() {
       'physics-pit': 'Physics Pit (2D)', 'physics-pit-3d': 'Physics Pit (3D)',
       dice: 'Dice', 'dice-tray': 'Dice Tray', 'model-3d': '3D Model',
       'hot-button-3d': 'Hot Button 3D', image: 'Image Display',
-      'twitch-live': 'Twitch Live Stats',
+      'twitch-live': 'Twitch Live Stats', scene: 'Scene',
     }[w.type] || w.type;
     const body = (() => {
       if (w.type === 'counter') return `
@@ -887,6 +897,23 @@ window.renderWidgetList = function() {
           <button class="btn btn-ghost btn-sm" onclick="triggerUpload('model')">➕ Upload GLB</button>
           <input class="input-field" type="number" step="0.001" value="${c.rotationSpeed ?? 0.005}" oninput="updateWidgetField('${w.id}','rotationSpeed',parseFloat(this.value)||0)" style="max-width:110px;" title="Y-axis rotation per frame (rad)">
           <input class="input-field" value="${esc(c.reactiveScale ?? '')}" placeholder="Reactive metric (e.g. crowd.energy)" oninput="updateWidgetField('${w.id}','reactiveScale',this.value)" style="max-width:200px; font-family:monospace;" title="Optional state path that scales the model">`;
+      }
+      if (w.type === 'scene') {
+        const scenes = window.scenesCache || [];
+        const hasScenes = scenes.length > 0;
+        return `
+          <select class="input-field" onchange="updateWidgetField('${w.id}','sceneId',this.value)" title="Which saved scene to display here" style="max-width:220px;">
+            <option value="">${hasScenes ? '— select a scene —' : '— no scenes yet —'}</option>
+            ${scenes.map(s => `<option value="${esc(s.id)}" ${s.id === c.sceneId ? 'selected' : ''}>${esc(s.name || s.id)}</option>`).join('')}
+          </select>
+          <button class="btn btn-ghost btn-sm" onclick="refreshScenesCache()" title="Reload the scene list (after editing on the Scenes tab)">🔄</button>
+          <label style="display:inline-flex; gap:4px; align-items:center; font-size:.75rem; color:var(--text-dim);" title="Play the scene as soon as the overlay loads">
+            <input type="checkbox" ${c.autoplay !== false ? 'checked' : ''} onchange="updateWidgetField('${w.id}','autoplay',this.checked)">autoplay
+          </label>
+          <label style="display:inline-flex; gap:4px; align-items:center; font-size:.75rem; color:var(--text-dim);" title="Replay every time the scene's duration elapses">
+            <input type="checkbox" ${c.loop !== false ? 'checked' : ''} onchange="updateWidgetField('${w.id}','loop',this.checked)">loop
+          </label>
+          <span style="font-size:.7rem; color:var(--text-dim); flex-basis:100%;">Displays a saved Scene on the overlay, mounted in this box. Build scenes on the 🎬 Scenes tab. Only one scene plays at a time — a flow-triggered scene briefly takes over an autoplaying widget, then the loop reclaims it. Without autoplay, a flow (Scene → Mount: Widget, targeting this widget) plays into it.</span>`;
       }
       if (w.type === 'image') {
         return `

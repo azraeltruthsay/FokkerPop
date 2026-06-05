@@ -1986,6 +1986,39 @@ function playScenePayload(sceneJson) {
   });
 }
 
+// ── Scene host widgets (issue #11) ──────────────────────────────────────
+// A placed 'scene' widget displays a saved scene on the overlay. It reuses
+// the singleton scene-player: autoplay mounts the scene into the widget box;
+// loop re-mounts every durationMs. Because the player is single-scene, a
+// flow-triggered scene momentarily preempts an autoplaying widget scene — the
+// loop then reclaims the stage on its next tick. Scenes are resolved from a
+// once-fetched /api/scenes cache (the overlay doesn't otherwise need them).
+let _overlayScenesCache = null;
+function resolveScene(id) {
+  if (!_overlayScenesCache) {
+    _overlayScenesCache = fetch('/api/scenes').then(r => r.json()).catch(() => []);
+  }
+  return _overlayScenesCache.then(list => (list || []).find(s => s.id === id) || null);
+}
+const _sceneWidgetTimers = new Map();
+function clearSceneWidgets() {
+  for (const t of _sceneWidgetTimers.values()) clearInterval(t);
+  _sceneWidgetTimers.clear();
+}
+async function mountSceneWidget(w, el) {
+  const cfg = w.config || {};
+  const scene = await resolveScene(cfg.sceneId);
+  if (!scene) return;
+  // Force mounting into this widget regardless of the scene's authored mount
+  // mode — here, the widget box IS the stage.
+  const play = () => playScenePayload({ ...scene, mountMode: 'widget', targetWidgetId: w.id });
+  play();
+  if (cfg.loop) {
+    const period = Math.max(500, scene.durationMs || 10000);
+    _sceneWidgetTimers.set(w.id, setInterval(play, period));
+  }
+}
+
 function dispatchEffect(effect, p) {
   const explicit = Object.prototype.hasOwnProperty.call(p, 'sound');
   const sound = explicit ? p.sound : EFFECT_DEFAULT_SOUNDS[effect];
@@ -2165,6 +2198,7 @@ function renderCustomWidgets() {
   const host = document.getElementById('custom-widgets');
   if (!host) return;
   if (widgetModule?.clearAll) widgetModule.clearAll();
+  clearSceneWidgets();
   host.innerHTML = '';
   for (const w of state.widgets) {
     const el = document.createElement('div');
@@ -2272,6 +2306,19 @@ function renderCustomWidgets() {
       el.style.minHeight = (cfg.height || 300) + 'px';
       ensureWidgetModule().then(m => m.mountModel3D(w, el, readMetric))
         .catch(err => console.error('[model-3d] mount failed for', w.id, err));
+    } else if (w.type === 'scene') {
+      // Scene host (issue #11): a placed box that displays a saved scene.
+      // Transparent like the other 3D widgets so only the scene's content
+      // shows on stream. Autoplay mounts the scene into this box; the loop
+      // (if enabled) is managed in mountSceneWidget.
+      el.style.background = 'transparent';
+      el.style.border = 'none';
+      el.style.padding = '0';
+      el.style.minWidth  = (cfg.width  || 480) + 'px';
+      el.style.minHeight = (cfg.height || 270) + 'px';
+      if (cfg.sceneId && cfg.autoplay !== false) {
+        mountSceneWidget(w, el).catch(err => console.error('[scene] mount failed for', w.id, err));
+      }
     } else if (w.type === 'physics-pit-3d') {
       el.style.background = 'transparent';
       el.style.border = 'none';
