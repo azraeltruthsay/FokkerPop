@@ -126,10 +126,12 @@ function setupViewport() {
   // so the editor doesn't silently render no handles after a three.js bump.
   const transformHelper = typeof transform.getHelper === 'function' ? transform.getHelper() : transform;
   scene.add(transformHelper);
-  // While the gizmo is being dragged, suspend orbit so camera drag doesn't
-  // fight the transform. On drag-end (auto-key on), commit a keyframe.
+  // On drag-end (auto-key on), commit a keyframe. Suspending orbit while the
+  // gizmo is active is handled centrally in the animate loop (it sets
+  // orbit.enabled every frame, so toggling it here would be stomped on the
+  // next frame — that race was the cause of issue #9, where camera rotation
+  // kept fighting object manipulation).
   transform.addEventListener('dragging-changed', (e) => {
-    orbit.enabled = !e.value;
     if (!e.value && ed.autoKey && ed.selectedObjectId) {
       writeKeyframeForSelected();
       queueSave();
@@ -168,11 +170,18 @@ function setupViewport() {
       renderTimelineHead();
       renderTimeDisplay();
     }
-    // Suspend OrbitControls while a cameraTrack drives the camera so
-    // user pan/zoom doesn't fight the animation. Re-enabled the instant
-    // playback stops or the track is empty.
+    // Single authority on whether the camera responds to the mouse. Suspend
+    // OrbitControls when:
+    //  - a cameraTrack is driving the camera during playback (user pan/zoom
+    //    would fight the animation), or
+    //  - the user is manipulating an object via the transform gizmo. `dragging`
+    //    covers an in-progress drag; `axis` covers merely hovering a handle, so
+    //    the click that starts a gizmo drag never also kicks off a camera
+    //    rotate. This is the fix for issue #9 — left-click no longer does both
+    //    camera rotation and object manipulation at once.
     const hasCamTrack = (activeScene()?.cameraTrack?.keyframes?.length || 0) > 0;
-    orbit.enabled = !(ed.isPlaying && hasCamTrack);
+    const gizmoActive = transform.dragging || transform.axis != null;
+    orbit.enabled = !(ed.isPlaying && hasCamTrack) && !gizmoActive;
     orbit.update();
     renderer.render(scene, camera);
   }
