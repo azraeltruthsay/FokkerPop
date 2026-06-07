@@ -1528,7 +1528,8 @@ html, body {
 
     <div class="page" id="page-scenes" style="padding:0; height:100vh; flex-direction:column;">
       <div style="background:var(--surface2); padding:10px 20px; border-bottom:1px solid var(--border); display:flex; gap:15px; align-items:center; flex-wrap:wrap;">
-        <div class="page-title" style="font-size:1rem; margin-right:auto;">🎬 Scenes (Beta)</div>
+        <div class="page-title" style="font-size:1rem;">🎬 Scenes (Beta)</div>
+        <button class="btn btn-ghost btn-sm section-help-toggle" data-help-toggle="help-scenes" style="margin-right:auto;" title="Quick how-to for the Scenes editor">ⓘ How this works</button>
         <span style="display:inline-flex; align-items:center; gap:6px; font-size:.72rem; color:var(--text-dim);">
           Gizmo:
           <button class="btn btn-ghost btn-sm" data-gizmo="translate" title="Move (T)">↔ Move</button>
@@ -1553,6 +1554,28 @@ html, body {
         <button class="btn btn-ghost btn-sm" id="scenes-add-branch" title="Add a branch clip at the scrubber time — pauses the scene to wait for an event and routes based on its payload">🌿 Add Branch</button>
         <button class="btn btn-ghost btn-sm" id="scenes-test-btn" title="Plays the active scene in this viewport from t=0">▶ Test</button>
         <span id="scenes-save-status" style="font-size:.65rem; font-weight:800; padding:3px 8px; border-radius:4px; opacity:0; transition:opacity 0.3s;"></span>
+      </div>
+
+      <!-- Section help flyout (issue #12). Collapsed by default; toggled by the
+           "ⓘ How this works" button above. Absolutely positioned so it overlays
+           rather than reflowing the editor. The .section-help-flyout class +
+           data-help-toggle wiring is generic (see initSectionHelp in app.js) so
+           the same pattern drops into other pages later. -->
+      <div id="help-scenes" class="section-help-flyout" style="display:none; position:absolute; top:52px; left:16px; z-index:50; width:360px; max-width:calc(100vw - 32px); max-height:72vh; overflow-y:auto; background:var(--surface2); border:1px solid var(--border); border-radius:8px; box-shadow:0 10px 30px rgba(0,0,0,0.45); padding:14px 16px; font-size:.78rem; line-height:1.5; color:var(--text);">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+          <strong style="font-size:.85rem;">🎬 Scenes — how this works</strong>
+          <button class="btn btn-ghost btn-sm" data-help-toggle="help-scenes" style="padding:2px 8px;" title="Close">✕</button>
+        </div>
+        <ul style="margin:0; padding-left:18px; display:flex; flex-direction:column; gap:8px;">
+          <li><strong>Add objects:</strong> drag a <em>3D Model</em> or <em>Image</em> from the <strong>Assets</strong> panel (left) onto the viewport. Upload new models from the Layout tab's 3D Model widget or the Assets tab — they show up here automatically.</li>
+          <li><strong>Add lights:</strong> click <em>+ Directional / + Point / + Ambient</em> in that same Assets panel.</li>
+          <li><strong>Add audio:</strong> use <strong>+ Add</strong> in the 🎵 Scene Audio panel (right). That button is audio-only.</li>
+          <li><strong>Move / rotate / scale:</strong> click an object to select it, pick the <em>Move / Rotate / Scale</em> gizmo up top, and drag the handles — or type exact numbers into the <strong>Transform</strong> fields in the right panel. Drag <em>empty space</em> to orbit the camera; the camera holds still while you use a gizmo.</li>
+          <li><strong>Keyframes &amp; timeline:</strong> click the timeline to move the scrubber to a time. With <strong>Auto-key</strong> on, finishing a gizmo drag (or editing a Transform field) writes a keyframe at that time. Set the scene length with <em>Duration</em>.</li>
+          <li><strong>📷 Key Camera:</strong> saves the current camera pose as a keyframe so the camera animates over the scene.</li>
+          <li><strong>🔀 Fork vs 🌿 Branch:</strong> a <strong>Fork</strong> fires a flow/event/effect/scene partway through <em>without pausing</em> the scene. A <strong>Branch</strong> <em>pauses</em> the scene to wait for an event, then routes based on it.</li>
+          <li><strong>Put a scene on stream:</strong> save it, then on the <strong>Layout</strong> page add a <em>Scene</em> widget and pick it — or have a flow play it (Mount → Widget, targeting a Scene widget).</li>
+        </ul>
       </div>
 
       <!-- Main grid: timeline pinned top, then assets | viewport | scenes -->

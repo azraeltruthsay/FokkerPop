@@ -174,6 +174,40 @@ window.populateGallery = function() {
 
 window.triggerUpload = (type) => { document.getElementById('upload-' + type).click(); };
 
+// ── Section help flyouts (issue #12) ─────────────────────────────────────
+// Any button with data-help-toggle="<id>" toggles the .section-help-flyout
+// element with that id. Open/closed persists per-section in localStorage so it
+// stays where the user left it; default is closed so help never crowds the UI.
+// Generic on purpose — adding help to another page is just a button + a flyout
+// div, no new JS.
+function initSectionHelp() {
+  const KEY = id => 'fokker.help.' + id;
+  const setOpen = (panel, open) => {
+    panel.style.display = open ? 'block' : 'none';
+    document.querySelectorAll(`[data-help-toggle="${panel.id}"]`)
+      .forEach(b => b.classList.toggle('active', open));
+  };
+  document.querySelectorAll('.section-help-flyout').forEach(panel => {
+    let open = false;
+    try { open = localStorage.getItem(KEY(panel.id)) === '1'; } catch {}
+    setOpen(panel, open);
+  });
+  document.addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-help-toggle]');
+    if (!btn) return;
+    const panel = document.getElementById(btn.dataset.helpToggle);
+    if (!panel) return;
+    const open = panel.style.display !== 'block';
+    setOpen(panel, open);
+    try { localStorage.setItem(KEY(panel.id), open ? '1' : '0'); } catch {}
+  });
+}
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initSectionHelp);
+} else {
+  initSectionHelp();
+}
+
 // Asset-conversion progress overlay. Lazy-created on first show so the
 // dashboard doesn't ship a hidden modal everyone scrolls past. Used by
 // the model upload path (FBX/OBJ/STL/PLY → GLB) to surface the parse +
