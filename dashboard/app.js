@@ -210,6 +210,10 @@ window.refreshAssets = function() {
     populateGallery();
     // Re-render any config editors that embed sound dropdowns so new/removed files show up
     if (typeof renderConfigEditors === 'function') renderConfigEditors();
+    // Widget cards (3D Model, Dice, Dice Tray) build their model/sound
+    // dropdowns from window.assets — re-render so freshly uploaded files
+    // become selectable without a dashboard reload.
+    if (typeof renderWidgetList === 'function') renderWidgetList();
   }).catch(err => alert('Refresh failed: ' + err.message));
 };
 
@@ -250,6 +254,10 @@ window.handleFileUpload = async function(type, file) {
       fetch('/api/assets').then(r => r.json()).then(a => {
         window.assets = a;
         populateGallery();
+        // Refresh widget cards so a model uploaded via a widget's "Upload GLB"
+        // button immediately appears in its dropdown (was the "imported but
+        // can't select it" bug).
+        if (typeof renderWidgetList === 'function') renderWidgetList();
       });
     } else {
       throw new Error(await res.text());

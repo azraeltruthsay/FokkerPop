@@ -49,7 +49,16 @@ document.addEventListener('DOMContentLoaded', () => {
   navBtn.addEventListener('click', () => {
     // Defer one frame so the page-scenes div is laid out (clientWidth>0)
     // before Three.js queries dimensions for the viewport.
-    requestAnimationFrame(() => init().catch(err => console.error('scenes-editor init failed:', err)));
+    requestAnimationFrame(() => {
+      if (ed.initialized) {
+        // Already mounted — just pull any assets uploaded since the editor
+        // opened (e.g. a GLB added via the Layout 3D Model widget) so the
+        // left Assets panel stays current without a full reload.
+        refreshAssets().catch(err => console.warn('scene asset refresh failed:', err));
+      } else {
+        init().catch(err => console.error('scenes-editor init failed:', err));
+      }
+    });
   });
 });
 
@@ -65,6 +74,7 @@ async function init() {
   setupViewport();
   bindToolbar();
   bindTimelineEvents();
+  bindRightPanelResizer();
 
   await refreshAssets();
   await refreshScenes();
@@ -74,6 +84,52 @@ async function init() {
   } else {
     setActiveScene(ed.scenes[0].id);
   }
+}
+
+// ── Right panel resizer ──────────────────────────────────────────────
+// The right column holds the Selected Object inspector, which is cramped at
+// the default width. A drag handle on its left edge sets the grid's
+// --scene-right-w; the width persists per-browser via localStorage.
+const SCENE_RIGHT_W_KEY = 'fokker.scenes.rightWidth';
+const SCENE_RIGHT_W_MIN = 220;
+const SCENE_RIGHT_W_MAX = 640;
+function bindRightPanelResizer() {
+  const grid    = document.getElementById('scenes-grid');
+  const handle  = document.getElementById('scenes-right-resizer');
+  if (!grid || !handle) return;
+
+  const apply = (px) => {
+    const w = Math.max(SCENE_RIGHT_W_MIN, Math.min(SCENE_RIGHT_W_MAX, px));
+    grid.style.setProperty('--scene-right-w', w + 'px');
+    return w;
+  };
+
+  // Restore a saved width on open.
+  const saved = parseInt(localStorage.getItem(SCENE_RIGHT_W_KEY) || '', 10);
+  if (Number.isFinite(saved)) apply(saved);
+
+  let dragging = false;
+  handle.addEventListener('pointerdown', (e) => {
+    dragging = true;
+    handle.setPointerCapture?.(e.pointerId);
+    e.preventDefault();
+  });
+  handle.addEventListener('pointermove', (e) => {
+    if (!dragging) return;
+    // Width = distance from the pointer to the grid's right edge.
+    const w = apply(grid.getBoundingClientRect().right - e.clientX);
+    handle.dataset.w = String(w);
+    resizeViewport(); // keep the Three.js viewport fitted to its new size
+  });
+  const end = (e) => {
+    if (!dragging) return;
+    dragging = false;
+    handle.releasePointerCapture?.(e.pointerId);
+    if (handle.dataset.w) localStorage.setItem(SCENE_RIGHT_W_KEY, handle.dataset.w);
+    resizeViewport();
+  };
+  handle.addEventListener('pointerup', end);
+  handle.addEventListener('pointercancel', end);
 }
 
 // ── Three.js viewport ────────────────────────────────────────────────
@@ -132,9 +188,19 @@ function setupViewport() {
   // next frame — that race was the cause of issue #9, where camera rotation
   // kept fighting object manipulation).
   transform.addEventListener('dragging-changed', (e) => {
-    if (!e.value && ed.autoKey && ed.selectedObjectId) {
-      writeKeyframeForSelected();
-      queueSave();
+    if (!e.value) {
+      // A 'click' event synthesizes right after the drag's pointerup, when
+      // transform.dragging is already false — so onViewportClick's drag guard
+      // misses it and raycasts from wherever the pointer ended. After a rotate
+      // that's usually off the mesh, which deselected the object. Swallow that
+      // one trailing click. Cleared on a microtask in case no click follows,
+      // so a later genuine empty-space click still deselects.
+      ed.suppressNextClick = true;
+      setTimeout(() => { ed.suppressNextClick = false; }, 0);
+      if (ed.autoKey && ed.selectedObjectId) {
+        writeKeyframeForSelected();
+        queueSave();
+      }
     }
   });
   // Keep the inspector's numeric Transform fields live while the gizmo drags.
@@ -578,6 +644,9 @@ function onViewportClick(e) {
   // Skip if the click landed on the gizmo (TransformControls handles its own
   // pointer events; this guard prevents click-deselect when finishing a drag).
   if (ed.three.transform.dragging) return;
+  // Swallow the trailing click that fires right after a gizmo drag-end — see
+  // the dragging-changed handler. Without this, finishing a rotate deselects.
+  if (ed.suppressNextClick) { ed.suppressNextClick = false; return; }
   const rect = e.currentTarget.getBoundingClientRect();
   const ndc = new THREE.Vector2(
     ((e.clientX - rect.left) / rect.width)  * 2 - 1,

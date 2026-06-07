@@ -1556,7 +1556,7 @@ html, body {
       </div>
 
       <!-- Main grid: timeline pinned top, then assets | viewport | scenes -->
-      <div style="flex:1; display:grid; grid-template-columns:200px 1fr 220px; grid-template-rows:240px 1fr; min-height:0;">
+      <div id="scenes-grid" style="flex:1; display:grid; grid-template-columns:200px 1fr var(--scene-right-w, 300px); grid-template-rows:240px 1fr; min-height:0;">
 
         <!-- Timeline (top, spans all columns) — the streamer's primary
              scene-management surface lives here. Moved from the bottom
@@ -1601,7 +1601,11 @@ html, body {
           </div>
         </div>
 
-        <div style="grid-row:2/3; background:var(--surface); border-left:1px solid var(--border); padding:10px; display:flex; flex-direction:column; gap:8px; min-height:0; overflow-y:auto;">
+        <div style="grid-row:2/3; position:relative; background:var(--surface); border-left:1px solid var(--border); padding:10px; display:flex; flex-direction:column; gap:8px; min-height:0; overflow-y:auto;">
+          <!-- Drag handle to widen/narrow this panel (the Selected Object
+               inspector lives here and gets cramped at the default width).
+               Sits on the panel's left edge; persists to localStorage. -->
+          <div id="scenes-right-resizer" title="Drag to resize this panel" style="position:absolute; left:-3px; top:0; bottom:0; width:7px; cursor:col-resize; z-index:5;"></div>
           <div id="scenes-inspector" style="display:none; padding:10px; background:var(--surface2); border-radius:4px; border:1px solid var(--border); flex-direction:column; gap:8px;"></div>
           <div id="scenes-audio-panel" style="padding:8px; background:var(--surface2); border-radius:4px; border:1px solid var(--border); display:flex; flex-direction:column; gap:6px;">
             <div style="display:flex; justify-content:space-between; align-items:center;">
