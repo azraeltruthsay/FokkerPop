@@ -151,6 +151,11 @@ html, body {
    columns that also resized when the inspector appeared on selection (issue
    #10). Restoring flex lets the grid's 1fr row fill the viewport. */
 #page-scenes.active { display: flex; }
+/* Section-help flyouts (issue #12) are position:absolute; their page needs to
+   be the positioning context, otherwise they anchor to the viewport and slide
+   under the sidebar. */
+#page-scenes, #page-studio, #page-layout, #page-config,
+#page-effects, #page-assets, #page-goals { position: relative; }
 /* Chat page needs a flex column so the input bar sticks to the bottom
    and the feed scrolls inside the remaining space. */
 #page-chat.active { display: flex; flex-direction: column; padding: 0; height: 100%; }
@@ -974,7 +979,22 @@ html, body {
     <!-- ════════════════════════ TEST EFFECTS PAGE -->
 
     <div class="page" id="page-effects">
-      <div class="page-header"><div class="page-title">Test Effects</div></div>
+      <div class="page-header">
+        <div class="page-title">Test Effects</div>
+        <button class="btn btn-ghost btn-sm section-help-toggle" data-help-toggle="help-effects" title="Quick how-to for Test Effects">ⓘ How this works</button>
+      </div>
+
+      <div id="help-effects" class="section-help-flyout" style="display:none; position:absolute; top:64px; left:32px; z-index:50; width:380px; max-width:calc(100vw - 64px); max-height:72vh; overflow-y:auto; background:var(--surface2); border:1px solid var(--border); border-radius:8px; box-shadow:0 10px 30px rgba(0,0,0,0.45); padding:14px 16px; font-size:.78rem; line-height:1.5; color:var(--text);">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+          <strong style="font-size:.85rem;">Test Effects — how this works</strong>
+          <button class="btn btn-ghost btn-sm" data-help-toggle="help-effects" style="padding:2px 8px;" title="Close">✕</button>
+        </div>
+        <ul style="margin:0; padding-left:18px; display:flex; flex-direction:column; gap:8px;">
+          <li>Every button here fires with a <strong>test</strong> flag, so it shows in the <strong>preview below</strong> but <em>not</em> on your live stream. An OBS source pointed at <code>http://localhost:4747/?live=1</code> ignores test fires on purpose; real Twitch events (follows, subs, cheers) still come through.</li>
+          <li>To test on your <em>actual</em> OBS source, temporarily point it at <code>http://localhost:4747/</code> (no <code>?live=1</code>), then switch it back before going live.</li>
+          <li>Use the effect buttons to fire individual effects and the dice roller to test rolls. The <strong>Widget labels</strong> toggle shows or hides widget label text in the preview.</li>
+        </ul>
+      </div>
 
       <div style="background:rgba(145,71,255,0.08); border:1px solid rgba(145,71,255,0.25); border-radius:10px; padding:12px 16px; margin-bottom:14px; font-size:.82rem; line-height:1.5; color:var(--text);">
         <strong style="color:var(--accent);">ℹ️ Watch the preview below.</strong>
@@ -1187,7 +1207,23 @@ html, body {
 
     <!-- ════════════════════════ ASSETS PAGE -->
     <div class="page" id="page-assets">
-      <div class="page-header"><div class="page-title">Assets & Media</div></div>
+      <div class="page-header">
+        <div class="page-title">Assets &amp; Media</div>
+        <button class="btn btn-ghost btn-sm section-help-toggle" data-help-toggle="help-assets" title="Quick how-to for Assets & Media">ⓘ How this works</button>
+      </div>
+
+      <div id="help-assets" class="section-help-flyout" style="display:none; position:absolute; top:64px; left:32px; z-index:50; width:380px; max-width:calc(100vw - 64px); max-height:72vh; overflow-y:auto; background:var(--surface2); border:1px solid var(--border); border-radius:8px; box-shadow:0 10px 30px rgba(0,0,0,0.45); padding:14px 16px; font-size:.78rem; line-height:1.5; color:var(--text);">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+          <strong style="font-size:.85rem;">Assets &amp; Media — how this works</strong>
+          <button class="btn btn-ghost btn-sm" data-help-toggle="help-assets" style="padding:2px 8px;" title="Close">✕</button>
+        </div>
+        <ul style="margin:0; padding-left:18px; display:flex; flex-direction:column; gap:8px;">
+          <li>Upload <strong>Sound Effects</strong>, <strong>Stickers</strong>, <strong>Images</strong>, and <strong>Mascot Animations</strong> from the buttons here. <strong>🔄 Refresh</strong> rescans the folder if you add files outside the app.</li>
+          <li><strong>Mascot</strong> files must be named exactly <code>idle.gif</code>, <code>active.gif</code>, <code>hype.gif</code>, or <code>explosion.gif</code>. <strong>Images</strong> (PNG / JPG / GIF / WEBP / SVG) are shown by Studio's <strong>Show Image</strong> action inside an Image Display widget.</li>
+          <li><strong>3D models</strong> (GLB / GLTF — FBX, OBJ, STL, and PLY convert automatically on upload) are uploaded from the <strong>3D Model</strong> widget on the Layout page. Once uploaded they appear in the model dropdowns and the Scenes Assets panel.</li>
+          <li>Uploaded files become selectable in widget and effect dropdowns automatically.</li>
+        </ul>
+      </div>
 
       <div class="card">
         <div style="display:flex; justify-content:space-between; align-items:center;">
@@ -1243,7 +1279,23 @@ html, body {
 
     <!-- ════════════════════════ GOALS PAGE -->
     <div class="page" id="page-goals">
-      <div class="page-header"><div class="page-title">Goals</div></div>
+      <div class="page-header">
+        <div class="page-title">Goals</div>
+        <button class="btn btn-ghost btn-sm section-help-toggle" data-help-toggle="help-goals" title="Quick how-to for Goals">ⓘ How this works</button>
+      </div>
+
+      <div id="help-goals" class="section-help-flyout" style="display:none; position:absolute; top:64px; left:32px; z-index:50; width:380px; max-width:calc(100vw - 64px); max-height:72vh; overflow-y:auto; background:var(--surface2); border:1px solid var(--border); border-radius:8px; box-shadow:0 10px 30px rgba(0,0,0,0.45); padding:14px 16px; font-size:.78rem; line-height:1.5; color:var(--text);">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+          <strong style="font-size:.85rem;">Goals — how this works</strong>
+          <button class="btn btn-ghost btn-sm" data-help-toggle="help-goals" style="padding:2px 8px;" title="Close">✕</button>
+        </div>
+        <ul style="margin:0; padding-left:18px; display:flex; flex-direction:column; gap:8px;">
+          <li><strong>Active Goals</strong> shows live progress toward each target you've set.</li>
+          <li><strong>Configure Goals:</strong> click <strong>+ Add Goal</strong>, choose a metric (e.g. <code>session.subCount</code>, <code>session.bitsTotal</code>, <code>session.followCount</code>, <code>session.raidCount</code>) and a target. When the goal is reached, the reward effect you pick fires automatically.</li>
+          <li>Click <strong>Save</strong> to keep changes. To show a goal bar on stream, position the <strong>Goals</strong> display on the Layout page (Drag Mode on).</li>
+        </ul>
+      </div>
+
       <div class="card">
         <div class="card-title">Active Goals</div>
         <div id="goals-list">
@@ -1269,7 +1321,8 @@ html, body {
     <div class="page" id="page-layout">
       <div class="page-header">
         <div class="page-title">Overlay Layout</div>
-        <div style="display:flex; gap:12px; align-items:center;">
+        <button class="btn btn-ghost btn-sm section-help-toggle" data-help-toggle="help-layout" title="Quick how-to for the Layout page">ⓘ How this works</button>
+        <div style="display:flex; gap:12px; align-items:center; margin-left:auto;">
           <span style="font-size:.72rem; font-weight:800; color:var(--text-dim); letter-spacing:.08em; text-transform:uppercase;">Drag Mode</span>
           <label class="toggle" title="Enable drag to reposition widgets">
             <input type="checkbox" id="layout-mode-cb-2" onchange="dashSend({type:'_dashboard.layout-mode',active:this.checked})">
@@ -1279,6 +1332,20 @@ html, body {
           <button class="btn btn-ghost btn-sm" onclick="resetWidgetsToDefault()" style="color:var(--red); border:1px solid rgba(255,107,107,0.4);" title="Wipe widgets.json and restore the shipped default layout. Saves a backup to widgets.json.bak first.">Reset Widgets to Default</button>
           <button class="btn btn-primary btn-sm" onclick="window.open('/overlay','_blank','width=1280,height=720')">Pop Out ↗</button>
         </div>
+      </div>
+
+      <div id="help-layout" class="section-help-flyout" style="display:none; position:absolute; top:64px; left:32px; z-index:50; width:380px; max-width:calc(100vw - 64px); max-height:72vh; overflow-y:auto; background:var(--surface2); border:1px solid var(--border); border-radius:8px; box-shadow:0 10px 30px rgba(0,0,0,0.45); padding:14px 16px; font-size:.78rem; line-height:1.5; color:var(--text);">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+          <strong style="font-size:.85rem;">Overlay Layout — how this works</strong>
+          <button class="btn btn-ghost btn-sm" data-help-toggle="help-layout" style="padding:2px 8px;" title="Close">✕</button>
+        </div>
+        <ul style="margin:0; padding-left:18px; display:flex; flex-direction:column; gap:8px;">
+          <li><strong>Position widgets:</strong> turn on <strong>Drag Mode</strong>, then drag a widget in the preview to move it, or drag its edge/corner handles to resize. Positions save automatically — turn Drag Mode off when you're done.</li>
+          <li><strong>Add widgets:</strong> use the buttons in <strong>Custom Widgets</strong> (counters, text, leaderboards, progress bars, dice, 3D models, a <em>Scene</em>, Twitch live stats, and more). They save to <code>widgets.json</code> and appear in every overlay, including your OBS browser source.</li>
+          <li><strong>Per-widget options</strong> (on each card below): <strong>visible</strong> shows/hides it, <strong>auto-hide</strong> keeps dice/physics/event widgets hidden until their trigger fires, <strong>block overlap</strong> stops other widgets being dragged over it, and <strong>Delete</strong> removes it.</li>
+          <li><strong>Reset Positions</strong> moves every widget back to its default spot (keeps your list). <strong>Reset Widgets to Default</strong> wipes the list back to the shipped layout — a backup is saved first.</li>
+          <li><strong>Pop Out</strong> opens the overlay in its own window. Dragging here, in the pop-out, and via OBS → right-click source → <em>Interact</em> all save to the same positions.</li>
+        </ul>
       </div>
 
       <div class="card">
@@ -1344,13 +1411,27 @@ html, body {
     <div class="page" id="page-config">
       <div class="page-header">
         <div class="page-title">Config Editor</div>
-        <div style="display:flex; gap:10px; background:var(--surface2); padding:4px; border-radius:8px;">
+        <button class="btn btn-ghost btn-sm section-help-toggle" data-help-toggle="help-config" title="Quick how-to for the Config editor">ⓘ How this works</button>
+        <div style="display:flex; gap:10px; background:var(--surface2); padding:4px; border-radius:8px; margin-left:auto;">
           <button class="btn btn-ghost btn-sm active sub-tab" onclick="switchSubTab(this, 'config-general')">General</button>
           <button class="btn btn-ghost btn-sm sub-tab" onclick="switchSubTab(this, 'config-redeems')">Redeems</button>
           <button class="btn btn-ghost btn-sm sub-tab" onclick="switchSubTab(this, 'config-commands')">Commands</button>
         </div>
       </div>
-      
+
+      <div id="help-config" class="section-help-flyout" style="display:none; position:absolute; top:64px; left:32px; z-index:50; width:380px; max-width:calc(100vw - 64px); max-height:72vh; overflow-y:auto; background:var(--surface2); border:1px solid var(--border); border-radius:8px; box-shadow:0 10px 30px rgba(0,0,0,0.45); padding:14px 16px; font-size:.78rem; line-height:1.5; color:var(--text);">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+          <strong style="font-size:.85rem;">Config Editor — how this works</strong>
+          <button class="btn btn-ghost btn-sm" data-help-toggle="help-config" style="padding:2px 8px;" title="Close">✕</button>
+        </div>
+        <p style="margin:0 0 8px;">Three tabs across the top. Each tab has its own <strong>Save</strong> button — save before switching away.</p>
+        <ul style="margin:0; padding-left:18px; display:flex; flex-direction:column; gap:8px;">
+          <li><strong>General:</strong> app settings — Auto-Install Updates, Layout Mode, and <strong>Stream Boosts &amp; Energy Drain</strong> (how much each sub / follow / raid adds to crowd energy, and how fast it drains).</li>
+          <li><strong>Redeems:</strong> connect Twitch <strong>channel-point rewards</strong> to effects. The <strong>Reward Title</strong> here must match the reward's name on Twitch exactly — it's case-sensitive.</li>
+          <li><strong>Commands:</strong> map chat <strong>!shortcuts</strong> to effects, each with a built-in cooldown.</li>
+        </ul>
+      </div>
+
       <style>
         .config-sub-page { display: none; }
         .config-sub-page.active { display: block; }
@@ -1455,7 +1536,8 @@ html, body {
     <!-- ════════════════════════ STUDIO PAGE -->
     <div class="page" id="page-studio" style="padding:0; height:100vh; flex-direction:column;">
       <div style="background:var(--surface2); padding:10px 20px; border-bottom:1px solid var(--border); display:flex; gap:15px; align-items:center; z-index:100;">
-        <div class="page-title" style="font-size:1rem; margin-right:auto;">Fokker Studio (Beta)</div>
+        <div class="page-title" style="font-size:1rem;">Fokker Studio (Beta)</div>
+        <button class="btn btn-ghost btn-sm section-help-toggle" data-help-toggle="help-studio" style="margin-right:auto;" title="Quick how-to for Fokker Studio">ⓘ How this works</button>
         <button class="btn btn-ghost btn-sm" onclick="importExampleFlows()" title="Get latest pre-built flows">📦 Import Templates</button>
         <select id="studio-flow-select" class="input-field" style="width:200px; margin:0;" onchange="loadSelectedFlow()"></select>
         <button class="btn btn-ghost btn-sm" onclick="createNewFlow()">+ New Flow</button>
@@ -1469,6 +1551,21 @@ html, body {
         </div>
       </div>
       
+      <div id="help-studio" class="section-help-flyout" style="display:none; position:absolute; top:52px; left:16px; z-index:200; width:400px; max-width:calc(100vw - 32px); max-height:78vh; overflow-y:auto; background:var(--surface2); border:1px solid var(--border); border-radius:8px; box-shadow:0 10px 30px rgba(0,0,0,0.45); padding:14px 16px; font-size:.78rem; line-height:1.5; color:var(--text);">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+          <strong style="font-size:.85rem;">Fokker Studio — how this works</strong>
+          <button class="btn btn-ghost btn-sm" data-help-toggle="help-studio" style="padding:2px 8px;" title="Close">✕</button>
+        </div>
+        <ul style="margin:0; padding-left:18px; display:flex; flex-direction:column; gap:8px;">
+          <li>A <strong>flow</strong> runs when its <strong>Trigger</strong> fires. Build one by adding a Trigger plus Actions/Logic from the <strong>Components</strong> list on the left (or right-click the canvas).</li>
+          <li><strong>Connect nodes</strong> by dragging from a node's output dot to the next node — a wire follows your mouse. Drag the empty canvas to pan; drag a node to move it.</li>
+          <li><strong>Triggers</strong> are Twitch events (sub, cheer, follow, raid, redeem, chat, and more). For a redeem you can pick a specific reward.</li>
+          <li><strong>Actions:</strong> Effect, Banner, Show Image, Twitch Card, Sound, Fire Event, Roll Dice, Adjust Energy, Update Stat, Timer, OBS Scene, Play Scene, Kaprekar. <strong>Logic:</strong> Delay, Chance, Filter, Match (branch on a condition).</li>
+          <li><strong>Right-click a node</strong> to change its action or run <strong>▶️ Test This Trigger</strong>. Turn on <strong>🎬 Preview</strong> to see test fires — they're kept off your live OBS source on purpose.</li>
+          <li>Click <strong>Save All</strong> to keep your changes. <strong>📦 Import Templates</strong> adds pre-built flows you can edit.</li>
+        </ul>
+      </div>
+
       <div style="flex:1; display:flex; position:relative; overflow:hidden; background-image: radial-gradient(rgba(255,255,255,0.03) 1px, transparent 1px); background-size: 20px 20px;">
         <!-- Toolbox -->
         <div style="width:180px; background:var(--surface); border-right:1px solid var(--border); padding:15px; display:flex; flex-direction:column; gap:10px; z-index:50;">
