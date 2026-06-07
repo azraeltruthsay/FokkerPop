@@ -1384,7 +1384,12 @@ const httpServer = createServer((req, res) => {
     const assets = { sounds: [], stickers: [], images: [], characters: [], models: [], diceThemes: [] };
     try {
       const mDir = join(ROOT, 'assets/models');
-      if (existsSync(mDir)) assets.models = readdirSync(mDir).filter(f => !f.startsWith('.') && /\.(gl[bt]f)$/i.test(f));
+      // Match .glb and .gltf. The previous /\.(gl[bt]f)$/ matched .gltf and
+      // (nonexistent) .glbf but NOT .glb — so every uploaded .glb model (the
+      // common case, and what the client-side converter emits) was saved to
+      // disk yet filtered out of this listing, leaving it unselectable in the
+      // 3D Model widget and the Scenes Assets panel.
+      if (existsSync(mDir)) assets.models = readdirSync(mDir).filter(f => !f.startsWith('.') && /\.(glb|gltf)$/i.test(f));
       const sDir = join(ROOT, 'assets/sounds');
       if (existsSync(sDir)) assets.sounds = readdirSync(sDir).filter(f => !f.startsWith('.'));
       const tDir = join(ROOT, 'assets/stickers');
