@@ -10,6 +10,7 @@ import { applyPipeline }          from './pipeline/index.js';
 import { TwitchEventSub }         from './twitch/eventsub.js';
 import flowEngine, { TEST_PAYLOADS } from './pipeline/flow-engine.js';
 import { validateScene }             from './pipeline/scenes.js';
+import { ASSET_EXTS, hasAssetExt }    from '../shared/asset-extensions.js';
 import obs                   from './obs.js';
 import * as helix            from './twitch/helix.js';
 import { HelixError }         from './twitch/helix.js';
@@ -1216,19 +1217,10 @@ const httpServer = createServer((req, res) => {
     // any other format) lands silently in the folder but the asset listing
     // (and the dashboard's selection dropdowns) filter it back out — so
     // users see "upload succeeded" then can't find their file. Issue #8.
-    const ALLOWED_EXTS = {
-      // v0.4.5 expanded sound + image lists: flac/opus are common modern
-      // codecs both Chrome+Firefox decode natively, and avif is the
-      // increasingly-default web image format. Models stay glb/gltf only
-      // because the dashboard's upload flow converts other 3D formats
-      // (fbx/obj/stl/ply) client-side before they ever reach the server.
-      sound:     ['.wav', '.mp3', '.ogg', '.m4a', '.flac', '.opus'],
-      sticker:   ['.png', '.webp', '.gif', '.jpg', '.jpeg', '.svg', '.avif'],
-      image:     ['.png', '.webp', '.gif', '.jpg', '.jpeg', '.svg', '.avif'],
-      character: ['.png', '.webp', '.jpg', '.jpeg', '.avif'],
-      model:     ['.glb', '.gltf'],
-    };
-    const allowed = ALLOWED_EXTS[type];
+    // Sourced from the shared ASSET_EXTS table so this allowlist and the
+    // /api/assets listing filters stay in lockstep (models convert other 3D
+    // formats client-side, so only glb/gltf ever reach the server).
+    const allowed = ASSET_EXTS[type];
     if (allowed) {
       const ext = (extname(name) || '').toLowerCase();
       if (!allowed.includes(ext)) {
@@ -1384,18 +1376,17 @@ const httpServer = createServer((req, res) => {
     const assets = { sounds: [], stickers: [], images: [], characters: [], models: [], diceThemes: [] };
     try {
       const mDir = join(ROOT, 'assets/models');
-      // Match .glb and .gltf. The previous /\.(gl[bt]f)$/ matched .gltf and
-      // (nonexistent) .glbf but NOT .glb — so every uploaded .glb model (the
-      // common case, and what the client-side converter emits) was saved to
-      // disk yet filtered out of this listing, leaving it unselectable in the
-      // 3D Model widget and the Scenes Assets panel.
-      if (existsSync(mDir)) assets.models = readdirSync(mDir).filter(f => !f.startsWith('.') && /\.(glb|gltf)$/i.test(f));
+      // Extension filter via the shared ASSET_EXTS table so it can't drift
+      // from the upload allowlist. A regex here once dropped every .glb (the
+      // common case + what the client-side converter emits), leaving uploaded
+      // models unselectable in the 3D Model widget and the Scenes Assets panel.
+      if (existsSync(mDir)) assets.models = readdirSync(mDir).filter(f => !f.startsWith('.') && hasAssetExt('model', f));
       const sDir = join(ROOT, 'assets/sounds');
       if (existsSync(sDir)) assets.sounds = readdirSync(sDir).filter(f => !f.startsWith('.'));
       const tDir = join(ROOT, 'assets/stickers');
       if (existsSync(tDir)) assets.stickers = readdirSync(tDir).filter(f => !f.startsWith('.'));
       const iDir = join(ROOT, 'assets/images');
-      if (existsSync(iDir)) assets.images = readdirSync(iDir).filter(f => !f.startsWith('.') && /\.(png|jpe?g|gif|webp|svg)$/i.test(f));
+      if (existsSync(iDir)) assets.images = readdirSync(iDir).filter(f => !f.startsWith('.') && hasAssetExt('image', f));
       const cDir = join(ROOT, 'characters/lilfokkermascot');
       if (existsSync(cDir)) assets.characters = readdirSync(cDir).filter(f => !f.startsWith('.'));
       // Dice themes: each subdir of assets/dice/ with at least one face-N.{png,jpg,jpeg,webp}
