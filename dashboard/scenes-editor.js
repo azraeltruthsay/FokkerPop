@@ -170,12 +170,12 @@ function setupViewport() {
   orbit.update();
 
   const transform = new TransformControls(camera, renderer.domElement);
-  // TransformControls' default handle size in three.js r0.184 is small
-  // enough that the arrows often look like noise against a 1-unit
-  // auto-fit model — making it hard to tell where to click. Bumping
-  // size 1.0 → 1.5 makes the gizmo unmissable without overwhelming
-  // small scenes.
-  transform.size = 1.5;
+  // Gizmo handle size. Was 1.5, but saknama found that too aggressive: the
+  // handles' pick volume (larger than the visible arrows) made it hard to grab
+  // a specific X/Y/Z and let the gizmo steal clicks meant for other objects.
+  // Back to three.js' default 1.0 — handles stay legible against a 1-unit
+  // auto-fit model while shrinking both the visuals and their hit area. (#9)
+  transform.size = 1.0;
   // r0.184+ exposes the visual gizmo via getHelper() (TransformControls
   // itself stopped being an Object3D when it moved to extending Controls);
   // older builds return the gizmo directly from the controller. Try both
@@ -217,6 +217,11 @@ function setupViewport() {
     if (e.button === 0) ed.pointerDownXY = { x: e.clientX, y: e.clientY };
   });
   renderer.domElement.addEventListener('click', onViewportClick);
+  // Hover highlight — outline the object the pointer is over so it's clear
+  // which one a click will select (mirrors how the gizmo handles light up on
+  // hover). saknama #9 polish.
+  renderer.domElement.addEventListener('pointermove', onViewportHover);
+  renderer.domElement.addEventListener('pointerleave', () => setHoverHighlight(null));
   renderer.domElement.addEventListener('dragover', (e) => { e.preventDefault(); });
   renderer.domElement.addEventListener('drop', onViewportDrop);
 
@@ -258,6 +263,8 @@ function setupViewport() {
     const gizmoActive = transform.dragging || transform.axis != null;
     orbit.enabled = !(ed.isPlaying && hasCamTrack) && !gizmoActive;
     orbit.update();
+    // Keep the hover outline glued to its object if it moves (playback, gizmo).
+    if (ed.hoverHelper) ed.hoverHelper.update();
     renderer.render(scene, camera);
   }
   animate();
@@ -682,7 +689,59 @@ function onViewportClick(e) {
   selectObject(node?.userData.sceneObjectId || null);
 }
 
+// Pointer-move hover: outline whichever object sits under the cursor so the
+// user can see what a click will select. The gizmo owns the pointer while it's
+// being dragged or a handle is hovered (transform.axis), so we suppress the
+// object outline then — and we never outline the already-selected object,
+// which already shows the gizmo. (#9 polish)
+function onViewportHover(e) {
+  if (!ed.three) return;
+  const t = ed.three.transform;
+  if (t.dragging || t.axis) { setHoverHighlight(null); return; }
+  const rect = e.currentTarget.getBoundingClientRect();
+  const ndc = new THREE.Vector2(
+    ((e.clientX - rect.left) / rect.width)  * 2 - 1,
+   -((e.clientY - rect.top)  / rect.height) * 2 + 1,
+  );
+  ed.three.raycaster.setFromCamera(ndc, ed.three.camera);
+  const candidates = [...ed.objectsByGuid.values()];
+  const hits = ed.three.raycaster.intersectObjects(candidates, true);
+  let id = null;
+  if (hits.length) {
+    let node = hits[0].object;
+    while (node && !node.userData.sceneObjectId) node = node.parent;
+    id = node?.userData.sceneObjectId || null;
+  }
+  setHoverHighlight(id && id !== ed.selectedObjectId ? id : null);
+  ed.three.renderer.domElement.style.cursor = id ? 'pointer' : '';
+}
+
+// Show/clear a bounding-box outline around the hovered object. Drawn on top
+// (depthTest off) in a bright cyan so it reads against any model. Recreated
+// per target rather than recolored so it always wraps the right geometry.
+function setHoverHighlight(id) {
+  if (ed.hoverObjectId === id) return;
+  ed.hoverObjectId = id;
+  if (ed.hoverHelper) {
+    ed.three.scene.remove(ed.hoverHelper);
+    ed.hoverHelper.geometry?.dispose();
+    ed.hoverHelper.material?.dispose();
+    ed.hoverHelper = null;
+  }
+  if (id && ed.objectsByGuid.has(id)) {
+    const helper = new THREE.BoxHelper(ed.objectsByGuid.get(id), 0x4fc3f7);
+    helper.material.depthTest = false;
+    helper.material.transparent = true;
+    helper.renderOrder = 999;
+    ed.three.scene.add(helper);
+    ed.hoverHelper = helper;
+  }
+}
+
 function selectObject(id) {
+  // Clear any hover outline — the new selection shows the gizmo instead, and a
+  // stale box must not linger on an object that's now selected or removed.
+  setHoverHighlight(null);
   ed.selectedObjectId = id;
   if (id && ed.objectsByGuid.has(id)) {
     ed.three.transform.attach(ed.objectsByGuid.get(id));
