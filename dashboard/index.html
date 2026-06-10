@@ -1670,6 +1670,7 @@ html, body {
           <li><strong>Move / rotate / scale:</strong> click an object to select it, pick the <em>Move / Rotate / Scale</em> gizmo up top, and drag the handles — or type exact numbers into the <strong>Transform</strong> fields in the right panel. Drag <em>empty space</em> to orbit the camera; the camera holds still while you use a gizmo.</li>
           <li><strong>Keyframes &amp; timeline:</strong> click the timeline to move the scrubber to a time. With <strong>Auto-key</strong> on, finishing a gizmo drag (or editing a Transform field) writes a keyframe at that time. Set the scene length with <em>Duration</em>.</li>
           <li><strong>📷 Key Camera:</strong> saves the current camera pose as a keyframe so the camera animates over the scene.</li>
+          <li><strong>The dashed amber frame</strong> is the camera's view — it matches the scene's <em>aspect ratio</em>. Anything outside it is cropped and won't show on stream, so compose inside the frame. Change the ratio with the aspect selector.</li>
           <li><strong>🔀 Fork vs 🌿 Branch:</strong> a <strong>Fork</strong> fires a flow/event/effect/scene partway through <em>without pausing</em> the scene. A <strong>Branch</strong> <em>pauses</em> the scene to wait for an event, then routes based on it.</li>
           <li><strong>Put a scene on stream:</strong> save it, then on the <strong>Layout</strong> page add a <em>Scene</em> widget and pick it — or have a flow play it (Mount → Widget, targeting a Scene widget).</li>
         </ul>
@@ -1713,7 +1714,7 @@ html, body {
           <!-- Aspect-ratio guide: positioned over the viewport, sized to the
                selected ratio centered in the available space. Pointer-events
                off so it never steals viewport interaction. -->
-          <div id="scenes-aspect-guide" style="position:absolute; pointer-events:none; border:1px dashed rgba(255,200,80,0.6); box-shadow:0 0 0 9999px rgba(0,0,0,0.25); display:none;"></div>
+          <div id="scenes-aspect-guide" style="position:absolute; pointer-events:none; border:1px dashed rgba(255,200,80,0.85); box-shadow:0 0 0 9999px rgba(0,0,0,0.35); display:none;"></div>
           <div id="scenes-viewport-empty" style="position:absolute; inset:0; display:flex; align-items:center; justify-content:center; color:var(--text-dim); font-size:.8rem; text-align:center; pointer-events:none; padding:20px;">
             Drag an asset from the left to add it to this scene.<br>
             Click an object to select it. Use the gizmo to move/rotate/scale.<br>

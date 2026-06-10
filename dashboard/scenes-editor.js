@@ -270,43 +270,51 @@ function setupViewport() {
   animate();
 }
 
+// Lays out the viewport: when the active scene has an aspect ratio, the canvas
+// is sized to that ratio and centered, leaving letterbox bars — so the camera's
+// frame, the rendered pixels, and all pointer math (orbit / gizmo / pick, which
+// three.js derives from the canvas rect) share one rectangle. The dashed guide
+// is pinned to that same rectangle, making it the literal edge of the camera's
+// view: objects are cropped as they cross it. With no ratio, the canvas fills
+// the viewport as before. (issue #10 — saknama: a visible camera-view reference)
 function resizeViewport() {
   if (!ed.three) return;
   const container = document.getElementById('scenes-viewport');
   if (!container) return;
-  const w = container.clientWidth, h = container.clientHeight;
-  if (w === 0 || h === 0) return;
-  ed.three.renderer.setSize(w, h);
+  const cw = container.clientWidth, ch = container.clientHeight;
+  if (cw === 0 || ch === 0) return;
+  const ratio = activeScene()?.aspectRatio;
+  let w = cw, h = ch;
+  if (ratio) {
+    if (cw / ch > ratio) { h = ch; w = ch * ratio; }
+    else                 { w = cw; h = cw / ratio; }
+  }
+  const x = (cw - w) / 2, y = (ch - h) / 2;
+
+  const canvas = ed.three.renderer.domElement;
+  ed.three.renderer.setSize(w, h);          // also sets canvas style w/h in px
+  canvas.style.position = 'absolute';
+  canvas.style.left = x + 'px';
+  canvas.style.top  = y + 'px';
   ed.three.camera.aspect = w / h;
   ed.three.camera.updateProjectionMatrix();
-  updateAspectGuide();
+
+  const guide = document.getElementById('scenes-aspect-guide');
+  if (guide) {
+    if (!ratio) { guide.style.display = 'none'; }
+    else {
+      guide.style.display = 'block';
+      guide.style.width  = w + 'px';
+      guide.style.height = h + 'px';
+      guide.style.left   = x + 'px';
+      guide.style.top    = y + 'px';
+    }
+  }
 }
 
-// Sizes the aspect-ratio guide div to fit the configured ratio inside the
-// viewport's available space, centered. The guide is purely visual — it
-// has no effect on the runtime, which always renders at the overlay
-// window's actual size.
-function updateAspectGuide() {
-  const guide = document.getElementById('scenes-aspect-guide');
-  if (!guide) return;
-  const s = activeScene();
-  const ratio = s?.aspectRatio;
-  if (!ratio) { guide.style.display = 'none'; return; }
-  const container = document.getElementById('scenes-viewport');
-  const parent    = container?.parentElement;
-  if (!parent) return;
-  const cw = parent.clientWidth, ch = parent.clientHeight;
-  if (cw === 0 || ch === 0) return;
-  const containerRatio = cw / ch;
-  let w, h;
-  if (containerRatio > ratio) { h = ch; w = ch * ratio; }
-  else                         { w = cw; h = cw / ratio; }
-  guide.style.display = 'block';
-  guide.style.width   = w + 'px';
-  guide.style.height  = h + 'px';
-  guide.style.left    = ((cw - w) / 2) + 'px';
-  guide.style.top     = ((ch - h) / 2) + 'px';
-}
+// Back-compat alias: callers that just want the frame refreshed relayout the
+// whole viewport (canvas + guide are now sized together).
+function updateAspectGuide() { resizeViewport(); }
 
 // ── Toolbar ──────────────────────────────────────────────────────────
 function bindToolbar() {
