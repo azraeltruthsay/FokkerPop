@@ -209,6 +209,13 @@ function setupViewport() {
   const raycaster = new THREE.Raycaster();
   ed.three = { scene, camera, renderer, orbit, transform, raycaster };
 
+  // Remember where a left-press started so onViewportClick can tell a genuine
+  // click (select/deselect) apart from a click that's really the tail of a
+  // camera-orbit drag. Without this, left-dragging to re-angle the viewport
+  // deselects the current object — issue #9 follow-up from saknama.
+  renderer.domElement.addEventListener('pointerdown', (e) => {
+    if (e.button === 0) ed.pointerDownXY = { x: e.clientX, y: e.clientY };
+  });
   renderer.domElement.addEventListener('click', onViewportClick);
   renderer.domElement.addEventListener('dragover', (e) => { e.preventDefault(); });
   renderer.domElement.addEventListener('drop', onViewportDrop);
@@ -647,6 +654,16 @@ function onViewportClick(e) {
   // Swallow the trailing click that fires right after a gizmo drag-end — see
   // the dragging-changed handler. Without this, finishing a rotate deselects.
   if (ed.suppressNextClick) { ed.suppressNextClick = false; return; }
+  // A left-drag to orbit the camera ends in a 'click' wherever the pointer
+  // lifts — usually empty space, which would deselect. If the pointer traveled
+  // more than a few px since pointerdown, treat it as a camera move, not a
+  // selection change, and leave the current selection intact. (saknama #9)
+  const down = ed.pointerDownXY;
+  if (down) {
+    const moved = Math.hypot(e.clientX - down.x, e.clientY - down.y);
+    ed.pointerDownXY = null;
+    if (moved > 5) return;
+  }
   const rect = e.currentTarget.getBoundingClientRect();
   const ndc = new THREE.Vector2(
     ((e.clientX - rect.left) / rect.width)  * 2 - 1,
